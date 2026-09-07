@@ -93,7 +93,31 @@ O script abaixo serve apenas para a configuração inicial do Spotify. Ele abre 
 
 Deu certo quando o terminal exibir `Spotify autorizado com sucesso`, o `SPOTIFY_REFRESH_TOKEN` estiver no `.env` e o bot conseguir mostrar a música atual somente quando ela pertencer à playlist configurada. Se a URL não abrir automaticamente, copie-a do terminal e abra-a manualmente.
 
-Os comandos disponíveis são `/ping`, `/say mensagem:<texto>` e `/embed titulo:<texto> descricao:<texto>`.
+Os comandos disponíveis são `/ping`, `/say mensagem:<texto>`, `/embed titulo:<texto> descricao:<texto>`, `/presence`, `/callsense` e `/iatext`.
+
+## IA para textos do Discord
+
+O comando é `/iatext` porque o Discord exige nomes de slash commands em minúsculas. Escolha `Embed` ou `Content`, informe uma ideia no modal e revise a prévia privada. Use `Correto, enviar` para publicar ou `Errado, corrigir` para fornecer contexto adicional e gerar outra versão. Somente o usuário que iniciou a sessão pode interagir com seus botões.
+
+Para habilitar a IA via OpenRouter, adicione no `.env`:
+
+```env
+OPENROUTER_API_KEY=sua_chave_da_api_openrouter
+OPENROUTER_MODEL=openai/gpt-4.1-mini
+OPENROUTER_MAX_TOKENS=800
+```
+
+A chave não deve ser commitada. O modelo padrão é `openai/gpt-4.1-mini`, mas ele pode ser substituído por outro modelo específico compatível com `response_format`/JSON Schema. `OPENROUTER_MAX_TOKENS` controla a saída e tem fallback de 800, com teto de 800 tokens. O service usa a API compatível com OpenAI do OpenRouter em `https://openrouter.ai/api/v1`, geração estruturada em JSON, limite de 30 segundos e limites de tamanho do Discord. Erros de limite de tokens ou créditos retornam uma mensagem amigável. Execute `npm run deploy` depois de adicionar o comando.
+
+O comando `/presence` é exclusivo do proprietário configurado e possui três modos:
+
+- `Rich presence com texto`: exige tipo (`Assistindo`, `Transmitindo`, `Jogando` ou `Ouvindo`) e texto; `Transmitindo` também exige URL.
+- `Rich presence Spotify`: exibe somente a música atual da playlist configurada.
+- `Rich presence padrão`: reativa a lógica automática de call, Spotify e links a cada 10 segundos.
+
+O modo escolhido permanece ativo até outro `/presence` ser usado ou o bot ser reiniciado.
+
+O comando `/callsense` também é exclusivo do proprietário. Ao ativá-lo, o bot registra quem já está na call configurada e envia uma DM somente quando outra pessoa entrar depois disso. A notificação inclui o nome do usuário, horário relativo, avatar e um link direto para entrar na call.
 
 ## Rich presence
 

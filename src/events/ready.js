@@ -10,9 +10,8 @@ module.exports = {
     try {
       const owner = await client.users.fetch('1051358891138629682');
 
-      const startedAt = new Date(Date.now() - client.uptime);
-
-      const uptime = formatUptime(client.uptime);
+      const startedAt = new Date();
+      const unix = Math.floor(startedAt.getTime() / 1000);
 
       const time = startedAt.toLocaleTimeString('pt-BR', {
         timeZone: 'America/Sao_Paulo',
@@ -28,12 +27,11 @@ module.exports = {
         .setTitle('🟢 BOT INICIADO')
         .setDescription(
           [
-            `**Tempo ativo:** \`${uptime}\``,
+            `**Tempo ativo:** <t:${unix}:R>`,
             `**Iniciado às:** \`${time}\` - \`${date}\``,
           ].join('\n')
         )
-        .setColor(0x2ecc71)
-        .setTimestamp();
+        .setColor(0x2ecc71);
 
       await owner.send({ embeds: [embed] });
 
@@ -46,22 +44,3 @@ module.exports = {
     }
   },
 };
-
-function formatUptime(ms) {
-  const totalSeconds = Math.floor(ms / 1000);
-
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  const parts = [];
-
-  if (days) parts.push(`${days}d`);
-  if (hours) parts.push(`${hours}h`);
-  if (minutes) parts.push(`${minutes}m`);
-
-  parts.push(`${seconds}s`);
-
-  return parts.join(' ');
-}

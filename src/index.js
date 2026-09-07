@@ -3,7 +3,9 @@ const { token } = require('./config/env');
 const commands = require('./commands');
 const readyEvent = require('./events/ready');
 const interactionCreateEvent = require('./events/interactionCreate');
+const voiceStateUpdateEvent = require('./events/voiceStateUpdate');
 const PresenceManager = require('./services/presenceManager');
+const CallSenseManager = require('./services/callSenseManager');
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
@@ -13,10 +15,14 @@ client.commands = new Collection(
   commands.map((command) => [command.data.name, command]),
 );
 client.presenceManager = new PresenceManager(client);
+client.callSenseManager = new CallSenseManager(client);
 
 client.once(readyEvent.name, () => readyEvent.execute(client));
 client.on(interactionCreateEvent.name, (interaction) =>
   interactionCreateEvent.execute(interaction, client),
+);
+client.on(voiceStateUpdateEvent.name, (oldState, newState) =>
+  voiceStateUpdateEvent.execute(oldState, newState, client),
 );
 
 client.login(token);

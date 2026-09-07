@@ -13,6 +13,8 @@ class PresenceManager {
     this.client = client;
     this.activityIndex = 0;
     this.interval = null;
+    this.mode = 'standard';
+    this.manualActivity = null;
     this.spotifyAccessToken = null;
     this.spotifyAccessTokenExpiresAt = 0;
   }
@@ -25,6 +27,16 @@ class PresenceManager {
 
   async update() {
     try {
+      if (this.mode === 'manual' && this.manualActivity) {
+        this.setActivity(this.manualActivity);
+        return;
+      }
+
+      if (this.mode === 'spotify') {
+        await this.updateSpotifyActivity();
+        return;
+      }
+
       const voiceActivity = this.getVoiceActivity();
 
       if (voiceActivity) {
@@ -169,6 +181,50 @@ class PresenceManager {
       }],
       status: 'online',
     });
+  }
+
+  setManualActivity(activity) {
+    this.setManualMode(activity);
+  }
+
+  setManualMode(activity) {
+    this.mode = 'manual';
+    this.manualActivity = activity;
+    this.setActivity(activity);
+    console.log(`Rich presence manual definida: ${activity.name}`);
+  }
+
+  setSpotifyMode() {
+    this.mode = 'spotify';
+    this.manualActivity = null;
+    this.update();
+    console.log('Rich presence Spotify ativada.');
+  }
+
+  setStandardMode() {
+    this.mode = 'standard';
+    this.manualActivity = null;
+    this.update();
+    console.log('Rich presence padrão ativada.');
+  }
+
+  async updateSpotifyActivity() {
+    try {
+      const spotifyActivity = await this.getSpotifyActivity();
+
+      if (spotifyActivity) {
+        this.setActivity(spotifyActivity);
+      } else {
+        this.clearActivity();
+      }
+    } catch (error) {
+      console.error('Spotify indisponível:', error.message);
+      this.clearActivity();
+    }
+  }
+
+  clearActivity() {
+    this.client.user.setPresence({ activities: [], status: 'online' });
   }
 }
 

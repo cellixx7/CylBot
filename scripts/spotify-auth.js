@@ -132,11 +132,12 @@ server.on('error', (error) => {
   process.exitCode = 1;
 });
 
-server.listen(Number(callbackUrl.port) || 80, callbackUrl.hostname, () => {
+server.listen(8888, '0.0.0.0', () => {
   console.log('Script de configuração inicial do Spotify.');
-  console.log('Este script gera o refresh token e não é necessário para executar o bot depois.');
+  console.log(`Redirect URI usada: ${REDIRECT_URI}`);
+  console.log('Servidor local ouvindo em 0.0.0.0:8888');
   console.log('\nAbra esta URL para autorizar o acesso:');
   console.log(authorizationUrl.toString());
-  console.log('\nAguardando o callback em http://127.0.0.1:8888/callback ...');
+
   openAuthorizationPage(authorizationUrl.toString());
 });
