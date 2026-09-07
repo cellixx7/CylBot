@@ -1,0 +1,30 @@
+{
+  "name": "cylbot",
+  "version": "1.0.0",
+  "description": "Bot modular para Discord com discord.js",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "deploy": "node scripts/deploy-commands.js",
+    "spotify:auth": "node scripts/spotify-auth.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0",
+    "dotenv": "^16.6.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cellixx7/CylBot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/cellixx7/CylBot/issues"
+  },
+  "homepage": "https://github.com/cellixx7/CylBot#readme"
+}
