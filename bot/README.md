@@ -1,56 +1,5 @@
 # CylBot
 
-Monorepo simples para o ecossistema do CylBot.
-
-## Aplicações
-
-- [`bot/`](bot/): bot Discord em Node.js, com comandos slash, eventos, handlers, services e scripts operacionais.
-- [`web/`](web/): interface React em preparação para futuras funcionalidades web.
-
-As aplicações são independentes e possuem dependências e configurações próprias. Não existe uma camada compartilhada neste momento porque ainda não há código reutilizado entre elas.
-
-## Bot
-
-```bash
-cd bot
-npm install
-cp .env.example .env
-# preencha as variáveis do bot
-npm start
-A aplicação web usa o proxy do Vite para encaminhar `/api` para o backend do bot em `http://127.0.0.1:3001`. Em outro terminal, mantenha o bot em execução:
-
-```bash
-cd bot
-npm start
-```
-
-O MVP permite informar uma ideia, o tamanho aproximado, `Content` ou `Embed` e um `Channel ID`. A geração passa pelo `bot/src/services/openRouterService.js`; o envio passa pelo cliente Discord do bot. Os endpoints internos são:
-
-- `POST /api/ai/generate`: gera ou revisa a mensagem;
-- `POST /api/discord/send`: valida e publica no `Channel ID` informado;
-- `GET /api/health`: verifica se o backend está disponível.
-
-Segredos como `DISCORD_TOKEN` e `OPENROUTER_API_KEY` ficam somente em `bot/.env` e nunca são enviados ao navegador. O frontend não possui autenticação ou permissões nesta fase de desenvolvimento.
-
-Para registrar os comandos slash:
-
-```bash
-cd bot
-npm run deploy
-```
-
-As instruções detalhadas de Spotify, OpenRouter e comandos estão em [bot/README.md](bot/README.md).
-
-## Web
-
-```bash
-cd web
-npm install
-npm run dev
-```
-
-A aplicação web ainda é apenas uma base inicial. Segredos do bot não devem ser colocados nela.# CylBot
-
 Base modular para um bot do Discord usando Node.js e discord.js.
 
 ## Estrutura

@@ -6,6 +6,7 @@ const interactionCreateEvent = require('./events/interactionCreate');
 const voiceStateUpdateEvent = require('./events/voiceStateUpdate');
 const PresenceManager = require('./services/presenceManager');
 const CallSenseManager = require('./services/callSenseManager');
+const { startApiServer } = require('./api/server');
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
@@ -16,6 +17,7 @@ client.commands = new Collection(
 );
 client.presenceManager = new PresenceManager(client);
 client.callSenseManager = new CallSenseManager(client);
+startApiServer(client);
 
 client.once(readyEvent.name, () => readyEvent.execute(client));
 client.on(interactionCreateEvent.name, (interaction) =>
