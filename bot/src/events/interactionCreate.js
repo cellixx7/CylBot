@@ -1,10 +1,12 @@
+const { handleAnnouncementInteraction } = require('../handlers/announcementHandler');
 const { handleCommand } = require('../handlers/commandHandler');
-const { handleIaTextInteraction } = require('../handlers/iaTextHandler');
+const { handleTextaAIInteraction } = require('../handlers/textaAIHandler');
 
 module.exports = {
   name: 'interactionCreate',
   async execute(interaction, client) {
-    if (await handleIaTextInteraction(interaction)) {
+    if (await handleAnnouncementInteraction(interaction)) return;
+    if (await handleTextaAIInteraction(interaction)) {
       return;
     }
 

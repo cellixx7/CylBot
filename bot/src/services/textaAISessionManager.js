@@ -2,7 +2,7 @@ const crypto = require('node:crypto');
 
 const SESSION_TTL_MS = 10 * 60 * 1000;
 
-class IaTextSessionManager {
+class TextaAISessionManager {
   constructor() {
     this.sessions = new Map();
   }
@@ -108,4 +108,4 @@ class IaTextSessionManager {
   }
 }
 
-module.exports = IaTextSessionManager;
+module.exports = TextaAISessionManager;

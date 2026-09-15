@@ -1,4 +1,5 @@
 const http = require('node:http');
+const { announcements } = require('../services/announcementService');
 const { EmbedBuilder } = require('discord.js');
 const OpenRouterService = require('../services/openRouterService');
 
@@ -19,6 +20,11 @@ function startApiServer(client) {
     try {
       if (request.method === 'GET' && request.url === '/api/health') {
         sendJson(response, 200, { ok: true });
+        return;
+      }
+
+      if (request.method === 'POST' && request.url.startsWith('/api/announcements/')) {
+        await handleAnnouncements(request, response, client);
         return;
       }
 
@@ -50,6 +56,35 @@ function startApiServer(client) {
   });
 
   return server;
+}
+
+async function handleAnnouncements(request, response, client) {
+  const body = await readJson(request);
+  if (!/^\d{17,20}$/.test(body.guildId || '')) throw clientError(400, 'Informe um ID de servidor válido.');
+  const guild = client.guilds.cache.get(body.guildId);
+  if (!guild) throw clientError(400, 'O bot não está nesse servidor.');
+  // The web API is a local control panel, bound to loopback like the existing endpoints.
+  const owner = 'local-web';
+  switch (request.url) {
+    case '/api/announcements/categories':
+      return sendJson(response, 200, { categories: announcements.categories(guild.id), guildName: guild.name });
+    case '/api/announcements/save':
+      announcements.save(guild.id, body.category || {});
+      return sendJson(response, 200, { categories: announcements.categories(guild.id) });
+    case '/api/announcements/generate': {
+      const result = await announcements.generate({ guildId: guild.id, guildName: guild.name, owner,
+        categoryId: body.categoryId, description: body.description, draftId: body.draftId, context: body.context });
+      return sendJson(response, 200, result);
+    }
+    case '/api/announcements/send': {
+      if (!/^\d{17,20}$/.test(body.channelId || '')) throw clientError(400, 'Informe um ID de canal válido.');
+      const channel = await client.channels.fetch(body.channelId);
+      if (!channel) throw clientError(400, 'Canal não encontrado.');
+      await announcements.send(body.draftId, owner, guild.id, channel);
+      return sendJson(response, 200, { ok: true });
+    }
+    default: throw clientError(404, 'Rota não encontrada.');
+  }
 }
 
 async function handleGenerate(request, response) {

@@ -1,162 +1,63 @@
-import { useState } from 'react';
-
-const initialForm = {
-  outputType: 'content',
-  idea: '',
-  targetCharacters: 200,
-  channelId: '',
-};
+import { useEffect, useState } from 'react';
+import Anuncios from './anuncios/anuncios.jsx';
+import TextaAI from './texta_ai/texta_ai.jsx';
 
 export default function App() {
-  const [form, setForm] = useState(initialForm);
-  const [currentText, setCurrentText] = useState('');
-  const [generated, setGenerated] = useState(null);
-  const [additionalContext, setAdditionalContext] = useState('');
-  const [isAdding, setIsAdding] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState('');
+  const [route, setRoute] = useState(window.location.hash);
 
-  async function generate(context = '') {
-    setLoading(true);
-    setError('');
-    setSent(false);
-
-    try {
-      const response = await fetch('/api/ai/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          outputType: form.outputType,
-          idea: form.idea,
-          originalContext: form.idea,
-          currentText,
-          additionalContext: context,
-          targetCharacters: Number(form.targetCharacters),
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Não foi possível gerar a mensagem.');
-      setGenerated(data.generated);
-      setCurrentText(form.outputType === 'content' ? data.generated.content : data.generated.description);
-      setIsAdding(false);
-      setAdditionalContext('');
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    function navigate() {
+      setRoute(window.location.hash);
+      window.scrollTo(0, 0);
     }
-  }
+    window.addEventListener('hashchange', navigate);
+    return () => window.removeEventListener('hashchange', navigate);
+  }, []);
 
-  async function sendMessage() {
-    setLoading(true);
-    setError('');
+  const isAnnouncements = route === '#/anuncios';
+  const isTextaAI = route === '#/texta_ai';
 
-    try {
-      const response = await fetch('/api/discord/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channelId: form.channelId, outputType: form.outputType, generated }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Não foi possível enviar a mensagem.');
-      setSent(true);
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setLoading(false);
-    }
-  }
+  useEffect(() => {
+    document.title = isAnnouncements ? 'Anúncios | CylBot' : isTextaAI ? 'Texta_AI | CylBot' : 'CylBot | Seu bot para Discord';
+  }, [isTextaAI, isAnnouncements]);
 
-  function updateField(event) {
-    const { name, value } = event.target;
-    setForm((current) => ({ ...current, [name]: value }));
-  }
-
-  const canGenerate = form.idea.trim() && Number(form.targetCharacters) >= 20 && !loading;
+  if (isAnnouncements) return <Anuncios />;
+  if (isTextaAI) return <TextaAI />;
 
   return (
-    <main className="app-shell">
-      <section className="intro">
-        <p className="eyebrow">CYLBOT / LABORATÓRIO DE TEXTO</p>
-        <h1>Escreva uma ideia.<br /><em>Publique melhor.</em></h1>
-        <p className="description">Um espaço de teste para transformar rascunhos em mensagens prontas para Discord.</p>
-      </section>
+    <main className="app-shell landing-shell">
+      <header className="landing-header">
+        <span className="brand"><span className="brand-mark" aria-hidden="true">C.</span>CylBot</span>
+        <span className="landing-tag">FEITO PARA O DISCORD</span>
+      </header>
 
-      <section className="workspace" aria-label="Criador de mensagens">
-        <div className="form-panel">
-          <div className="section-heading">
-            <span className="step">01</span>
-            <div><p className="label">Rascunho</p><h2>Comece pela intenção</h2></div>
-          </div>
-
-          <label>Formato
-            <select name="outputType" value={form.outputType} onChange={updateField} disabled={loading}>
-              <option value="content">Content</option>
-              <option value="embed">Embed</option>
-            </select>
-          </label>
-          <label>Ideia inicial
-            <textarea name="idea" value={form.idea} onChange={updateField} maxLength="2000" placeholder="Ex.: avisar que haverá manutenção no bot" disabled={loading} />
-            <span className="counter">{form.idea.length}/2000</span>
-          </label>
-          <div className="split-fields">
-            <label>Caracteres aproximados
-              <input name="targetCharacters" type="number" min="20" max="2000" value={form.targetCharacters} onChange={updateField} disabled={loading} />
-            </label>
-            <label>Channel ID
-              <input name="channelId" value={form.channelId} onChange={updateField} placeholder="ID do canal Discord" maxLength="20" disabled={loading} />
-            </label>
-          </div>
-          <button className="primary-button" type="button" onClick={() => generate()} disabled={!canGenerate}>
-            {loading ? 'Gerando...' : 'Gerar com IA'} <span>↗</span>
-          </button>
-          {error && <p className="error-message" role="alert">{error}</p>}
+      <section className="landing-hero" aria-labelledby="welcome-title">
+        <div className="landing-copy">
+          <p className="eyebrow">SEU SERVIDOR. SUAS IDEIAS.</p>
+          <h1 id="welcome-title">Prazer,<br />eu sou o <em>CylBot.</em></h1>
+          <p className="description">Um bot para dar voz às suas ideias no Discord. Crie mensagens com ajuda de IA, ajuste cada detalhe e converse com sua comunidade do seu jeito.</p>
+          <a className="landing-cta" href="#/texta_ai">Conhecer o Texta_AI <span aria-hidden="true">↗</span></a>
+          <a className="back-link announcements-link" href="#/anuncios">Criar anúncios →</a>
+          <p className="landing-caption">Da primeira ideia à mensagem pronta para enviar.</p>
         </div>
 
-        <div className="preview-panel">
-          <div className="section-heading preview-heading">
-            <span className="step">02</span>
-            <div><p className="label">Prévia</p><h2>Revise antes de enviar</h2></div>
-            {generated && <span className="status-dot">● pronta</span>}
-          </div>
-          {!generated && !loading && <div className="empty-preview"><span>✦</span><p>Sua mensagem aparecerá aqui.</p><small>Ajuste a ideia e peça uma primeira versão.</small></div>}
-          {loading && <div className="empty-preview loading-preview"><span>◌</span><p>Lapidando sua mensagem...</p><small>A IA está preparando uma versão para revisão.</small></div>}
-          {generated && !loading && <Preview type={form.outputType} generated={generated} />}
-
-          {generated && !loading && !sent && !isAdding && (
-            <div className="preview-actions">
-              <button className="send-button" type="button" onClick={sendMessage} disabled={loading || !form.channelId}>Enviar <span>↗</span></button>
-              <button className="secondary-button" type="button" onClick={() => setIsAdding(true)} disabled={loading}>Adicionar mais</button>
-              {!form.channelId && <small className="hint">Informe o Channel ID para enviar.</small>}
-            </div>
-          )}
-          {isAdding && !sent && (
-            <div className="addition-box">
-              <label>Contexto adicional
-                <textarea value={additionalContext} onChange={(event) => setAdditionalContext(event.target.value)} maxLength="2000" placeholder="Ex.: inclua o horário e explique o motivo da manutenção." autoFocus />
-              </label>
-              <div className="preview-actions inline-actions">
-                <button className="send-button" type="button" onClick={() => generate(additionalContext)} disabled={!additionalContext.trim() || loading}>Gerar nova versão ↗</button>
-                <button className="secondary-button" type="button" onClick={() => setIsAdding(false)} disabled={loading}>Cancelar</button>
-              </div>
-            </div>
-          )}
-          {sent && <div className="success-message">✓ Mensagem enviada com sucesso.</div>}
+        <div className="bot-card" aria-label="Apresentação do CylBot">
+          <div className="bot-card-top"><span>CONHEÇA SEU BOT</span><span aria-hidden="true">✦</span></div>
+          <div className="bot-face" aria-hidden="true"><span /><span /></div>
+          <h2>Uma ideia já é um começo.</h2>
+          <p>Eu ajudo com as palavras.</p>
+          <div className="bot-message"><span className="bot-message-label">CYLBOT</span><p>Um aviso, uma novidade ou aquele recado para a comunidade. Vamos escrever?</p></div>
+          <span className="bot-card-signature">MENOS RASCUNHOS, MAIS CONVERSAS.</span>
         </div>
       </section>
+
+      <section className="landing-features" aria-label="O que você pode fazer com o Texta_AI">
+        <div><span className="step">01 / CRIE</span><h2>Comece com uma ideia</h2><p>Transforme um rascunho em texto com ajuda de inteligência artificial.</p></div>
+        <div><span className="step">02 / REVISE</span><h2>Deixe com a sua cara</h2><p>Veja a prévia e acrescente contexto até a mensagem ficar pronta.</p></div>
+        <div><span className="step">03 / ENVIE</span><h2>Leve para o Discord</h2><p>Escolha entre texto e embed e envie para o canal que você informar.</p></div>
+      </section>
+
+      <footer className="landing-footer"><span>CylBot</span><span>Boas conversas começam com boas ideias.</span></footer>
     </main>
   );
-}
-
-function Preview({ type, generated }) {
-  if (type === 'content') {
-    return <article className="discord-content"><span className="discord-avatar">C</span><div><strong>CylBot</strong><span className="bot-tag"> APP</span><p>{renderMarkdown(generated.content)}</p></div></article>;
-  }
-
-  return <article className="discord-embed">{generated.title && <h3>{generated.title}</h3>}<p>{renderMarkdown(generated.description)}</p>{generated.fields?.map((field) => <div className="embed-field" key={`${field.name}-${field.value}`}><strong>{field.name}</strong><span>{field.value}</span></div>)}</article>;
-}
-
-function renderMarkdown(text) {
-  return text.split('\n').map((line, index) => <span key={`${line}-${index}`}>{line}<br /></span>);
 }

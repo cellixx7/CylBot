@@ -8,8 +8,8 @@ const {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('iatext')
-    .setDescription('Gera uma mensagem bonita com o OpenRouter.')
+    .setName('texta_ai')
+    .setDescription('Texta_AI: transforme sua ideia em uma mensagem.')
     .addStringOption((option) =>
       option
         .setName('tipo')
@@ -24,12 +24,12 @@ module.exports = {
   async execute(interaction) {
     const outputType = interaction.options.getString('tipo', true);
     const modal = new ModalBuilder()
-      .setCustomId(`iatext:idea:${outputType}`)
-      .setTitle('Criar texto com IA')
+      .setCustomId(`texta_ai:idea:${outputType}`)
+      .setTitle('Texta_AI — Criar texto')
       .addComponents(
         new ActionRowBuilder().addComponents(
           new TextInputBuilder()
-            .setCustomId('iatext:idea')
+            .setCustomId('texta_ai:idea')
             .setLabel('Qual é a ideia da mensagem?')
             .setStyle(TextInputStyle.Paragraph)
             .setPlaceholder('Ex.: Avisando a todos que vai ter manutenção no bot')
@@ -38,7 +38,7 @@ module.exports = {
         ),
         new ActionRowBuilder().addComponents(
           new TextInputBuilder()
-            .setCustomId('iatext:characters')
+            .setCustomId('texta_ai:characters')
             .setLabel('Tamanho aproximado em caracteres')
             .setStyle(TextInputStyle.Short)
             .setPlaceholder('Ex.: 200')

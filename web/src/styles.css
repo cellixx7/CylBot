@@ -10,6 +10,42 @@
   box-sizing: border-box;
 }
 
+.landing-shell { max-width: none; padding-top: 28px; padding-bottom: 24px; }
+.landing-header, .landing-footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; max-width: 1280px; margin: 0 auto; }
+.brand { display: flex; align-items: center; gap: 12px; font-size: 1.2rem; font-weight: 700; }
+.brand-mark { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: #176b57; color: #fff; font: italic 1.7rem Georgia, serif; }
+.landing-tag, .bot-card-top, .bot-card-signature { font-size: 0.68rem; letter-spacing: 0.12em; }
+.landing-tag { color: #59635e; }
+.landing-hero { display: grid; grid-template-columns: 1.2fr 0.8fr; align-items: center; gap: clamp(32px, 6vw, 100px); max-width: 1280px; margin: 76px auto 72px; }
+.landing-copy h1 { margin-bottom: 26px; }
+.landing-cta { display: inline-flex; align-items: center; gap: 32px; margin-top: 30px; padding: 17px 22px; border-radius: 6px; background: #176b57; color: white; text-decoration: none; font-weight: 700; transition: background 160ms ease; }
+.landing-cta:hover { background: #105340; }
+a:focus-visible { outline: 3px solid #176b57; outline-offset: 5px; }
+.landing-caption { color: #59635e; font-size: 0.75rem; margin-top: 14px; }
+.bot-card { padding: clamp(24px, 3vw, 40px); background: #174d40; color: #f4f0e8; border-radius: 24px; box-shadow: 0 24px 60px #174d4020; }
+.bot-card-top { display: flex; justify-content: space-between; color: #c0dace; }
+.bot-face { display: flex; justify-content: center; align-items: center; gap: 28px; width: 150px; height: 116px; margin: 40px auto 32px; border: 2px solid #a9cfb7; border-radius: 38px; background: #245e4e; transform: rotate(-5deg); }
+.bot-face span { width: 14px; height: 27px; border-radius: 10px; background: #d8efb4; }
+.bot-card h2 { font-size: 1.8rem; text-align: center; }
+.bot-card > p { color: #c0dace; text-align: center; }
+.bot-message { margin-top: 28px; padding: 20px; border: 1px solid #ffffff25; border-radius: 12px; background: #ffffff08; }
+.bot-message-label { color: #d8efb4; font-size: 0.68rem; letter-spacing: 0.1em; }
+.bot-message p { margin: 10px 0 0; font-size: 0.9rem; line-height: 1.6; }
+.bot-card-signature { display: block; margin-top: 24px; text-align: center; color: #c0dace; font-size: 0.6rem; }
+.landing-features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 36px; max-width: 1280px; margin: 0 auto; padding: 34px 0; border-top: 1px solid #bccac0; }
+.landing-features h2 { margin-top: 14px; font-size: 1.4rem; }
+.landing-features p { max-width: 330px; color: #59635e; font-size: 0.9rem; line-height: 1.6; }
+.landing-footer { padding-top: 24px; border-top: 1px solid #bccac0; color: #59635e; font-size: 0.75rem; }
+.back-link { display: inline-block; margin-bottom: 30px; color: #176b57; text-underline-offset: 4px; }
+@media (max-width: 850px) {
+  .landing-hero { grid-template-columns: 1fr; margin: 48px auto; }
+  .bot-card { width: 100%; max-width: 480px; justify-self: center; }
+  .landing-features { grid-template-columns: 1fr; gap: 20px; }
+  .landing-features p { max-width: none; }
+  .landing-footer { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .landing-tag { font-size: 0.55rem; }
+}
+
 body {
   margin: 0;
   min-width: 320px;
@@ -77,3 +113,11 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .preview-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }.preview-actions .hint { grid-column: 1 / -1; text-align: center; }.addition-box { margin-top: 18px; padding-top: 18px; border-top: 1px solid #d3dbd4; }.inline-actions { margin-top: 0; }.success-message { margin-top: 18px; padding: 14px; color: #176b57; background: #dcebe2; border-radius: 5px; font-weight: 700; }.error-message { margin: 16px 0 0; color: #aa3f36; font-size: 0.82rem; line-height: 1.4; }
 @media (max-width: 850px) { .workspace { grid-template-columns: 1fr; } .app-shell { padding: 36px 18px; } h1 { font-size: clamp(2.8rem, 14vw, 5rem); } }
 @media (max-width: 480px) { .split-fields { grid-template-columns: 1fr; gap: 0; } .form-panel, .preview-panel { padding: 20px; } }
+
+.announcement-controls { border: 0; padding: 0; margin: 24px 0 0; min-width: 0; }
+.announcement-controls .description { margin: 20px 0; }
+.announcement-preview { margin: 24px 0; overflow-wrap: anywhere; }
+.announcement-preview p { white-space: pre-wrap; }
+.announcement-preview img { display: block; max-width: 100%; max-height: 320px; object-fit: contain; margin-bottom: 16px; }
+.announcement-preview small { display: block; color: #c4c7ca; }
+.announcements-link { margin: 20px 0 0 24px; }

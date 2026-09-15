@@ -9,28 +9,28 @@ const {
   TextInputStyle,
 } = require('discord.js');
 const OpenRouterService = require('../services/openRouterService');
-const IaTextSessionManager = require('../services/iaTextSessionManager');
+const TextaAISessionManager = require('../services/textaAISessionManager');
 
 const openRouterService = new OpenRouterService();
-const sessions = new IaTextSessionManager();
+const sessions = new TextaAISessionManager();
 
-async function handleIaTextInteraction(interaction) {
-  if (interaction.isModalSubmit() && interaction.customId.startsWith('iatext:idea:')) {
+async function handleTextaAIInteraction(interaction) {
+  if (interaction.isModalSubmit() && interaction.customId.startsWith('texta_ai:idea:')) {
     await handleIdea(interaction);
     return true;
   }
 
-  if (interaction.isButton() && interaction.customId.startsWith('iatext:send:')) {
+  if (interaction.isButton() && interaction.customId.startsWith('texta_ai:send:')) {
     await handleApprove(interaction);
     return true;
   }
 
-  if (interaction.isButton() && interaction.customId.startsWith('iatext:more:')) {
+  if (interaction.isButton() && interaction.customId.startsWith('texta_ai:more:')) {
     await handleCorrectionRequest(interaction);
     return true;
   }
 
-  if (interaction.isModalSubmit() && interaction.customId.startsWith('iatext:correction:')) {
+  if (interaction.isModalSubmit() && interaction.customId.startsWith('texta_ai:correction:')) {
     await handleCorrection(interaction);
     return true;
   }
@@ -40,9 +40,9 @@ async function handleIaTextInteraction(interaction) {
 
 async function handleIdea(interaction) {
   const outputType = interaction.customId.split(':')[2];
-  const idea = interaction.fields.getTextInputValue('iatext:idea');
+  const idea = interaction.fields.getTextInputValue('texta_ai:idea');
   const characters = Number.parseInt(
-    interaction.fields.getTextInputValue('iatext:characters'),
+    interaction.fields.getTextInputValue('texta_ai:characters'),
     10,
   );
 
@@ -78,12 +78,12 @@ async function handleCorrectionRequest(interaction) {
   await safelyDisablePreview(interaction.message);
 
   const modal = new ModalBuilder()
-    .setCustomId(`iatext:correction:${sessionId}`)
-    .setTitle('Corrigir texto da IA')
+    .setCustomId(`texta_ai:correction:${sessionId}`)
+    .setTitle('Texta_AI — Ajustar texto')
     .addComponents(
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
-          .setCustomId('iatext:additional-context')
+          .setCustomId('texta_ai:additional-context')
           .setLabel('O que deve ser alterado?')
           .setStyle(TextInputStyle.Paragraph)
           .setPlaceholder('Ex.: inclua horário, duração e motivo da manutenção.')
@@ -104,7 +104,7 @@ async function handleCorrection(interaction) {
     return;
   }
 
-  session.additionalContext = interaction.fields.getTextInputValue('iatext:additional-context');
+  session.additionalContext = interaction.fields.getTextInputValue('texta_ai:additional-context');
   await generateAndReply(interaction, sessionId, session);
 }
 
@@ -184,11 +184,11 @@ async function generateAndReply(interaction, sessionId, claimedSession = null) {
 function buildPreview(sessionId, session) {
   const buttons = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`iatext:send:${sessionId}`)
+      .setCustomId(`texta_ai:send:${sessionId}`)
       .setLabel('Enviar')
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
-      .setCustomId(`iatext:more:${sessionId}`)
+      .setCustomId(`texta_ai:more:${sessionId}`)
       .setLabel('Adicionar mais')
       .setStyle(ButtonStyle.Secondary),
   );
@@ -288,4 +288,4 @@ function toDiscordEmbed(generated) {
   return embed;
 }
 
-module.exports = { handleIaTextInteraction };
+module.exports = { handleTextaAIInteraction };

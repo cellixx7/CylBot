@@ -1,8 +1,9 @@
+const anuncios = require('./anuncios');
 const ping = require('./ping');
 const say = require('./say');
 const embed = require('./embed');
 const presence = require('./presence');
 const callsense = require('./callsense');
-const iaText = require('./iaText');
+const texta_ai = require('./texta_ai');
 
-module.exports = [ping, say, embed, presence, callsense, iaText];
+module.exports = [anuncios, ping, say, embed, presence, callsense, texta_ai];

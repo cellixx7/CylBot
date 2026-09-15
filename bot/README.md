@@ -93,11 +93,11 @@ O script abaixo serve apenas para a configuração inicial do Spotify. Ele abre 
 
 Deu certo quando o terminal exibir `Spotify autorizado com sucesso`, o `SPOTIFY_REFRESH_TOKEN` estiver no `.env` e o bot conseguir mostrar a música atual somente quando ela pertencer à playlist configurada. Se a URL não abrir automaticamente, copie-a do terminal e abra-a manualmente.
 
-Os comandos disponíveis são `/ping`, `/say mensagem:<texto>`, `/embed titulo:<texto> descricao:<texto>`, `/presence`, `/callsense` e `/iatext`.
+Os comandos disponíveis são `/ping`, `/say mensagem:<texto>`, `/embed titulo:<texto> descricao:<texto>`, `/presence`, `/callsense` e `/texta_ai`.
 
 ## IA para textos do Discord
 
-O comando é `/iatext` porque o Discord exige nomes de slash commands em minúsculas. Escolha `Embed` ou `Content`, informe uma ideia no modal e revise a prévia privada. Use `Correto, enviar` para publicar ou `Errado, corrigir` para fornecer contexto adicional e gerar outra versão. Somente o usuário que iniciou a sessão pode interagir com seus botões.
+Texta_AI combina “Texta” (de text) com “AI” (lido como “aí”). O comando é `/texta_ai` porque o Discord exige nomes de slash commands em minúsculas. Escolha `Embed` ou `Content`, informe uma ideia no modal e revise a prévia privada. Use `Enviar` para publicar ou `Adicionar mais` para fornecer contexto adicional e gerar outra versão. Somente o usuário que iniciou a sessão pode interagir com seus botões.
 
 Para habilitar a IA via OpenRouter, adicione no `.env`:
 
@@ -124,3 +124,20 @@ O comando `/callsense` também é exclusivo do proprietário. Ao ativá-lo, o bo
 A presença alterna entre Twitch, Instagram, GitHub e LinkedIn a cada 15 segundos. Quando houver mais de uma pessoa na call configurada, a presença mostra a quantidade de pessoas na call da clínica e tem prioridade sobre as demais.
 
 Para habilitar a música atual do Spotify, preencha as quatro variáveis `SPOTIFY_*` no `.env`, incluindo `SPOTIFY_PLAYLIST_ID` com o ID ou URI da playlist permitida. A presença do Spotify só será exibida quando `context.type` for `playlist` e o ID/URI de `context` corresponder ao valor configurado. É necessário criar uma aplicação no Spotify for Developers e obter um refresh token com o escopo `user-read-currently-playing`. Sem essas variáveis, ou ao ouvir uma música fora da playlist, a presença fixa continua funcionando normalmente.
+
+
+### Anúncios por servidor
+
+Use `/anuncios` em um servidor para escolher Aviso, Manutenção, Evento ou Notificação.
+- **Adicionar** cria uma categoria personalizada (até 25 categorias por servidor).
+- **Editar padrão** salva nome, título, descrição e imagem HTTPS para reutilização por todos no servidor. A imagem é opcional; deixe o campo vazio para removê-la.
+- **Criar anúncio** abre a descrição preenchida com o padrão salvo. Alterar essa descrição para uma publicação não modifica o padrão.
+- A IA melhora a descrição e o Markdown. A prévia sempre usa um embed, com título do padrão, imagem opcional e footer com servidor e data em UTC.
+- **Adicionar Contexto** gera uma nova prévia e invalida a anterior. **Confirmar envio** publica no canal original.
+
+O site oferece o mesmo fluxo em `/#/anuncios`: carregue o ID do servidor e informe um canal desse servidor para confirmar o envio. A prévia web mostra o texto Markdown; a renderização final é feita pelo Discord.
+Categorias e padrões ficam em `bot/data/announcements.json` e sobrevivem a reinícios. Preserve esse arquivo no deploy e nos backups. Prévias ficam em memória, expiram após 15 minutos e são perdidas no reinício. O armazenamento local pressupõe uma única instância do bot.
+
+A personalização está liberada sem planos. O painel web segue a API local existente, sem autenticação de usuários; deve continuar restrito ao ambiente local. Para disponibilizá-lo publicamente será necessário autenticar e autorizar o acesso aos servidores.
+
+Após atualizar o código, execute `npm run deploy` na pasta `bot` para registrar `/anuncios` e reinicie o bot. Validação local: `node --test test/announcements.test.js` nessa pasta.
