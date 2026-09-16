@@ -3,6 +3,7 @@ const { cookie, readCookie } = require('../http/cookies');
 const { clientError } = require('../http/errors');
 const { STATE_TTL_SECONDS } = require('../../services/authService');
 const { logger } = require('../../lib/logger');
+const { requireTrustedOrigin } = require('../http/auth');
 
 const SESSION_COOKIE = 'cylbot_session';
 const STATE_COOKIE = 'cylbot_oauth_state';
@@ -49,7 +50,7 @@ async function handle(request, response, { services, requestId }) {
     return true;
   }
   if (url.pathname === '/api/auth/logout' && request.method === 'POST') {
-    if (request.headers?.origin !== webOrigin) throw clientError(403, 'Origem não permitida.');
+    requireTrustedOrigin(request, webOrigin);
     auth.sessions.remove(sessionId);
     logger.info('auth.logout', { module: 'auth', requestId });
     response.setHeader('Set-Cookie', cookie(SESSION_COOKIE, '', 0, secure));

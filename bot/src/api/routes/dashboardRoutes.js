@@ -2,6 +2,7 @@ const { sendJson } = require('../http/json');
 const { cookie, readCookie } = require('../http/cookies');
 const { SESSION_COOKIE } = require('./authRoutes');
 const { logger } = require('../../lib/logger');
+const { requireSession } = require('../http/auth');
 
 async function handle(request, response, { services, requestId }) {
   const url = new URL(request.url, 'http://localhost');
@@ -9,14 +10,15 @@ async function handle(request, response, { services, requestId }) {
   response.setHeader('Cache-Control', 'no-store');
   const { auth, dashboard } = services;
   const sessionId = readCookie(request, SESSION_COOKIE);
-  const session = auth.sessions.get(sessionId);
+  let session;
   function relogin() {
     auth.sessions.remove(sessionId);
     response.setHeader('Set-Cookie', cookie(SESSION_COOKIE, '', 0, auth.config.secure));
     logger.info('dashboard.relogin_required', { module: 'dashboard', requestId, userId: session?.user.id });
     sendJson(response, 401, { error: 'AUTH_RELOGIN_REQUIRED' });
   }
-  if (!session) { relogin(); return true; }
+  try { session = requireSession(request, services, 'AUTH_RELOGIN_REQUIRED'); }
+  catch { relogin(); return true; }
   try {
     // Query/body não fornecem identidade, token ou permissões ao service.
     const guilds = await dashboard.guilds(session);

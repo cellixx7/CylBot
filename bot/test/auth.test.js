@@ -182,8 +182,8 @@ test('HTTPS ativa Secure e CORS mantém origem explícita com credentials', asyn
   const response = await login(auth);
   assert.match(response.headers['Set-Cookie'][2], /; Secure$/);
   const me = await request(auth, 'GET', '/api/auth/me', sessionCookie(response), 'https://attacker.example');
-  assert.equal(me.headers['Access-Control-Allow-Origin'], config.webOrigin);
-  assert.equal(me.headers['Access-Control-Allow-Credentials'], 'true');
+  assert.equal(me.headers['Access-Control-Allow-Origin'], undefined);
+  assert.equal(me.headers['Access-Control-Allow-Credentials'], undefined);
 });
 
 test('falhas externas não vazam tokens, secret, code ou mensagens em logs/redirect', async t => {

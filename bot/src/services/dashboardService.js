@@ -34,6 +34,12 @@ class DashboardService {
     const names = new Intl.Collator('pt-BR', { sensitivity: 'base' });
     return result.sort((a, b) => group(a) - group(b) || names.compare(a.name, b.name) || a.id.localeCompare(b.id));
   }
+
+  async requireManageableGuild(session, guildId) {
+    const guild = (await this.guilds(session)).find(guild => guild.id === guildId);
+    if (!guild?.botInstalled || !guild.canManage) throw clientError(403, 'FORBIDDEN');
+    return guild;
+  }
 }
 
 module.exports = { DashboardService, canManageGuild };

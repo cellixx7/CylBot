@@ -146,7 +146,7 @@ Use `/anuncios` em um servidor para escolher Aviso, Manutenção, Evento ou Noti
 O site oferece o mesmo fluxo em `/#/anuncios`: carregue o ID do servidor e informe um canal desse servidor para confirmar o envio. A prévia web mostra o texto Markdown; a renderização final é feita pelo Discord.
 Categorias e padrões ficam em `bot/data/announcements.json` e sobrevivem a reinícios. Preserve esse arquivo no deploy e nos backups. Prévias ficam em memória, expiram após 15 minutos e são perdidas no reinício. O armazenamento local pressupõe uma única instância do bot.
 
-A personalização está liberada sem planos. A entrada do painel web exige login Discord. A API de anúncios mantém a confiança local existente, sem exigir a sessão nem autorizar por usuário/servidor; deve continuar restrita ao ambiente local. A integração dessas permissões é uma etapa futura.
+A personalização está liberada sem planos. Todas as operações Web de anúncios exigem sessão e permissão de gerenciamento da guild, verificadas no backend com Discord OAuth. Prévias pertencem ao usuário autenticado.
 
 Após atualizar o código, execute `npm run commands:register` na pasta `bot` para registrar `/anuncios` e reinicie o bot. Validação local: `npm test` nessa pasta.
 
@@ -158,9 +158,9 @@ Adicionar categorias e editar/salvar padrões exige **Gerenciar Servidor (`Manag
 
 No envio pelo Discord, o handler verifica as permissões efetivas do membro no canal: `ViewChannel` e `SendMessages` (ou `SendMessagesInThreads` em threads). O service mantém as verificações de dono, validade da prévia, servidor, canal original, canal de texto enviável e bloqueio de envio duplicado. O bot também precisa ter suas próprias permissões de publicação no Discord.
 
-**Web/API local:** as operações administrativas continuam disponíveis por confiança no ambiente local, sem verificar uma identidade Discord. A API passa ao service um contexto explícito criado no servidor; `guildId`, `owner = "local-web"` e campos de permissão enviados no body não concedem autorização. `local-web` apenas agrupa as prévias do painel: não distingue usuários web. Uma futura integração da sessão às ferramentas deverá fornecer permissões verificadas para o servidor em questão à função `canManageAnnouncements` e remover a exceção local.
+**Web/API autenticada:** toda operação de anúncios exige participação na guild, bot instalado e owner/Administrator/ManageGuild. A identidade vem do cookie de sessão; campos `owner`, `trustedLocal`, `canManage` ou permissões enviados no body não autorizam nada. Prévias usam `web:<userId>` e não podem ser revisadas/enviadas por outro usuário. O bypass local foi removido inclusive do helper de permissões.
 
-A API permanece vinculada a `127.0.0.1`. Isso não protege um proxy ou túnel que a exponha: o Vite está configurado para escutar em `0.0.0.0` e encaminha `/api`. Não exponha o frontend, portas encaminhadas ou a API a usuários não confiáveis. CORS não substitui autenticação. O OAuth identifica o usuário na entrada do site; ainda não existe isolamento entre operadores nas APIs das ferramentas.
+A API permanece vinculada a `127.0.0.1`. Isso não protege um proxy ou túnel que a exponha: o Vite está configurado para escutar em `0.0.0.0` e encaminha `/api`. Não exponha o frontend, portas encaminhadas ou a API a usuários não confiáveis. CORS não substitui autenticação. As APIs de ferramentas agora verificam sessão, Origin e autorização conforme a operação; CORS sozinho continua não sendo um mecanismo de autorização.
 
 
 ## Configuração de ambiente
@@ -241,7 +241,7 @@ A sessão usa ID opaco de 32 bytes aleatórios em `cylbot_session`, com `HttpOnl
 - Sessões e states não são persistidos nem compartilhados entre processos; reiniciar exige novo login. Expirados são removidos no acesso/criação. Há limites de 10.000 sessões e 1.000 tentativas pendentes para conter uso de memória; não é rate limiting por IP.
 - Tokens Discord não são renovados nesta etapa. Logout encerra a sessão local; não revoga a autorização no Discord. O dashboard exige token OAuth válido: se expirar ou perder autorização, remove a sessão local e solicita novo login.
 - O frontend verifica `/me` ao carregar; outra aba pode continuar mostrando o perfil antigo até recarregar. Não há sincronização entre abas.
-- Conforme o escopo escolhido, as APIs de Anúncios/Texta_AI/envio permanecem locais e sem exigência de sessão. O gate visual não protege acesso direto a elas. Não exponha o conjunto publicamente antes de integrar autenticação e autorização por servidor/canal.
+- As APIs de IA/envio/anúncios agora exigem sessão; anúncios e envio verificam gerenciamento da guild. A proteção é aplicada no backend, não apenas no gate visual.
 - Há dashboard de servidores; ainda não há canais, configuração de guild, RBAC, banco ou Redis. A configuração real no Portal e o consentimento real devem ser conferidos manualmente; os testes usam fakes.
 
 Logs usam `auth.discord_started`, `auth.session_created`, `auth.discord_callback_failed` e `auth.logout`, com requestId e IDs públicos quando disponíveis. Não registram cookies, state, code, tokens ou Client Secret; falhas do provider são traduzidas para mensagens controladas. Respostas de autenticação usam `Cache-Control: no-store`; o callback também usa `Referrer-Policy: no-referrer`.
@@ -320,4 +320,43 @@ Falhas de rede, resposta inválida, Discord 429 ou 5xx retornam erro controlado 
 
 Sem guilds, a tela mostra estado vazio; indisponibilidade mostra erro e botão de nova tentativa. Loading e erros não deixam cards antigos visíveis. Testes automatizados exercitam expiração e token rejeitado sem alterar credenciais reais.
 
-O dashboard é informativo nesta etapa. `canManage` não autoriza Anúncios/Texta_AI ou futuras operações: cada nova rota administrativa deverá validar sessão e permissões no backend novamente. Não foram alterados os fluxos atuais de IDs, autorização ou endpoints dessas ferramentas; a restrição ao ambiente local continua necessária. A lista pode ficar desatualizada até recarregar o dashboard. Sessões continuam em memória e o convite/configuração de guild/canais ficam fora desta etapa.
+O dashboard permanece informativo. Seu DTO no navegador não autoriza operações: as rotas de anúncios/envio consultam novamente as permissões pelo backend. Os fluxos de IDs e endpoints continuam iguais; somente sessão, autorização e limites foram adicionados. A lista pode ficar desatualizada até recarregar o dashboard. Sessões continuam em memória e o convite/configuração de guild/canais ficam fora desta etapa.
+
+## Segurança das APIs Web
+
+### Controles aplicados
+
+- `POST /api/ai/generate`, `POST /api/discord/send`, todos os `POST /api/announcements/*` e `GET /api/dashboard/guilds` exigem sessão. Ausência/expiração retorna 401 antes de chamar providers ou persistência.
+- IA geral não exige guild, mas exige sessão e limite de uso. Anúncios (inclusive consulta de categorias) e envio exigem guild gerenciável: participação via `/users/@me/guilds`, bot no cache pronto e owner/Administrator/ManageGuild. O cálculo BigInt é reaproveitado do dashboard; não vem do navegador.
+- No envio direto, a guild é derivada do canal retornado pelo Discord, ignorando guildId do body. Anúncios também compara guild autorizada com a guild do canal. DMs são proibidas. O bot precisa de ViewChannel e SendMessages; em threads, SendMessagesInThreads substitui SendMessages, conforme as regras do Discord. `allowedMentions: { parse: [] }` permanece em ambos os envios.
+- Drafts Web usam `web:<session.user.id>`. Prévias anteriores com owner compartilhado deixam de ser utilizáveis e devem ser geradas novamente.
+- POST/PUT/PATCH/DELETE exigem `Origin === WEB_ORIGIN`. Logout reutiliza o helper e permanece idempotente; não há token CSRF adicional. As chamadas frontend enviam `credentials: 'include'`.
+- CORS só concede a origem configurada, nunca wildcard ou reflexão arbitrária. Origem recebida diferente não recebe headers de concessão; OPTIONS permanece 204, sem operação de negócio.
+- O body JSON aceita objeto e no máximo 20.000 bytes. Ao exceder, retorna 413 e descarta a acumulação dos próximos chunks; UTF-8 fracionado entre chunks é preservado.
+
+### Rate limits por janela fixa de 60 segundos
+
+| Operação | Limite/chave |
+| --- | --- |
+| OAuth start | 10 por IP do socket |
+| IA geral | 10 por userId |
+| Geração/revisão de anúncios | 10 por userId |
+| Publicações diretas e anúncios, combinadas | 10 por userId |
+| Total dos POST das ferramentas | 30 por userId |
+| Logout | 30 por userId; sem sessão, por IP do socket |
+
+Excesso retorna 429 e `Retry-After` em segundos. Reabrir sessão com o mesmo usuário não reinicia seu limite. O Map é limitado a 10.000 entradas, com limpeza de expiradas; saturação rejeita novas chaves temporariamente, sem expulsar limites ativos. Tentativas inválidas autenticadas também podem consumir quota. States/sessões mantêm seus próprios limites anteriores.
+
+Não se confia em X-Forwarded-For. Atrás do Vite/Codespaces, o IP visto pela API pode ser compartilhado: o limite OAuth é conservador e pode atingir vários usuários juntos. Os limites em memória são por processo e reiniciam junto com ele. Não há proteção distribuída, limite global de gastos nem garantia de custo máximo contra várias contas autorizadas.
+
+### Headers, erros e operação
+
+API e respostas do Vite (dev/preview) recebem `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY` e `Permissions-Policy: camera=(), microphone=(), geolocation=()`. Outro servidor de arquivos estáticos em produção deve aplicar os mesmos headers. Não há CSP ou HSTS automático nesta etapa.
+
+Somente erros controlados criados pela aplicação podem expor sua mensagem HTTP. Um erro arbitrário de SDK não se torna público só por possuir `statusCode`: retorna mensagem genérica e o log central omite seus detalhes. Isso reduz o diagnóstico de erros inesperados, mas evita propagação de tokens/payloads. Nenhum body, cookie, token OAuth ou configuração inteira deve entrar nos logs.
+
+Health permanece público e mínimo; OAuth mantém state, binding, TTL, uso único e rotação de sessão. Login/callback são exceções GET necessárias ao protocolo OAuth; nenhum GET publica mensagens ou altera padrões de anúncios. Não foram alterados os comandos Discord, o timeout OpenRouter ou limites de entrada da IA.
+
+Após atualizar, reinicie o backend; o processo antigo não recarrega essas proteções sozinho. O reinício invalida sessões/drafts em memória. Para validar sem custo ou mensagens reais, execute a suíte `npm test`: providers e canais são fakes. Uma requisição anônima direta às ferramentas deve retornar 401 mesmo conhecendo a URL pública.
+
+Permissões são verificadas por operação, mas podem mudar entre a consulta e o envio; erros de rede/Discord ainda podem deixar o resultado de uma publicação incerto. Não há refresh OAuth automático, persistência de sessão ou coordenação entre instâncias. Nenhuma integração de canais/dashboard da Etapa C foi implementada.

@@ -1,3 +1,4 @@
+const { clientError } = require('../api/http/errors');
 const { logger } = require('../lib/logger');
 const { getConfig } = require('../config/env');
 const { JsonAnnouncementRepository } = require('../repositories/jsonAnnouncementRepository');
@@ -7,7 +8,7 @@ const OpenRouterService = require('./openRouterService');
 const { AnnouncementDraftManager } = require('./announcementDraftManager');
 const { assertCanManageAnnouncements } = require('./announcementPermissions');
 
-const fail = (message) => Object.assign(new Error(message), { statusCode: 400 });
+const fail = message => clientError(400, message);
 function text(value, max, required = false) {
   if (typeof value !== 'string' || value.trim().length > max || (required && !value.trim())) throw fail('Preencha os campos respeitando os limites indicados.');
   return value.trim();

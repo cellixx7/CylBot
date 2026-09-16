@@ -18,7 +18,7 @@ export default function Anuncios() {
   const category = categories.find(c => c.id === categoryId);
 
   async function request(action, body = {}) {
-    const response = await fetch(`/api/announcements/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ guildId: guild?.id || guildId, ...body }) });
+    const response = await fetch(`/api/announcements/${action}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ guildId: guild?.id || guildId, ...body }) });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Não foi possível concluir a operação.');
     return data;

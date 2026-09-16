@@ -1,8 +1,10 @@
 const { EmbedBuilder } = require('discord.js');
 const { readJson, sendJson } = require('../http/json');
 const { clientError } = require('../http/errors');
+const { requireSendableChannel } = require('../http/channelPermissions');
+const { requireSession } = require('../http/auth');
 
-async function handle(request, response, { client, services }) {
+async function handle(request, response, { client, services, session }) {
   if (request.method !== 'POST' || request.url !== '/api/discord/send') return false;
   const body = await readJson(request);
   const input = validateSendInput(body, services.openRouter);
@@ -11,6 +13,10 @@ async function handle(request, response, { client, services }) {
   if (!channel?.isTextBased() || !channel.send) {
     throw clientError(400, 'O Channel ID não pertence a um canal de texto enviável.');
   }
+  if (!channel.guildId) throw clientError(403, 'FORBIDDEN');
+  await services.dashboard.requireManageableGuild(session, channel.guildId);
+  requireSession(request, services);
+  requireSendableChannel(client, channel, channel.guildId);
 
   const payload = input.outputType === 'embed'
     ? {
@@ -42,7 +48,7 @@ function validateSendInput(body, openRouterService) {
   try {
     generated = openRouterService.validateOutput(body.generated, body.outputType);
   } catch (error) {
-    throw clientError(400, `Mensagem gerada inválida: ${error.message}`);
+    throw clientError(400, 'Mensagem gerada inválida: confira os campos e limites.');
   }
 
   return { channelId: body.channelId, outputType: body.outputType, generated };

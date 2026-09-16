@@ -12,11 +12,19 @@ const OpenRouterService = require('../src/services/openRouterService');
 const { loadEnv } = require('../src/config/env');
 const { TextaAIService } = require('../src/services/textaAIService');
 const { logger } = require('../src/lib/logger');
+const { AuthSessionManager } = require('../src/services/authSessionManager');
+const { DashboardService } = require('../src/services/dashboardService');
 
 // Exercita o mesmo callback usado por node:http, sem abrir portas nem acessar serviços externos.
 async function request(context, method, url, body, raw) {
   const incoming = Readable.from([raw ?? JSON.stringify(body ?? {})]);
-  Object.assign(incoming, { method, url });
+  // Fixtures autenticadas preservam os testes de contrato; abuso anônimo fica em security.test.js.
+  const auth = { config: loadEnv({}, { requireDiscord: false }).auth, sessions: new AuthSessionManager() };
+  const session = auth.sessions.create({ id: 'api-user' }, { access_token: 'fake', scope: 'identify guilds', expires_in: 3600 });
+  const client = { isReady: () => true, user: { id: 'bot' }, guilds: { cache: new Map([[guildId, { id: guildId, name: 'Servidor' }]]) }, ...context.client };
+  const dashboard = new DashboardService({ client, provider: { getCurrentUserGuilds: async () => [{ id: guildId, name: 'Servidor', owner: true, icon: null }] } });
+  context = { ...context, client, services: { auth, dashboard, ...context.services } };
+  Object.assign(incoming, { method, url, headers: { origin: auth.config.webOrigin, cookie: `cylbot_session=${session.id}` } });
   const response = {
     headers: {}, ended: false,
     setHeader(name, value) { this.headers[name] = value; },
@@ -123,7 +131,7 @@ test('Discord mantém envios content/embed e allowedMentions', async () => {
   const payloads = [];
   const client = { channels: { fetch: async id => {
     assert.equal(id, channelId);
-    return { isTextBased: () => true, send: async payload => { payloads.push(payload); } };
+    return { guildId, permissionsFor: () => ({ has: () => true }), isTextBased: () => true, send: async payload => { payloads.push(payload); } };
   } } };
   const services = { openRouter: new OpenRouterService(loadEnv({}, { requireDiscord: false }).openRouter) };
   for (const [outputType, generated] of [
@@ -167,13 +175,13 @@ test('Discord rejeita ID, conteúdo e canal inválidos antes de publicar', async
   }
 });
 
-test('anúncios mantêm categorias, confiança local, persistência, revisão e envio', async t => {
+test('anúncios mantêm categorias, sessão autenticada, persistência, revisão e envio', async t => {
   silenceExpectedErrors(t);
   const dir = tempDirectory(t, 'api-announcements-');
   const calls = [];
   const announcements = new AnnouncementService(new JsonAnnouncementRepository(path.join(dir, 'data.json')), { generate: async data => { calls.push(data); return { content: 'Anúncio' }; } });
   const sent = [];
-  const channel = { id: channelId, guildId, isTextBased: () => true, send: async payload => { sent.push(payload); } };
+  const channel = { id: channelId, guildId, permissionsFor: () => ({ has: () => true }), isTextBased: () => true, send: async payload => { sent.push(payload); } };
   const guild = { id: guildId, name: 'Servidor' };
   const context = { services: { announcements }, client: { guilds: { cache: new Map([[guildId, guild]]) }, channels: { fetch: async () => channel } } };
   const call = (action, body = {}) => request(context, 'POST', `/api/announcements/${action}`, { guildId, ...body });
@@ -188,7 +196,7 @@ test('anúncios mantêm categorias, confiança local, persistência, revisão e 
   const generated = await call('generate', { categoryId: 'default-0', description: 'Ideia', owner: 'forjado' });
   assert.equal(generated.status, 200);
   assert.deepEqual(Object.keys(generated.body).sort(), ['draftId', 'embed']);
-  assert.equal(announcements.get(generated.body.draftId, 'local-web', guildId).owner, 'local-web');
+  assert.equal(announcements.get(generated.body.draftId, 'web:api-user', guildId).owner, 'web:api-user');
   const revised = await call('generate', { draftId: generated.body.draftId, context: 'Mais contexto' });
   assert.equal(revised.status, 200);
   assert.equal(calls[1].additionalContext, 'Mais contexto');
@@ -197,7 +205,7 @@ test('anúncios mantêm categorias, confiança local, persistência, revisão e 
   assert.equal(stale.status, 400);
   channel.guildId = 'outro';
   const wrongGuild = await call('send', { draftId: revised.body.draftId, channelId });
-  assert.equal(wrongGuild.status, 400);
+  assert.equal(wrongGuild.status, 403);
   assert.equal(sent.length, 0);
   channel.guildId = guildId;
   const delivered = await call('send', { draftId: revised.body.draftId, channelId });
@@ -215,7 +223,7 @@ test('anúncios mantêm validação de guild, canal e subrota desconhecida', asy
   const context = { client: { guilds: { cache: new Map([[guildId, guild]]) }, channels: { fetch: async () => null } }, services: {} };
   for (const [action, body, status, message] of [
     ['categories', { guildId: 'inválido' }, 400, 'Informe um ID de servidor válido.'],
-    ['categories', { guildId: '99999999999999999' }, 400, 'O bot não está nesse servidor.'],
+    ['categories', { guildId: '99999999999999999' }, 403, 'FORBIDDEN'],
     ['send', { guildId, channelId: 'inválido' }, 400, 'Informe um ID de canal válido.'],
     ['send', { guildId, channelId }, 400, 'Canal não encontrado.'],
     ['unknown', { guildId }, 404, 'Rota não encontrada.'],

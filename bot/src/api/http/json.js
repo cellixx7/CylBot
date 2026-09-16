@@ -2,14 +2,27 @@ const { clientError } = require('./errors');
 
 function readJson(request) {
   return new Promise((resolve, reject) => {
-    let data = '';
+    let size = 0;
+    let chunks = [];
+    let rejected = false;
     request.on('data', (chunk) => {
-      data += chunk;
-      if (data.length > 20_000) reject(clientError(413, 'Requisição muito grande.'));
+      if (rejected) return;
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += bytes.length;
+      if (size > 20_000) {
+        rejected = true;
+        chunks = [];
+        reject(clientError(413, 'Requisição muito grande.'));
+        return;
+      }
+      chunks.push(bytes);
     });
     request.on('end', () => {
+      if (rejected) return;
       try {
-        resolve(JSON.parse(data || '{}'));
+        const value = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+        if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error();
+        resolve(value);
       } catch {
         reject(clientError(400, 'JSON inválido.'));
       }

@@ -102,7 +102,7 @@ Alguns endpoints internos:
 - `GET /api/health`: verificar disponibilidade da API;
 - `GET /api/dashboard/guilds`: listar servidores e acesso, exigindo sessão e token OAuth válidos.
 
-Segredos ficam somente em `bot/.env`. A entrada do site exige login Discord; as APIs de ferramentas existentes continuam confiando no ambiente local, sem autorização por usuário/servidor. O login não torna essas APIs prontas para exposição pública.
+Segredos ficam somente em `bot/.env`. Dashboard, IA, envio e anúncios exigem sessão. Anúncios e publicações exigem também participação e gerenciamento da guild, além das permissões do bot. Operações POST validam Origin e possuem limites por usuário. Consulte [segurança das APIs](bot/README.md#segurança-das-apis-web) para limites e cuidados ao expor o Vite/Codespaces.
 
 Consulte [bot/README.md](bot/README.md) para comandos, Spotify, OpenRouter e persistência dos anúncios.
 

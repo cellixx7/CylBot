@@ -1,7 +1,8 @@
+const { clientError } = require('../api/http/errors');
 const crypto = require('node:crypto');
 
 const DRAFT_TTL_MS = 15 * 60_000;
-const fail = message => Object.assign(new Error(message), { statusCode: 400 });
+const fail = message => clientError(400, message);
 
 class AnnouncementDraftManager {
   constructor() {

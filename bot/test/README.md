@@ -8,6 +8,7 @@ Os arquivos continuam organizados por domínio. Alguns combinam regras de negóc
 | `announcements.test.js` | Unitário + integração local + contrato Discord | Permissões, isolamento por guild, revisão, concorrência, persistência, erro de envio e duplicação |
 | `jsonAnnouncementRepository.test.js` | Integração local de filesystem | Preservação dos dados em erro de escrita/rename, JSON inválido e isolamento entre guilds |
 | `api.test.js` | Contrato + integração local | Métodos/paths, formatos, JSON inválido, limite de body, 404, status, erros sem detalhes internos, requestId por chamada e delegação aos services |
+| `security.test.js` | Segurança HTTP + integração local | Bloqueio anônimo, guild/canal, permissões do bot, isolamento por owner, Origin/CORS, quotas, memória limitada, body e erros sem secrets |
 | `dashboard.test.js` | Unitário + contrato HTTP/provider | Sessão obrigatória, scopes antigos, expiração/relogin, permissões BigInt, instalação/cache pronto, DTO sem tokens, ordenação, ícones e falhas externas |
 | `auth.test.js` | Unitário + contrato HTTP | State vinculado ao browser, expiração/replay, OAuth fake, sessão, cookies, logout/Origin, perfil sem tokens e avatar fallback |
 | `env.test.js` | Unitário + integração local de startup | Credenciais obrigatórias, defaults, valores inválidos, secrets, configuração opcional e LOG_LEVEL |
@@ -64,8 +65,10 @@ Em um checkout limpo, instale dependências com `npm --prefix bot ci` e `npm --p
 
 Permissões/revisões aparecem em mais de uma camada para proteger contratos distintos: regras do service, tradução do handler e status/resposta HTTP. Esses testes foram preservados; somente a criação repetida de temporários foi consolidada.
 
-Continuam fora da cobertura: disponibilidade e respostas reais dos providers, permissões efetivas calculadas pelo Discord, OAuth Spotify, experiência visual React e transporte HTTP por socket. O limite de body mantém a implementação atual; esta etapa não altera sua política. Testes de limites individuais de embed não demonstram todas as combinações possíveis de tamanho total aceitas pelo Discord.
+Continuam fora da cobertura: disponibilidade e respostas reais dos providers, permissões efetivas calculadas pelo Discord, OAuth Spotify, experiência visual React e transporte HTTP por socket. O limite de body é validado em bytes, inclusive UTF-8 fracionado e excesso; chunks após rejeição não são acumulados. Testes de limites individuais de embed não demonstram todas as combinações possíveis de tamanho total aceitas pelo Discord.
 
 Os testes OAuth usam provider/fetch fakes e relógio injetado, sem conta Discord ou portas. Validam os endpoints pelo callback HTTP em memória; o consentimento real no Discord, o comportamento de cookies no navegador e a configuração do proxy devem ser conferidos pelo roteiro manual do README. Os testes de env incluem OAuth opcional, origem/callback HTTPS e TTL; o logger cobre as novas credenciais.
 
 O dashboard usa provider/fetch fake e client com Map de guilds. Os testes não acessam Discord. A suíte de auth valida agora os scopes `identify guilds` e seu armazenamento na sessão. O frontend do dashboard é validado pelo build; não foi adicionado framework React de testes.
+
+Os testes de contrato API usam sessões fictícias e Origin explícita. Os testes de segurança exercitam o dispatcher com um único limiter por instância, relógio injetado e permissões reais de bitfield sobre canais fakes. Não há chamadas reais a Discord/OpenRouter.

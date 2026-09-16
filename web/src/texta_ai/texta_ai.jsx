@@ -24,7 +24,7 @@ export default function TextaAI() {
 
     try {
       const response = await fetch('/api/ai/generate', {
-        method: 'POST',
+        method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           outputType: form.outputType,
@@ -54,7 +54,7 @@ export default function TextaAI() {
 
     try {
       const response = await fetch('/api/discord/send', {
-        method: 'POST',
+        method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ channelId: form.channelId, outputType: form.outputType, generated }),
       });

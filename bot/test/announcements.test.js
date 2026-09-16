@@ -79,7 +79,7 @@ test('seleção abre ações e os modais usam IDs próprios de anúncios', async
   }
 });
 
-test('autorização administrativa exige permissões verificadas ou exceção local explícita', () => {
+test('autorização administrativa exige permissões verificadas e recusa bypass local', () => {
   const { canManageAnnouncements } = require('../src/services/announcementPermissions');
   assert.equal(canManageAnnouncements(admin), true);
   assert.equal(canManageAnnouncements({ member: { permissions: admin.permissions } }), true);
@@ -87,7 +87,7 @@ test('autorização administrativa exige permissões verificadas ou exceção lo
   assert.equal(canManageAnnouncements({ permissions: 'inválida' }), false);
   assert.equal(canManageAnnouncements({ guildId: 'a', owner: 'local-web' }), false);
   assert.equal(canManageAnnouncements({ source: 'local-web' }), false);
-  assert.equal(canManageAnnouncements({ source: 'local-web', trustedLocal: true }), true);
+  assert.equal(canManageAnnouncements({ source: 'local-web', trustedLocal: true }), false);
 });
 
 test('service bloqueia inclusão e edição sem autorização antes de persistir', t => {
@@ -101,7 +101,7 @@ test('service bloqueia inclusão e edição sem autorização antes de persistir
   const before = fs.readFileSync(file, 'utf8');
   assert.throws(() => service.save('a', { ...created, title: 'Mudança' }, { permissions: 0n }), { statusCode: 403 });
   assert.equal(fs.readFileSync(file, 'utf8'), before);
-  service.save('a', { ...created, title: 'Local' }, { source: 'local-web', trustedLocal: true });
+  service.save('a', { ...created, title: 'Local' }, admin);
   assert.equal(service.categories('a').at(-1).title, 'Local');
 });
 

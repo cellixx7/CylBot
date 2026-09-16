@@ -33,7 +33,7 @@ function fixture(t, guilds = []) {
 
 async function request(context, sessionId, query = '', method = 'GET') {
   const incoming = Object.assign(Readable.from(['{"userId":"attacker","permissions":"8"}']), {
-    method, url: `/api/dashboard/guilds${query}`, headers: sessionId ? { cookie: `cylbot_session=${sessionId}` } : {},
+    method, url: `/api/dashboard/guilds${query}`, headers: { origin: context.services.auth.config.webOrigin, ...(sessionId ? { cookie: `cylbot_session=${sessionId}` } : {}) },
   });
   const response = {
     headers: {}, ended: false,

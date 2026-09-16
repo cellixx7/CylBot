@@ -1,5 +1,8 @@
 const { readJson, sendJson } = require('../http/json');
 const { clientError } = require('../http/errors');
+const { PermissionFlagsBits } = require('discord.js');
+const { requireSession } = require('../http/auth');
+const { requireSendableChannel } = require('../http/channelPermissions');
 
 async function handle(request, response, context) {
   if (request.method !== 'POST' || !request.url.startsWith('/api/announcements/')) return false;
@@ -7,16 +10,17 @@ async function handle(request, response, context) {
   return true;
 }
 
-async function handleAnnouncements(request, response, { client, services }) {
+async function handleAnnouncements(request, response, { client, services, session }) {
   const { announcements } = services;
   const body = await readJson(request);
   if (!/^\d{17,20}$/.test(body.guildId || '')) throw clientError(400, 'Informe um ID de servidor válido.');
+  await services.dashboard.requireManageableGuild(session, body.guildId);
+  requireSession(request, services);
   const guild = client.guilds.cache.get(body.guildId);
-  if (!guild) throw clientError(400, 'O bot não está nesse servidor.');
-  // Exceção operacional: painel local confiável, sem identidade Discord autenticada.
-  // Não derive este contexto do body. local-web identifica drafts, não autoriza usuários.
-  const authorization = { source: 'local-web', trustedLocal: true };
-  const owner = 'local-web';
+  if (!guild) throw clientError(403, 'FORBIDDEN');
+  // Concede a capacidade interna somente após autorização real via OAuth/cache.
+  const authorization = { source: 'web', permissions: PermissionFlagsBits.ManageGuild };
+  const owner = `web:${session.user.id}`;
   switch (request.url) {
     case '/api/announcements/categories':
       return sendJson(response, 200, { categories: announcements.categories(guild.id), guildName: guild.name });
@@ -32,6 +36,8 @@ async function handleAnnouncements(request, response, { client, services }) {
       if (!/^\d{17,20}$/.test(body.channelId || '')) throw clientError(400, 'Informe um ID de canal válido.');
       const channel = await client.channels.fetch(body.channelId);
       if (!channel) throw clientError(400, 'Canal não encontrado.');
+      requireSession(request, services);
+      requireSendableChannel(client, channel, guild.id);
       await announcements.send(body.draftId, owner, guild.id, channel);
       return sendJson(response, 200, { ok: true });
     }

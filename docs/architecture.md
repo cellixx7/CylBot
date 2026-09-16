@@ -48,7 +48,7 @@ Esses limites descrevem o estado atual, sem exigir refatoração nesta etapa.
 
 ## Riscos futuros (não implementados)
 
-- APIs das ferramentas ainda sem exigência de sessão: integrar autenticação e autorização por servidor/canal antes de exposição pública.
+- Limites em memória são por instância; revisar implantação, proteção contra múltiplas contas e custos globais antes de ampliar exposição.
 - Persistência JSON de anúncios pressupõe uma instância; avaliar concorrência e backups antes de ampliar operação. Prévias em memória são perdidas no reinício.
 - API, handlers e telas podem acumular responsabilidades; separar conforme necessidades concretas das novas features.
 - Testes cobrem anúncios e contratos HTTP com integrações substituídas localmente; não garantem integrações reais Discord/OpenRouter nem todos os fluxos Texta_AI, Spotify ou frontend.
@@ -108,7 +108,7 @@ npm --prefix ../web run build
 git diff --check
 ```
 
-A reorganização não adiciona autenticação nem modifica CORS ou exposição de rede. O contexto local de anúncios continua sendo uma exceção de confiança do ambiente, não uma identidade Discord; proxies e portas encaminhadas ainda precisam ficar restritos ao ambiente confiável.
+A reorganização inicial preservou os contratos. O hardening posterior exige sessão/Origin e autorização de guild nas ferramentas e remove o contexto local de confiança; veja a seção de segurança abaixo.
 
 
 ## Persistência de anúncios
@@ -210,7 +210,7 @@ Modal, botões, custom IDs, preview, montagem de embeds, desativação de compon
 
 ### Limitações mantidas
 
-A entrada Web agora identifica o usuário via OAuth, mas as rotas de ferramentas ainda usam a confiança no ambiente local; não consomem a sessão de autenticação. Sessões Discord se perdem no reinício. A revisão de um embed longo continua sujeita ao limite menor do contrato Web. Problemas de confirmação/edição de mensagens Discord e de entrega após falhas de rede não são resolvidos nesta reorganização.
+A entrada e as rotas Web verificam sessão OAuth; geração geral de IA exige sessão, enquanto anúncios/publicações também exigem autorização da guild. Sessões Discord se perdem no reinício. A revisão de um embed longo continua sujeita ao limite menor do contrato Web. Problemas de confirmação/edição de mensagens Discord e de entrega após falhas de rede não são resolvidos nesta reorganização.
 
 
 ## Configuração central de runtime
@@ -242,7 +242,7 @@ logger.info('announcement.sent', {
 });
 ```
 
-Use eventos estáveis `<domínio>.<resultado>` e contexto disponível, sem inventar identidade. Em anúncios web, `userId: "local-web"` continua representando o operador local sem autenticação. Detalhes frequentes ficam em debug; marcos normais em info; falhas recuperáveis em warn; operações que falharam em error. Registre falhas na fronteira que as trata, evitando repetir o mesmo erro em todas as camadas. O provider registra a resposta inválida somente com motivo/tamanho; o adapter pode registrar a falha final da operação com IDs e contexto próprios.
+Use eventos estáveis `<domínio>.<resultado>` e contexto disponível, sem inventar identidade. Em anúncios web, `userId: "web:<id>"` identifica o proprietário autenticado da prévia. Detalhes frequentes ficam em debug; marcos normais em info; falhas recuperáveis em warn; operações que falharam em error. Registre falhas na fronteira que as trata, evitando repetir o mesmo erro em todas as camadas. O provider registra a resposta inválida somente com motivo/tamanho; o adapter pode registrar a falha final da operação com IDs e contexto próprios.
 
 A API gera um UUID no início da chamada, cria contexto próprio para as rotas e devolve `X-Request-Id`. `api.request_failed` inclui método, caminho sem query, status e esse ID. O contexto compartilhado não é mutado. A correlação termina nessa fronteira; não usa AsyncLocalStorage nem propagação automática para services/providers. Os contratos JSON não mudam.
 
@@ -268,7 +268,7 @@ Cookies temporários de state/vínculo e cookie opaco de sessão são HttpOnly/L
 
 AuthGate controla loading, falha de conexão, LoginPage e conteúdo autenticado. A raiz autenticada mostra o dashboard com perfil, servidores e logout; os hashes das ferramentas permanecem disponíveis. authApi concentra fetch com credentials. Tokens nunca são enviados ao React e não há armazenamento browser de credenciais.
 
-Esta fundação não converte a identidade em autorização das ferramentas: por decisão de escopo, suas APIs permanecem no modelo local existente e não exigem sessão. A implantação pública continua bloqueada por essa limitação arquitetural. Próximas etapas devem integrar sessão e permissões verificadas antes de abrir acesso. Sessões/states são limitados em memória, sem coordenação entre processos, rate limiting por IP ou renovação/revogação automática de tokens. Detalhes operacionais em [bot/README.md](../bot/README.md#autenticação-web-com-discord).
+A fundação OAuth agora é reutilizada pelas APIs de ferramentas: sessão, Origin e rate limit são verificados antes das operações. Anúncios/publicação também verificam guild gerenciável, conforme a seção de segurança abaixo. Sessões/states continuam em memória, sem refresh automático ou coordenação entre processos.
 
 ## Dashboard de servidores
 
@@ -288,4 +288,13 @@ A rota exige sessão e ignora identidade, tokens e permissões de query/body. Se
 
 A UI usa hash routing `#/dashboard` e `#/dashboard/:guildId`. Cards mostram instalação/acesso, ícone ou fallback, loading/erro/estado vazio. Somente DTOs marcados como instalados e gerenciáveis abrem o placeholder de gerenciamento; ele não executa ações administrativas. Convite permanece desabilitado. Uma resposta 401 limpa o estado autenticado no React e mostra orientação de novo login.
 
-Anúncios/Texta_AI não usam o dashboard para autorizar chamadas; os contratos e o contexto local dessas ferramentas permanecem iguais. Futuras operações administrativas precisam verificar permissões novamente no backend, sem confiar na lista previamente exibida. Não há repository novo, listagem de canais, painel de guild, RBAC complexo, banco ou cache distribuído.
+O DTO do dashboard não concede autorização ao navegador. Anúncios e envio reaproveitam `DashboardService.requireManageableGuild`, que refaz a consulta ao provider e usa `canManageGuild` no backend antes de agir. Não há repository novo, listagem de canais, painel de guild, RBAC complexo ou banco.
+## Segurança das rotas Web
+
+O dispatcher aplica sessão via `http/auth.js`, Origin, rate limit e headers. `requireSession` também é usado pelo dashboard e para revalidar sessões após esperas de rede antes de publicar. `DashboardService.requireManageableGuild` concentra autorização, sem duplicar BigInt. O adapter de anúncios cria sua capacidade interna de edição somente após essa verificação; não há bypass trustedLocal nem owner compartilhado.
+
+`http/channelPermissions.js` confere guild/canal e permissões efetivas do bot. A rota de envio direto deriva a guild do objeto Discord, nunca do body. `rateLimit.js` mantém janelas fixas, cleanup e capacidade máxima; o contexto permite injeção de relógio/limiter nos testes. Não há middleware framework, cache distribuído ou novo modelo de roles.
+
+`http/errors.js` identifica erros controlados por WeakSet interno. Services que geram validações conhecidas usam esse helper mantendo mensagens/status existentes. Erros externos não são expostos por terem um campo statusCode. `readJson` limita bytes e deixa de acumular após rejeição. Os headers constantes são reutilizados pela API e pelo Vite sem carregar configuração ou segredos no frontend.
+
+Limites, endpoints, comportamento de proxy e exceções OAuth estão documentados em [segurança das APIs](../bot/README.md#segurança-das-apis-web). Autorização não é atômica com o envio Discord; não há entrega única distribuída ou garantia de gastos globais por várias contas. Estas proteções não implementam a seleção de canais ou integração de dashboard da Etapa C.

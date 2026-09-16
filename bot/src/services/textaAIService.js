@@ -1,5 +1,6 @@
+const { clientError } = require('../api/http/errors');
 const MAX_INPUT_LENGTH = 2000;
-const invalid = message => Object.assign(new Error(message), { statusCode: 400 });
+const invalid = message => clientError(400, message);
 
 class TextaAIService {
   constructor({ ai, sessions }) {
