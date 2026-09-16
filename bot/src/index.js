@@ -1,5 +1,6 @@
 const { Client, Collection, GatewayIntentBits } = require('discord.js');
-const { token } = require('./config/env');
+const { getConfig } = require('./config/env');
+const config = getConfig({ requireDiscord: true });
 const commands = require('./commands');
 const readyEvent = require('./events/ready');
 const interactionCreateEvent = require('./events/interactionCreate');
@@ -17,7 +18,7 @@ client.commands = new Collection(
 );
 client.presenceManager = new PresenceManager(client);
 client.callSenseManager = new CallSenseManager(client);
-startApiServer(client);
+startApiServer(client, config.api);
 
 client.once(readyEvent.name, () => readyEvent.execute(client));
 client.on(interactionCreateEvent.name, (interaction) =>
@@ -27,4 +28,4 @@ client.on(voiceStateUpdateEvent.name, (oldState, newState) =>
   voiceStateUpdateEvent.execute(oldState, newState, client),
 );
 
-client.login(token);
+client.login(config.discord.token);

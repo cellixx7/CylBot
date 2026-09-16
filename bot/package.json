@@ -5,6 +5,8 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
+    "test": "node --test test/*.test.js",
+    "commands:register": "node scripts/deploy-commands.js",
     "deploy": "node scripts/deploy-commands.js",
     "spotify:auth": "node scripts/spotify-auth.js"
   },

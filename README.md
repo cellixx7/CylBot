@@ -4,191 +4,137 @@ Monorepo simples para o ecossistema do CylBot.
 
 ## Aplicações
 
-- [`bot/`](bot/): bot Discord em Node.js, com comandos slash, eventos, handlers, services e scripts operacionais.
-- [`web/`](web/): interface React em preparação para futuras funcionalidades web.
+- [`bot/`](bot/): bot Discord em Node.js + discord.js, com comandos, eventos, services e API HTTP local.
+- [`web/`](web/): frontend React + Vite para Texta_AI e anúncios.
 
-As aplicações são independentes e possuem dependências e configurações próprias. Não existe uma camada compartilhada neste momento porque ainda não há código reutilizado entre elas.
+As aplicações possuem dependências e configurações próprias. Execute os comandos na pasta indicada; não há `package.json` na raiz.
 
-## Bot
+## Instalação e configuração
+
+Para executar bot e frontend juntos, use Node.js 22.12 ou superior e npm, atendendo ao requisito do Vite instalado. Você também precisa de uma aplicação e um bot no Discord, com token e ID da aplicação.
+
+### 1. Preparar o bot
+
+Partindo da raiz do repositório:
 
 ```bash
 cd bot
 npm install
 cp .env.example .env
-# preencha as variáveis do bot
-npm start
-A aplicação web usa o proxy do Vite para encaminhar `/api` para o backend do bot em `http://127.0.0.1:3001`. Em outro terminal, mantenha o bot em execução:
-
-```bash
-cd bot
-npm start
 ```
 
-O MVP permite informar uma ideia, o tamanho aproximado, `Content` ou `Embed` e um `Channel ID`. A geração passa pelo `bot/src/services/openRouterService.js`; o envio passa pelo cliente Discord do bot. Os endpoints internos são:
+Copie o arquivo somente na primeira configuração. Edite `bot/.env` e preencha `DISCORD_TOKEN` e `DISCORD_CLIENT_ID`. Para geração de textos e anúncios por IA, configure também `OPENROUTER_API_KEY`. A configuração do Spotify está em [bot/README.md](bot/README.md).
 
-- `POST /api/ai/generate`: gera ou revisa a mensagem;
-- `POST /api/discord/send`: valida e publica no `Channel ID` informado;
-- `GET /api/health`: verifica se o backend está disponível.
-
-Segredos como `DISCORD_TOKEN` e `OPENROUTER_API_KEY` ficam somente em `bot/.env` e nunca são enviados ao navegador. O frontend não possui autenticação ou permissões nesta fase de desenvolvimento.
-
-Para registrar os comandos slash:
+Convide o bot para o servidor com os escopos `bot` e `applications.commands`. Depois, ainda na pasta `bot/`, registre os comandos:
 
 ```bash
-cd bot
-npm run deploy
+npm run commands:register
 ```
 
-As instruções detalhadas de Spotify, OpenRouter e comandos estão em [bot/README.md](bot/README.md).
+Repita o registro quando adicionar ou alterar as definições dos comandos slash. Não é necessário registrar a cada início do bot.
 
-## Web
+### 2. Preparar o frontend
+
+Em outro terminal, partindo da raiz do repositório:
 
 ```bash
 cd web
 npm install
+```
+
+## Iniciar em desenvolvimento
+
+### Terminal 1 — bot e API
+
+Partindo da raiz:
+
+```bash
+cd bot
+npm start
+```
+
+Mantenha esse terminal em execução. O bot inicia também a API local em `http://127.0.0.1:3001` por padrão.
+
+### Terminal 2 — frontend
+
+Partindo da raiz:
+
+```bash
+cd web
 npm run dev
 ```
 
-A aplicação web ainda é apenas uma base inicial. Segredos do bot não devem ser colocados nela.# CylBot
+Abra `http://localhost:5173`. Para OAuth, mantenha esse endereço igual a `WEB_ORIGIN` e ao callback cadastrado. Se a porta estiver ocupada, use `npm run dev -- --port 5173 --strictPort` para evitar troca silenciosa de porta. O proxy encaminha `/api` para `http://127.0.0.1:3001`; se alterar `API_PORT`, ajuste também o destino em `web/vite.config.js`.
 
-Base modular para um bot do Discord usando Node.js e discord.js.
+Nas próximas execuções, basta iniciar os dois terminais; a instalação e a cópia do `.env` são etapas de preparação.
 
-## Estrutura
+## Login com Discord
 
-- `src/commands/`: definição e execução dos slash commands.
-- `src/events/`: listeners de eventos do Discord.
-- `src/handlers/`: processamento centralizado das interações.
-- `src/config/`: leitura e validação da configuração da aplicação.
-- `src/index.js`: ponto de entrada e montagem do cliente.
-- `scripts/`: tarefas operacionais, como o registro dos comandos.
+Na mesma aplicação do bot, abra **OAuth2** no [Discord Developer Portal](https://discord.com/developers/applications), obtenha o Client Secret e cadastre exatamente:
 
-Essa divisão permite adicionar `voiceStateUpdate` em `src/events/`, sem misturar o monitoramento com os comandos atuais. Uma futura camada de persistência pode ser introduzida quando houver dados reais para armazenar.
-
-## Requisitos
-
-- Node.js 18 ou superior;
-- uma aplicação e um bot criados no Discord Developer Portal;
-- token do bot e ID da aplicação.
-
-## Configuração
-
-1. Instale as dependências:
-
-	```bash
-	npm install
-	```
-
-2. Copie `.env.example` para `.env` e preencha os valores:
-
-	```bash
-	cp .env.example .env
-	```
-
-3. Convide o bot para o servidor com os escopos `bot` e `applications.commands`.
-
-4. Registre os slash commands:
-
-	```bash
-	npm run deploy
-	```
-
-5. Inicie o bot:
-
-	```bash
-	npm start
-	```
-
-## Gerar o refresh token do Spotify
-
-O script abaixo serve apenas para a configuração inicial do Spotify. Ele abre um fluxo OAuth local, recebe o callback e imprime o `refresh_token`. Não é necessário executá-lo toda vez que o bot iniciar.
-
-1. No [Spotify Developer Dashboard](https://developer.spotify.com/dashboard), crie ou abra sua aplicação.
-
-2. Abra as configurações da aplicação e, em **Redirect URIs**, adicione exatamente:
-
-	```text
-	http://127.0.0.1:8888/callback
-	```
-
-	Salve a alteração. O endereço precisa ser idêntico, incluindo `127.0.0.1`, porta, caminho e protocolo.
-
-3. Na página da aplicação, copie o **Client ID**. Para ver o **Client Secret**, abra **Settings** e use **View client secret**. Nunca publique o Client Secret.
-
-4. No `.env`, preencha somente os valores reais:
-
-	```env
-	SPOTIFY_CLIENT_ID=seu_client_id_real
-	SPOTIFY_CLIENT_SECRET=seu_client_secret_real
-	SPOTIFY_REDIRECT_URI=http://127.0.0.1:8888/callback
-	```
-
-	Se `SPOTIFY_REDIRECT_URI` não for definida, o script usa `http://127.0.0.1:8888/callback` automaticamente. O valor precisa ser exatamente igual ao cadastrado no Spotify Developer Dashboard.
-
-	O arquivo `.env` está no `.gitignore` e não deve ser commitado.
-
-5. No terminal, dentro da pasta do projeto, execute:
-
-	```bash
-	npm run spotify:auth
-	```
-
-6. O script exibirá uma URL e tentará abrir o navegador. Na página do Spotify, entre na sua conta e autorize os escopos solicitados. Eles permitem ler a música atual e o estado de reprodução.
-
-7. Depois da autorização, o Spotify redirecionará para o callback local. O terminal exibirá `Spotify autorizado com sucesso` e um valor longo. Copie somente esse valor para:
-
-	```env
-	SPOTIFY_REFRESH_TOKEN=valor_exibido_pelo_script
-	```
-
-8. Para a rich presence do Spotify, preencha também `SPOTIFY_PLAYLIST_ID` com o ID ou URI da playlist permitida e inicie o bot com `npm start`.
-
-Deu certo quando o terminal exibir `Spotify autorizado com sucesso`, o `SPOTIFY_REFRESH_TOKEN` estiver no `.env` e o bot conseguir mostrar a música atual somente quando ela pertencer à playlist configurada. Se a URL não abrir automaticamente, copie-a do terminal e abra-a manualmente.
-
-Os comandos disponíveis são `/ping`, `/say mensagem:<texto>`, `/embed titulo:<texto> descricao:<texto>`, `/presence`, `/callsense` e `/texta_ai`.
-
-## IA para textos do Discord
-
-Texta_AI combina “Texta” (de text) com “AI” (lido como “aí”). O comando é `/texta_ai` porque o Discord exige nomes de slash commands em minúsculas. Escolha `Embed` ou `Content`, informe uma ideia no modal e revise a prévia privada. Use `Enviar` para publicar ou `Adicionar mais` para fornecer contexto adicional e gerar outra versão. Somente o usuário que iniciou a sessão pode interagir com seus botões.
-
-Para habilitar a IA via OpenRouter, adicione no `.env`:
-
-```env
-OPENROUTER_API_KEY=sua_chave_da_api_openrouter
-OPENROUTER_MODEL=openai/gpt-4.1-mini
-OPENROUTER_MAX_TOKENS=800
+```text
+http://localhost:5173/api/auth/discord/callback
 ```
 
-A chave não deve ser commitada. O modelo padrão é `openai/gpt-4.1-mini`, mas ele pode ser substituído por outro modelo específico compatível com `response_format`/JSON Schema. `OPENROUTER_MAX_TOKENS` controla a saída e tem fallback de 800, com teto de 800 tokens. O service usa a API compatível com OpenAI do OpenRouter em `https://openrouter.ai/api/v1`, geração estruturada em JSON, limite de 30 segundos e limites de tamanho do Discord. Erros de limite de tokens ou créditos retornam uma mensagem amigável. Execute `npm run deploy` depois de adicionar o comando.
+Em `bot/.env`, mantendo `DISCORD_CLIENT_ID` da mesma aplicação:
 
-O comando `/presence` é exclusivo do proprietário configurado e possui três modos:
+```env
+DISCORD_OAUTH_CLIENT_SECRET=preencha_localmente_com_o_client_secret
+DISCORD_OAUTH_REDIRECT_URI=http://localhost:5173/api/auth/discord/callback
+WEB_ORIGIN=http://localhost:5173
+SESSION_TTL_SECONDS=28800
+```
 
-- `Rich presence com texto`: exige tipo (`Assistindo`, `Transmitindo`, `Jogando` ou `Ouvindo`) e texto; `Transmitindo` também exige URL.
-- `Rich presence Spotify`: exibe somente a música atual da playlist configurada.
-- `Rich presence padrão`: reativa a lógica automática de call, Spotify e links a cada 10 segundos.
+Reinicie o bot. Acesse `http://localhost:5173`, clique **Entrar com Discord**, autorize o perfil básico e a lista de servidores (`identify guilds`) e confira o dashboard na volta. Recarregue para confirmar a sessão; **Sair** remove a sessão e volta ao login. Sessões anteriores sem o scope `guilds` exigem novo login ao abrir o dashboard. `GET /api/auth/me` responde 200 com perfil após login e 401 após logout.
 
-O modo escolhido permanece ativo até outro `/presence` ser usado ou o bot ser reiniciado.
+O callback passa pelo proxy do Vite para a API: não misture `localhost` com `127.0.0.1` nem use a porta 3001 no callback desta configuração. Em HTTPS, site e `/api` também devem compartilhar a mesma origem. Detalhes e limitações em [autenticação Web](bot/README.md#autenticação-web-com-discord).
 
-O comando `/callsense` também é exclusivo do proprietário. Ao ativá-lo, o bot registra quem já está na call configurada e envia uma DM somente quando outra pessoa entrar depois disso. A notificação inclui o nome do usuário, horário relativo, avatar e um link direto para entrar na call.
+## Funcionalidades e configuração detalhada
 
-## Rich presence
+O Texta_AI gera e revisa mensagens em Content ou Embed e permite enviar para um Channel ID. O painel de anúncios em `/#/anuncios` permite reutilizar padrões por servidor, gerar prévias e confirmar o envio.
 
-A presença alterna entre Twitch, Instagram, GitHub e LinkedIn a cada 15 segundos. Quando houver mais de uma pessoa na call configurada, a presença mostra a quantidade de pessoas na call da clínica e tem prioridade sobre as demais.
+O dashboard em `/#/dashboard` mostra os servidores do usuário, identifica a instalação do CylBot pelo cache do bot e calcula acesso de gerenciamento no backend. A seleção abre somente uma página informativa; convite, canais e integração com as ferramentas ficam para etapas futuras.
 
-Para habilitar a música atual do Spotify, preencha as quatro variáveis `SPOTIFY_*` no `.env`, incluindo `SPOTIFY_PLAYLIST_ID` com o ID ou URI da playlist permitida. A presença do Spotify só será exibida quando `context.type` for `playlist` e o ID/URI de `context` corresponder ao valor configurado. É necessário criar uma aplicação no Spotify for Developers e obter um refresh token com o escopo `user-read-currently-playing`. Sem essas variáveis, ou ao ouvir uma música fora da playlist, a presença fixa continua funcionando normalmente.
+Alguns endpoints internos:
 
+- `POST /api/ai/generate`: gerar ou revisar texto;
+- `POST /api/discord/send`: publicar no canal informado;
+- `GET /api/health`: verificar disponibilidade da API;
+- `GET /api/dashboard/guilds`: listar servidores e acesso, exigindo sessão e token OAuth válidos.
 
-### Anúncios por servidor
+Segredos ficam somente em `bot/.env`. A entrada do site exige login Discord; as APIs de ferramentas existentes continuam confiando no ambiente local, sem autorização por usuário/servidor. O login não torna essas APIs prontas para exposição pública.
 
-Use `/anuncios` em um servidor para escolher Aviso, Manutenção, Evento ou Notificação.
-- **Adicionar** cria uma categoria personalizada (até 25 categorias por servidor).
-- **Editar padrão** salva nome, título, descrição e imagem HTTPS para reutilização por todos no servidor. A imagem é opcional; deixe o campo vazio para removê-la.
-- **Criar anúncio** abre a descrição preenchida com o padrão salvo. Alterar essa descrição para uma publicação não modifica o padrão.
-- A IA melhora a descrição e o Markdown. A prévia sempre usa um embed, com título do padrão, imagem opcional e footer com servidor e data em UTC.
-- **Adicionar Contexto** gera uma nova prévia e invalida a anterior. **Confirmar envio** publica no canal original.
+Consulte [bot/README.md](bot/README.md) para comandos, Spotify, OpenRouter e persistência dos anúncios.
 
-O site oferece o mesmo fluxo em `/#/anuncios`: carregue o ID do servidor e informe um canal desse servidor para confirmar o envio. A prévia web mostra o texto Markdown; a renderização final é feita pelo Discord.
-Categorias e padrões ficam em `bot/data/announcements.json` e sobrevivem a reinícios. Preserve esse arquivo no deploy e nos backups. Prévias ficam em memória, expiram após 15 minutos e são perdidas no reinício. O armazenamento local pressupõe uma única instância do bot.
+## Convenção de scripts
 
-A personalização está liberada sem planos. O painel web segue a API local existente, sem autenticação de usuários; deve continuar restrito ao ambiente local. Para disponibilizá-lo publicamente será necessário autenticar e autorizar o acesso aos servidores.
+Execute os comandos na pasta indicada; a raiz não possui `package.json`.
 
-Após atualizar o código, execute `npm run deploy` na pasta `bot` para registrar `/anuncios` e reinicie o bot. Validação local: `node --test test/announcements.test.js` nessa pasta.
+| Pasta | Comando | Finalidade |
+| --- | --- | --- |
+| `bot/` | `npm start` | Iniciar bot e API local |
+| `bot/` | `npm run commands:register` | Registrar comandos slash no Discord |
+| `bot/` | `npm run deploy` | Nome legado preservado para o mesmo registro |
+| `bot/` | `npm test` | Executar testes com `node --test` |
+| `bot/` | `npm run spotify:auth` | Auxiliar de autorização Spotify |
+| `web/` | `npm run dev` | Iniciar frontend em desenvolvimento |
+| `web/` | `npm run build` | Gerar build do frontend |
+| `web/` | `npm run preview` | Conferir localmente o build já gerado |
+
+Para novos auxiliares, use `<domínio>:<ação>` e mantenha os arquivos em `bot/scripts/`. Prefira `commands:register` ao nome legado `deploy`. Os scripts do frontend permanecem iguais; não há suíte de testes web configurada.
+
+### Validação
+
+Com dependências instaladas, execute a partir da raiz:
+
+```bash
+npm --prefix bot test
+npm --prefix web run build
+git diff --check
+```
+
+Dentro de `bot/`, basta `npm test`. Novos testes devem seguir `test/<feature>.test.js`, usando `node:test` e `node:assert/strict`. A suíte atual de anúncios substitui a geração por IA e não exige iniciar o bot nem registrar comandos.
+
+## Arquitetura para novas features
+
+Convenção: **entrada → handler/controller → service → repository/provider**, usando somente as camadas necessárias. Consulte [o documento de arquitetura](docs/architecture.md) para responsabilidades, exemplos atuais e riscos futuros.

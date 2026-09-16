@@ -1,10 +1,11 @@
+const { logger } = require('../lib/logger');
 const { EmbedBuilder } = require('discord.js');
 
 module.exports = {
   name: 'clientReady',
   once: true,
   async execute(client) {
-    console.log(`Bot conectado como ${client.user.tag}.`);
+    logger.info('discord.ready', { module: 'ready', userId: client.user.id });
     client.presenceManager.start();
 
     try {
@@ -35,12 +36,9 @@ module.exports = {
 
       await owner.send({ embeds: [embed] });
 
-      console.log('Mensagem de inicialização enviada ao proprietário.');
+      logger.info('discord.startup_notification_sent', { module: 'ready', userId: owner.id });
     } catch (error) {
-      console.error(
-        'Não foi possível enviar a mensagem de inicialização:',
-        error
-      );
+      logger.warn('discord.startup_notification_failed', { module: 'ready', error });
     }
   },
 };

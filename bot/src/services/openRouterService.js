@@ -1,18 +1,14 @@
+const { logger } = require('../lib/logger');
 const OpenAI = require('openai');
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-const DEFAULT_MAX_TOKENS = 800;
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
-const DEFAULT_MODEL = 'openai/gpt-4.1-mini';
 
 class OpenRouterService {
-  constructor() {
-    this.apiKey = process.env.OPENROUTER_API_KEY;
-    this.modelName = process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
-    this.maxTokens = Math.min(
-      this.parseMaxTokens(process.env.OPENROUTER_MAX_TOKENS),
-      DEFAULT_MAX_TOKENS,
-    );
+  constructor(config) {
+    this.apiKey = config.apiKey;
+    this.modelName = config.model;
+    this.maxTokens = config.maxTokens;
   }
 
   async generate({
@@ -58,7 +54,7 @@ class OpenRouterService {
     }
 
     const rawText = response.choices?.[0]?.message?.content;
-    console.log(`OpenRouter modelo utilizado: ${response.model || this.modelName}`);
+    logger.debug('openrouter.response_received', { module: 'openRouterService', provider: 'openrouter', model: response.model || this.modelName });
 
     if (this.isProviderMetadata(rawText)) {
       this.logInvalidResponse(rawText, 'conteúdo de metadados do provider');
@@ -136,11 +132,6 @@ class OpenRouterService {
     ].join('\n');
   }
 
-  parseMaxTokens(value) {
-    const parsed = Number.parseInt(value, 10);
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_TOKENS;
-  }
-
   parseJson(rawText) {
     if (typeof rawText !== 'string' || !rawText.trim()) {
       this.logInvalidResponse(rawText, 'resposta vazia');
@@ -206,11 +197,8 @@ class OpenRouterService {
   }
 
   logInvalidResponse(rawText, reason) {
-    const preview = typeof rawText === 'string'
-      ? rawText.replace(/\s+/g, ' ').trim().slice(0, 500)
-      : '[não textual]';
-    const safePreview = this.apiKey ? preview.replaceAll(this.apiKey, '[REDACTED]') : preview;
-    console.error(`Resposta inválida do OpenRouter (${reason}). Amostra: ${safePreview}`);
+    logger.error('openrouter.invalid_response', { module: 'openRouterService', provider: 'openrouter',
+      reason, responseLength: typeof rawText === 'string' ? rawText.length : undefined });
   }
 
   validateOutput(output, outputType) {

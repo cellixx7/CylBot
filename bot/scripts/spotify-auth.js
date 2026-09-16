@@ -1,3 +1,4 @@
+const { sanitizeError } = require('../src/lib/logger');
 /*
  * Utilitário de configuração inicial do Spotify.
  * Execute uma vez para gerar o SPOTIFY_REFRESH_TOKEN.
@@ -5,26 +6,21 @@
 const http = require('node:http');
 const crypto = require('node:crypto');
 const { execFile } = require('node:child_process');
-const dotenv = require('dotenv');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { getConfig } = require('../src/config/env');
 
-dotenv.config();
+const config = getConfig({ requireSpotifyAuth: true });
 
-const REDIRECT_URI =
-  process.env.SPOTIFY_REDIRECT_URI ||
-  "http://127.0.0.1:8888/callback";
+const REDIRECT_URI = config.spotify.redirectUri;
 const callbackUrl = new URL(REDIRECT_URI);
 const SCOPES = [
   'user-read-currently-playing',
   'user-read-playback-state',
 ];
 
-const { SPOTIFY_CLIENT_ID: clientId, SPOTIFY_CLIENT_SECRET: clientSecret } = process.env;
-
-if (!clientId || !clientSecret) {
-  console.error('Defina SPOTIFY_CLIENT_ID e SPOTIFY_CLIENT_SECRET no arquivo .env.');
-  process.exitCode = 1;
-  return;
-}
+const { clientId, clientSecret } = config.spotify;
 
 const state = crypto.randomBytes(24).toString('hex');
 const authorizationUrl = new URL('https://accounts.spotify.com/authorize');
@@ -37,9 +33,8 @@ authorizationUrl.search = new URLSearchParams({
 }).toString();
 
 function openAuthorizationPage(url) {
-  const browser = process.env.BROWSER;
-  const command = browser || 'xdg-open';
-  const args = browser ? [url] : [url];
+  const command = config.tools.browser;
+  const args = [url];
 
   execFile(command, args, { stdio: 'ignore' }, (error) => {
     if (error) {
@@ -110,13 +105,16 @@ const server = http.createServer(async (request, response) => {
 
   try {
     const refreshToken = await exchangeCode(code);
+    const tokenDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'cylbot-spotify-'));
+    const tokenFile = path.join(tokenDirectory, 'refresh-token');
+    fs.writeFileSync(tokenFile, refreshToken, { mode: 0o600 });
     response.writeHead(200).end('Autorização concluída. Você pode fechar esta aba.');
     console.log('\nSpotify autorizado com sucesso.');
-    console.log('Copie este valor para SPOTIFY_REFRESH_TOKEN no arquivo .env:');
-    console.log(refreshToken);
+    console.log(`Refresh token salvo em arquivo privado: ${tokenFile}`);
+    console.log('Copie o conteúdo para SPOTIFY_REFRESH_TOKEN no .env e remova o arquivo temporário.');
   } catch (error) {
     response.writeHead(500).end('Falha ao concluir a autorização. Você pode fechar esta aba.');
-    console.error(`Não foi possível gerar o refresh token: ${error.message}`);
+    console.error(`Não foi possível gerar o refresh token: ${sanitizeError(error).message}`);
     process.exitCode = 1;
   } finally {
     server.close();
@@ -127,7 +125,7 @@ server.on('error', (error) => {
   if (error.code === 'EADDRINUSE') {
     console.error(`A porta ${callbackUrl.port} já está em uso. Feche o processo que a utiliza e tente novamente.`);
   } else {
-    console.error(`Não foi possível iniciar o callback local: ${error.message}`);
+    console.error(`Não foi possível iniciar o callback local: ${sanitizeError(error).message}`);
   }
   process.exitCode = 1;
 });

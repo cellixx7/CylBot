@@ -1,16 +1,33 @@
+const { logger } = require('../lib/logger');
+const { getConfig } = require('../config/env');
 const http = require('node:http');
+const { randomUUID } = require('node:crypto');
 const { announcements } = require('../services/announcementService');
-const { EmbedBuilder } = require('discord.js');
 const OpenRouterService = require('../services/openRouterService');
+const { TextaAIService } = require('../services/textaAIService');
+const { DiscordOAuthProvider } = require('../providers/discordOAuthProvider');
+const { AuthService } = require('../services/authService');
+const { AuthSessionManager } = require('../services/authSessionManager');
+const { DashboardService } = require('../services/dashboardService');
+const { sendJson } = require('./http/json');
+const { setCorsHeaders } = require('./http/cors');
+const routes = [
+  require('./routes/authRoutes'),
+  require('./routes/dashboardRoutes'),
+  require('./routes/healthRoutes'),
+  require('./routes/announcementRoutes'),
+  require('./routes/aiRoutes'),
+  require('./routes/discordRoutes'),
+];
 
-const MAX_INPUT_LENGTH = 2000;
-const MAX_TARGET_CHARACTERS = 2000;
-const openRouterService = new OpenRouterService();
+const openRouterService = new OpenRouterService(getConfig().openRouter);
 
-function startApiServer(client) {
-  const port = Number.parseInt(process.env.API_PORT || '3001', 10);
-  const server = http.createServer(async (request, response) => {
-    setCorsHeaders(response);
+function createRequestHandler(context) {
+  return async (request, response) => {
+    const requestId = randomUUID();
+    const routeContext = { ...context, requestId };
+    response.setHeader('X-Request-Id', requestId);
+    setCorsHeaders(response, context.services?.auth?.config.webOrigin || getConfig().auth.webOrigin);
 
     if (request.method === 'OPTIONS') {
       response.writeHead(204).end();
@@ -18,197 +35,48 @@ function startApiServer(client) {
     }
 
     try {
-      if (request.method === 'GET' && request.url === '/api/health') {
-        sendJson(response, 200, { ok: true });
-        return;
+      for (const route of routes) {
+        if (await route.handle(request, response, routeContext)) return;
       }
-
-      if (request.method === 'POST' && request.url.startsWith('/api/announcements/')) {
-        await handleAnnouncements(request, response, client);
-        return;
-      }
-
-      if (request.method === 'POST' && request.url === '/api/ai/generate') {
-        await handleGenerate(request, response);
-        return;
-      }
-
-      if (request.method === 'POST' && request.url === '/api/discord/send') {
-        await handleSend(request, response, client);
-        return;
-      }
-
       sendJson(response, 404, { error: 'Rota não encontrada.' });
     } catch (error) {
-      console.error('Erro na API web:', error.message);
+      const statusCode = error.statusCode || 500;
+      logger[statusCode >= 500 ? 'error' : 'warn']('api.request_failed', {
+        module: 'api', operation: 'http.request', requestId, method: request.method,
+        path: request.url.split('?')[0], statusCode, error,
+      });
       sendJson(response, error.statusCode || 500, {
         error: error.statusCode ? error.message : 'Não foi possível concluir a operação.',
       });
     }
-  });
+  };
+}
+
+function startApiServer(client, { port } = getConfig().api) {
+  const authConfig = getConfig().auth;
+  const oauthProvider = new DiscordOAuthProvider(authConfig);
+  const context = {
+    client,
+    services: {
+      auth: new AuthService({ config: authConfig, provider: oauthProvider,
+        sessions: new AuthSessionManager({ ttlSeconds: authConfig.sessionTtlSeconds }) }),
+      dashboard: new DashboardService({ provider: oauthProvider, client }),
+      announcements,
+      openRouter: openRouterService,
+      textaAI: new TextaAIService({ ai: openRouterService }),
+    },
+  };
+  const server = http.createServer(createRequestHandler(context));
 
   server.listen(port, '127.0.0.1', () => {
-    console.log(`API web disponível em http://127.0.0.1:${port}`);
+    logger.info('api.started', { module: 'api', host: '127.0.0.1', port });
   });
 
   server.on('error', (error) => {
-    console.error(`Não foi possível iniciar a API web: ${error.message}`);
+    logger.error('api.listen_failed', { module: 'api', port, error });
   });
 
   return server;
 }
 
-async function handleAnnouncements(request, response, client) {
-  const body = await readJson(request);
-  if (!/^\d{17,20}$/.test(body.guildId || '')) throw clientError(400, 'Informe um ID de servidor válido.');
-  const guild = client.guilds.cache.get(body.guildId);
-  if (!guild) throw clientError(400, 'O bot não está nesse servidor.');
-  // The web API is a local control panel, bound to loopback like the existing endpoints.
-  const owner = 'local-web';
-  switch (request.url) {
-    case '/api/announcements/categories':
-      return sendJson(response, 200, { categories: announcements.categories(guild.id), guildName: guild.name });
-    case '/api/announcements/save':
-      announcements.save(guild.id, body.category || {});
-      return sendJson(response, 200, { categories: announcements.categories(guild.id) });
-    case '/api/announcements/generate': {
-      const result = await announcements.generate({ guildId: guild.id, guildName: guild.name, owner,
-        categoryId: body.categoryId, description: body.description, draftId: body.draftId, context: body.context });
-      return sendJson(response, 200, result);
-    }
-    case '/api/announcements/send': {
-      if (!/^\d{17,20}$/.test(body.channelId || '')) throw clientError(400, 'Informe um ID de canal válido.');
-      const channel = await client.channels.fetch(body.channelId);
-      if (!channel) throw clientError(400, 'Canal não encontrado.');
-      await announcements.send(body.draftId, owner, guild.id, channel);
-      return sendJson(response, 200, { ok: true });
-    }
-    default: throw clientError(404, 'Rota não encontrada.');
-  }
-}
-
-async function handleGenerate(request, response) {
-  const body = await readJson(request);
-  const input = validateGenerationInput(body);
-  const generated = await openRouterService.generate(input);
-  sendJson(response, 200, { generated });
-}
-
-async function handleSend(request, response, client) {
-  const body = await readJson(request);
-  const input = validateSendInput(body);
-  const channel = await client.channels.fetch(input.channelId);
-
-  if (!channel?.isTextBased() || !channel.send) {
-    throw clientError(400, 'O Channel ID não pertence a um canal de texto enviável.');
-  }
-
-  const payload = input.outputType === 'embed'
-    ? {
-      embeds: [buildEmbed(input.generated)],
-      allowedMentions: { parse: [] },
-    }
-    : {
-      content: input.generated.content,
-      allowedMentions: { parse: [] },
-    };
-
-  await channel.send(payload);
-  sendJson(response, 200, { ok: true });
-}
-
-function validateGenerationInput(body) {
-  const outputType = body?.outputType;
-  const idea = normalizeText(body?.idea);
-  const originalContext = normalizeText(body?.originalContext || idea);
-  const additionalContext = normalizeText(body?.additionalContext);
-  const currentText = normalizeText(body?.currentText);
-  const targetCharacters = Number(body?.targetCharacters);
-
-  if (!['content', 'embed'].includes(outputType)) {
-    throw clientError(400, 'Escolha Content ou Embed.');
-  }
-  if (!idea || idea.length > MAX_INPUT_LENGTH) {
-    throw clientError(400, 'A ideia deve ter entre 1 e 2.000 caracteres.');
-  }
-  if (originalContext.length > MAX_INPUT_LENGTH || additionalContext.length > MAX_INPUT_LENGTH || currentText.length > MAX_INPUT_LENGTH) {
-    throw clientError(400, 'Os textos informados não podem ultrapassar 2.000 caracteres.');
-  }
-  if (!Number.isInteger(targetCharacters) || targetCharacters < 20 || targetCharacters > MAX_TARGET_CHARACTERS) {
-    throw clientError(400, 'O tamanho deve ser um número entre 20 e 2.000 caracteres.');
-  }
-
-  return { outputType, idea, originalContext, additionalContext, currentText, targetCharacters };
-}
-
-function validateSendInput(body) {
-  if (!/^\d{17,20}$/.test(body?.channelId || '')) {
-    throw clientError(400, 'Informe um Channel ID Discord válido.');
-  }
-  if (!['content', 'embed'].includes(body?.outputType)) {
-    throw clientError(400, 'Tipo de mensagem inválido.');
-  }
-  if (!body.generated || typeof body.generated !== 'object') {
-    throw clientError(400, 'A mensagem gerada é obrigatória.');
-  }
-
-  let generated;
-  try {
-    generated = openRouterService.validateOutput(body.generated, body.outputType);
-  } catch (error) {
-    throw clientError(400, `Mensagem gerada inválida: ${error.message}`);
-  }
-
-  return { channelId: body.channelId, outputType: body.outputType, generated };
-}
-
-function buildEmbed(generated) {
-  const embed = new EmbedBuilder()
-    .setDescription(generated.description)
-    .setColor(0x5865f2);
-
-  if (generated.title) embed.setTitle(generated.title);
-  if (Array.isArray(generated.fields) && generated.fields.length) embed.addFields(generated.fields);
-  return embed;
-}
-
-function normalizeText(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function clientError(statusCode, message) {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  return error;
-}
-
-function readJson(request) {
-  return new Promise((resolve, reject) => {
-    let data = '';
-    request.on('data', (chunk) => {
-      data += chunk;
-      if (data.length > 20_000) reject(clientError(413, 'Requisição muito grande.'));
-    });
-    request.on('end', () => {
-      try {
-        resolve(JSON.parse(data || '{}'));
-      } catch {
-        reject(clientError(400, 'JSON inválido.'));
-      }
-    });
-    request.on('error', reject);
-  });
-}
-
-function setCorsHeaders(response) {
-  response.setHeader('Access-Control-Allow-Origin', 'http://localhost:5173');
-  response.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
-
-function sendJson(response, statusCode, payload) {
-  response.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
-  response.end(JSON.stringify(payload));
-}
-
-module.exports = { startApiServer };
+module.exports = { startApiServer, createRequestHandler };

@@ -1,3 +1,5 @@
+const { logger } = require('../lib/logger');
+const { getConfig } = require('../config/env');
 const {
   ActionRowBuilder,
   ButtonBuilder,
@@ -10,35 +12,38 @@ const {
 } = require('discord.js');
 const OpenRouterService = require('../services/openRouterService');
 const TextaAISessionManager = require('../services/textaAISessionManager');
+const { TextaAIService } = require('../services/textaAIService');
 
-const openRouterService = new OpenRouterService();
-const sessions = new TextaAISessionManager();
+const textaAIService = new TextaAIService({
+  ai: new OpenRouterService(getConfig().openRouter),
+  sessions: new TextaAISessionManager(),
+});
 
-async function handleTextaAIInteraction(interaction) {
+async function handleTextaAIInteraction(interaction, service = textaAIService) {
   if (interaction.isModalSubmit() && interaction.customId.startsWith('texta_ai:idea:')) {
-    await handleIdea(interaction);
+    await handleIdea(interaction, service);
     return true;
   }
 
   if (interaction.isButton() && interaction.customId.startsWith('texta_ai:send:')) {
-    await handleApprove(interaction);
+    await handleApprove(interaction, service);
     return true;
   }
 
   if (interaction.isButton() && interaction.customId.startsWith('texta_ai:more:')) {
-    await handleCorrectionRequest(interaction);
+    await handleCorrectionRequest(interaction, service);
     return true;
   }
 
   if (interaction.isModalSubmit() && interaction.customId.startsWith('texta_ai:correction:')) {
-    await handleCorrection(interaction);
+    await handleCorrection(interaction, service);
     return true;
   }
 
   return false;
 }
 
-async function handleIdea(interaction) {
+async function handleIdea(interaction, service) {
   const outputType = interaction.customId.split(':')[2];
   const idea = interaction.fields.getTextInputValue('texta_ai:idea');
   const characters = Number.parseInt(
@@ -54,24 +59,23 @@ async function handleIdea(interaction) {
     return;
   }
 
-  const sessionId = sessions.create({
+  const sessionId = service.create({
     userId: interaction.user.id,
     channelId: interaction.channelId,
     outputType,
     idea,
-    originalContext: idea,
     targetCharacters: characters,
   });
 
-  await generateAndReply(interaction, sessionId);
+  await generateAndReply(interaction, sessionId, service);
 }
 
-async function handleCorrectionRequest(interaction) {
+async function handleCorrectionRequest(interaction, service) {
   const sessionId = interaction.customId.split(':')[2];
-  const session = sessions.beginCorrection(sessionId, interaction.user.id);
+  const session = service.beginRevision(sessionId, interaction.user.id);
 
   if (!session) {
-    await interaction.reply({ content: getStalePreviewMessage(sessionId, interaction.user.id), flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: getStalePreviewMessage(sessionId, interaction.user.id, service), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -95,31 +99,32 @@ async function handleCorrectionRequest(interaction) {
   await interaction.showModal(modal);
 }
 
-async function handleCorrection(interaction) {
+async function handleCorrection(interaction, service) {
   const sessionId = interaction.customId.split(':')[2];
-  const session = sessions.claimCorrection(sessionId, interaction.user.id);
+  const session = service.claimRevision(sessionId, interaction.user.id,
+    interaction.fields.getTextInputValue('texta_ai:additional-context'));
 
   if (!session) {
-    await interaction.reply({ content: getStalePreviewMessage(sessionId, interaction.user.id), flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: getStalePreviewMessage(sessionId, interaction.user.id, service), flags: MessageFlags.Ephemeral });
     return;
   }
 
-  session.additionalContext = interaction.fields.getTextInputValue('texta_ai:additional-context');
-  await generateAndReply(interaction, sessionId, session);
+  await generateAndReply(interaction, sessionId, service, session);
 }
 
-async function handleApprove(interaction) {
+async function handleApprove(interaction, service) {
   const sessionId = interaction.customId.split(':')[2];
-  const session = sessions.claim(sessionId, interaction.user.id);
-
-  if (!session) {
-    await interaction.reply({ content: getStalePreviewMessage(sessionId, interaction.user.id), flags: MessageFlags.Ephemeral });
+  let session;
+  try {
+    session = service.claimForSend(sessionId, interaction.user.id, interaction.channelId);
+  } catch (error) {
+    if (error.code !== 'TEXTA_WRONG_CHANNEL') throw error;
+    await interaction.reply({ content: 'A mensagem precisa ser aprovada no canal original.', flags: MessageFlags.Ephemeral });
     return;
   }
 
-  if (interaction.channelId !== session.channelId) {
-    sessions.release(sessionId, interaction.user.id);
-    await interaction.reply({ content: 'A mensagem precisa ser aprovada no canal original.', flags: MessageFlags.Ephemeral });
+  if (!session) {
+    await interaction.reply({ content: getStalePreviewMessage(sessionId, interaction.user.id, service), flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -130,16 +135,17 @@ async function handleApprove(interaction) {
 
   try {
     await interaction.channel.send(payload);
-    sessions.markSent(sessionId, interaction.user.id);
+    service.markSent(sessionId, interaction.user.id);
     await safelyEditPreview(interaction, {
       content: '✅ Mensagem enviada com sucesso.',
       embeds: [],
       components: [],
     });
   } catch (error) {
-    sessions.release(sessionId, interaction.user.id);
+    service.release(sessionId, interaction.user.id);
     if (!isUnknownMessage(error)) {
-      console.error('Não foi possível publicar o texto aprovado:', error);
+      logger.error('texta_ai.send_failed', { module: 'textaAIHandler', operation: 'texta_ai.send',
+        guildId: interaction.guildId, userId: interaction.user.id, channelId: interaction.channelId, error });
     }
     await safelyFollowUp(interaction, {
       content: isUnknownMessage(error)
@@ -150,30 +156,22 @@ async function handleApprove(interaction) {
   }
 }
 
-async function generateAndReply(interaction, sessionId, claimedSession = null) {
+async function generateAndReply(interaction, sessionId, service, claimedSession = null) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const session = claimedSession || sessions.claim(sessionId, interaction.user.id);
-
-  if (!session) {
-    await interaction.editReply({
-      content: 'Essa sessão já está sendo processada, foi enviada ou expirou.',
-      components: [],
-    });
-    return;
-  }
-
   try {
-    session.generated = await openRouterService.generate(session);
-    session.currentText = session.outputType === 'embed'
-      ? [session.generated.title, session.generated.description]
-        .filter(Boolean)
-        .join('\n')
-      : session.generated.content;
-    session.status = 'active';
+    const session = await service.generateSession(sessionId, interaction.user.id, claimedSession);
+    if (!session) {
+      await interaction.editReply({
+        content: 'Essa sessão já está sendo processada, foi enviada ou expirou.',
+        components: [],
+      });
+      return;
+    }
     session.previewMessage = await interaction.editReply(buildPreview(sessionId, session));
   } catch (error) {
-    console.error('Erro ao gerar texto com OpenRouter:', error);
-    sessions.remove(sessionId);
+    logger.error('texta_ai.generate_failed', { module: 'textaAIHandler', operation: 'texta_ai.generate', provider: 'openrouter',
+      guildId: interaction.guildId, userId: interaction.user.id, channelId: interaction.channelId, error });
+    service.discard(sessionId);
     await interaction.editReply({
       content: getFriendlyGenerationError(error),
       components: [],
@@ -264,8 +262,8 @@ function getFriendlyGenerationError(error) {
   return 'Não foi possível gerar a mensagem agora. Tente novamente.';
 }
 
-function getStalePreviewMessage(sessionId, userId) {
-  const status = sessions.getStatus(sessionId, userId);
+function getStalePreviewMessage(sessionId, userId, service) {
+  const status = service.getStatus(sessionId, userId);
 
   if (status === 'awaiting_correction' || status === 'processing') {
     return 'Esta prévia já foi substituída por uma versão mais recente.';

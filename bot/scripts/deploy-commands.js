@@ -1,5 +1,7 @@
+const { sanitizeError } = require('../src/lib/logger');
 const { REST, Routes } = require('discord.js');
-const { clientId, token } = require('../src/config/env');
+const { getConfig } = require('../src/config/env');
+const { clientId, token } = getConfig({ requireDiscord: true }).discord;
 const commands = require('../src/commands');
 
 const rest = new REST({ version: '10' }).setToken(token);
@@ -16,6 +18,6 @@ async function deployCommands() {
 }
 
 deployCommands().catch((error) => {
-  console.error('Erro ao registrar comandos:', error);
+  console.error('Erro ao registrar comandos:', sanitizeError(error));
   process.exitCode = 1;
 });

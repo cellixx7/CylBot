@@ -1,3 +1,4 @@
+const { logger } = require('../lib/logger');
 const { EmbedBuilder } = require('discord.js');
 const presenceConfig = require('../config/presence');
 
@@ -65,7 +66,8 @@ class CallSenseManager {
 
       await owner.send({ embeds: [embed] });
     } catch (error) {
-      console.error('Não foi possível enviar a notificação de entrada na call:', error);
+      logger.error('callsense.notification_failed', { module: 'callSenseManager', guildId: presenceConfig.guildId,
+        channelId: presenceConfig.voiceChannelId, userId: member.id, error });
     }
   }
 }

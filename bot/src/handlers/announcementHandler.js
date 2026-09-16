@@ -1,5 +1,6 @@
-const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits } = require('discord.js');
 const { announcements } = require('../services/announcementService');
+const { assertCanManageAnnouncements } = require('../services/announcementPermissions');
 const row = (...components) => new ActionRowBuilder().addComponents(...components);
 const button = (id, label, primary = false) => new ButtonBuilder().setCustomId(`ann:${id}`).setLabel(label).setStyle(primary ? ButtonStyle.Success : ButtonStyle.Secondary);
 function categoryPicker(guildId) {
@@ -23,6 +24,8 @@ async function handleAnnouncementInteraction(i) {
   try {
     if (!i.guildId) throw new Error('Use este comando em um servidor.');
     const [, action, id] = i.customId.split(':');
+    const authorization = { member: i.member, permissions: i.memberPermissions };
+    if (['add', 'edit', 'save'].includes(action)) assertCanManageAnnouncements(authorization);
     const category = () => {
       const c = announcements.categories(i.guildId).find(c => c.id === id);
       if (!c) throw new Error('Categoria não encontrada.');
@@ -41,7 +44,7 @@ async function handleAnnouncementInteraction(i) {
       ]));
     } else if (action === 'save') {
       const input = Object.fromEntries(['name', 'title', 'description', 'image'].map(key => [key, i.fields.getTextInputValue(key)]));
-      announcements.save(i.guildId, { ...input, id: id === 'new' ? undefined : id });
+      announcements.save(i.guildId, { ...input, id: id === 'new' ? undefined : id }, authorization);
       await i.reply({ ...categoryPicker(i.guildId), ephemeral: true });
     } else if (action === 'write') {
       const c = category();
@@ -55,6 +58,15 @@ async function handleAnnouncementInteraction(i) {
         ...(action === 'generate' ? { categoryId: id, description: i.fields.getTextInputValue('description') } : { draftId: id, context: i.fields.getTextInputValue('context') }) });
       await i.editReply(preview(result));
     } else if (action === 'send') {
+      const channel = i.channel;
+      if (!channel || channel.guildId !== i.guildId || !channel.isTextBased?.() || typeof channel.send !== 'function') {
+        throw new Error('Escolha um canal de texto do servidor original.');
+      }
+      const permissions = i.member && channel.permissionsFor?.(i.member);
+      const sendPermission = channel.isThread?.() ? PermissionFlagsBits.SendMessagesInThreads : PermissionFlagsBits.SendMessages;
+      if (!permissions?.has(PermissionFlagsBits.ViewChannel) || !permissions.has(sendPermission)) {
+        throw new Error('Você precisa ter acesso ao canal e permissão para enviar mensagens nele.');
+      }
       await i.deferUpdate();
       await announcements.send(id, i.user.id, i.guildId, i.channel);
       await i.editReply({ content: '✓ Anúncio enviado.', embeds: [], components: [] });

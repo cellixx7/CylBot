@@ -1,3 +1,4 @@
+const { logger } = require('../lib/logger');
 const { ActivityType } = require('discord.js');
 const presenceConfig = require('../config/presence');
 
@@ -49,7 +50,7 @@ class PresenceManager {
       try {
         spotifyActivity = await this.getSpotifyActivity();
       } catch (error) {
-        console.error('Spotify indisponível; continuando a rotação fixa:', error.message);
+        logger.warn('presence.spotify_unavailable', { module: 'presenceManager', provider: 'spotify', fallback: 'static', error });
       }
 
       if (spotifyActivity) {
@@ -59,10 +60,10 @@ class PresenceManager {
 
       const staticActivity = staticActivities[this.activityIndex];
       this.setActivity(staticActivity);
-      console.log(`Rich presence atualizada: ${staticActivity.name}`);
+      logger.debug('presence.updated', { module: 'presenceManager', mode: this.mode, activityIndex: this.activityIndex });
       this.activityIndex = (this.activityIndex + 1) % staticActivities.length;
     } catch (error) {
-      console.error('Não foi possível atualizar a presença:', error);
+      logger.error('presence.update_failed', { module: 'presenceManager', error });
     }
   }
 
@@ -168,6 +169,7 @@ class PresenceManager {
     const token = await response.json();
     this.spotifyAccessToken = token.access_token;
     this.spotifyAccessTokenExpiresAt = Date.now() + (token.expires_in - 60) * 1000;
+    logger.debug('spotify.token_refreshed', { module: 'presenceManager', provider: 'spotify' });
 
     return this.spotifyAccessToken;
   }
@@ -191,21 +193,21 @@ class PresenceManager {
     this.mode = 'manual';
     this.manualActivity = activity;
     this.setActivity(activity);
-    console.log(`Rich presence manual definida: ${activity.name}`);
+    logger.info('presence.mode_changed', { module: 'presenceManager', mode: 'manual' });
   }
 
   setSpotifyMode() {
     this.mode = 'spotify';
     this.manualActivity = null;
     this.update();
-    console.log('Rich presence Spotify ativada.');
+    logger.info('presence.mode_changed', { module: 'presenceManager', mode: 'spotify' });
   }
 
   setStandardMode() {
     this.mode = 'standard';
     this.manualActivity = null;
     this.update();
-    console.log('Rich presence padrão ativada.');
+    logger.info('presence.mode_changed', { module: 'presenceManager', mode: 'standard' });
   }
 
   async updateSpotifyActivity() {
@@ -218,7 +220,7 @@ class PresenceManager {
         this.clearActivity();
       }
     } catch (error) {
-      console.error('Spotify indisponível:', error.message);
+      logger.warn('presence.spotify_unavailable', { module: 'presenceManager', provider: 'spotify', error });
       this.clearActivity();
     }
   }

@@ -10,6 +10,42 @@
   box-sizing: border-box;
 }
 
+.auth-shell { display: grid; place-items: center; }
+.auth-card { width: 100%; max-width: 580px; padding: clamp(24px, 5vw, 48px); background: #f8f5eee8; border: 1px solid #bccac0; border-radius: 24px; box-shadow: 0 24px 60px #174d4010; overflow-wrap: anywhere; }
+.auth-card .brand { margin-bottom: 44px; }
+.auth-card h1 { font-size: clamp(2.5rem, 6vw, 4rem); }
+.auth-card .description { max-width: 440px; }
+.auth-login { justify-content: space-between; width: 100%; }
+.auth-avatar { border-radius: 50%; object-fit: cover; margin-bottom: 24px; }
+.auth-username { color: #59635e; }
+.auth-error { color: #922c27; line-height: 1.5; }
+.auth-links { display: flex; flex-wrap: wrap; gap: 24px; margin-top: 32px; }
+.auth-links a { color: #176b57; text-underline-offset: 4px; }
+.auth-account-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 16px clamp(20px, 6vw, 96px); background: #f4f0e8; border-bottom: 1px solid #bccac0; }
+.auth-account-bar .brand { color: #176b57; text-decoration: none; }
+.auth-account-bar + .auth-shell { min-height: calc(100vh - 80px); }
+
+.dashboard-shell { min-height: calc(100vh - 80px); }
+.dashboard-intro, .guild-grid, .dashboard-notice, .dashboard-tools { max-width: 1280px; margin-left: auto; margin-right: auto; }
+.dashboard-user { display: flex; align-items: center; gap: 16px; margin-bottom: 36px; overflow-wrap: anywhere; }
+.dashboard-user .auth-avatar { margin: 0; flex-shrink: 0; }
+.dashboard-user p { margin: 6px 0 0; color: #59635e; }
+.dashboard-intro h1 { font-size: clamp(2.5rem, 6vw, 4.5rem); }
+.guild-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 24px; margin-top: 40px; }
+.guild-card { display: flex; flex-direction: column; align-items: flex-start; padding: 28px; background: #f8f5ee; border: 1px solid #bccac0; border-radius: 20px; overflow-wrap: anywhere; }
+.guild-heading { display: flex; align-items: center; gap: 16px; margin-bottom： 24px； width： 100%; }
+.guild-heading h2 { font-size: 1.3rem; margin: 0; }
+.guild-icon { width: 56px; height: 56px; flex-shrink: 0; border-radius: 16px; object-fit: cover; }
+.guild-fallback { display: grid; place-items: center; background: #dce8df; color: #174d40; font: 1.6rem Georgia, serif; }
+.guild-status { padding: 6px 10px; border-radius: 6px; background: #e8e5df; color: #59635e; font-size: .8rem; }
+.guild-installed { background: #dcebdc; color: #174d40; }
+.guild-access { font-size: .9rem; line-height: 1.5; }
+.guild-action { margin-top: auto; padding-top: 12px; width: 100%; }
+.guild-action .landing-cta { margin-top: 0; }
+.guild-caption { color: #59635e; font-size: .8rem; line-height: 1.5; margin-bottom: 0; }
+.dashboard-notice { padding: 28px; margin-top: 36px; border: 1px solid #bccac0; border-radius: 16px; background: #f8f5ee; }
+.dashboard-tools { margin-top: 40px; padding-top: 24px; border-top: 1px solid #bccac0; }
+
 .landing-shell { max-width: none; padding-top: 28px; padding-bottom: 24px; }
 .landing-header, .landing-footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; max-width: 1280px; margin: 0 auto; }
 .brand { display: flex; align-items: center; gap: 12px; font-size: 1.2rem; font-weight: 700; }
