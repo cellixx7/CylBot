@@ -1,27 +1,38 @@
 import { useEffect, useState } from 'react';
+import logoUrl from '../assets/brand/cylbot-logo.png';
 
-export default function LoginPage({ reloginRequired = false }) {
+export default function LoginPage({ reloginRequired = false, authStatus = 'unauthenticated' }) {
   const [failed] = useState(() => new URLSearchParams(window.location.search).has('authError'));
+
   useEffect(() => {
-    document.title = 'Entrar | CylBot';
     if (failed) {
       const url = new URL(window.location.href);
       url.searchParams.delete('authError');
       window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
     }
   }, [failed]);
+
   return (
-    <main className="app-shell auth-shell">
-      <section className="auth-card" aria-labelledby="login-title">
-        <span className="brand"><span className="brand-mark" aria-hidden="true">C.</span>CylBot</span>
-        <p className="eyebrow">BOAS CONVERSAS COMEÇAM AQUI</p>
-        <h1 id="login-title">Seu próximo<br /><em>olá.</em></h1>
-        <p className="description">Entre com sua conta do Discord para continuar no CylBot.</p>
-        {failed && <p className="auth-error" role="alert">Não foi possível entrar com Discord. Tente novamente.</p>}
-        {reloginRequired && <p role="status">Entre novamente para renovar sua sessão e autorizar o acesso à lista de servidores.</p>}
-        <a className="landing-cta auth-login" href="/api/auth/discord">Entrar com Discord <span aria-hidden="true">↗</span></a>
-        <p className="landing-caption">Usamos seu perfil básico e sua lista de servidores. Sua senha fica no Discord.</p>
+    <main className="login-page">
+      <section className="login-panel" aria-labelledby="login-title">
+        <span className="brand-symbol brand-symbol-login" aria-hidden="true"><img src={logoUrl} alt="" /></span>
+        <p className="eyebrow">ACESSO SEGURO PELO DISCORD</p>
+        <h1 id="login-title">Entre no<br /><em>CylBot.</em></h1>
+        <p className="description">Use sua conta Discord para acessar seus servidores, configurações e perfil.</p>
+        {failed && <p className="inline-alert" role="alert">Não foi possível entrar com Discord. Tente novamente.</p>}
+        {reloginRequired && <p className="inline-alert" role="status">Entre novamente para renovar sua sessão e o acesso à lista de servidores.</p>}
+        {authStatus === 'loading' ? (
+          <span className="button button-discord button-disabled" aria-live="polite">Verificando sessão...</span>
+        ) : (
+          <a className="button button-discord" href="/api/auth/discord">Entrar com Discord <span aria-hidden="true">↗</span></a>
+        )}
+        <p className="privacy-note">Usamos apenas seu perfil básico e sua lista de servidores. Sua senha permanece no Discord.</p>
       </section>
+      <aside className="login-context" aria-label="Benefícios da conta CylBot">
+        <span className="context-index">01 / IDENTIDADE</span>
+        <h2>Uma conta.<br />Toda a comunidade.</h2>
+        <p>Seu perfil conecta você ao CylBot sem limitar sua identidade a um único servidor.</p>
+      </aside>
     </main>
   );
 }
