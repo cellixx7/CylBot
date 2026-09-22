@@ -8,7 +8,14 @@ export default defineConfig({
     headers: securityHeaders.SECURITY_HEADERS,
     host: '0.0.0.0',
     proxy: {
-      '/api': 'http://127.0.0.1:3001',
+      '/api': {
+        target: 'http://127.0.0.1:3001',
+        configure: proxy => {
+          proxy.on('proxyReq', proxyRequest => {
+            proxyRequest.setHeader('origin', 'http://localhost:5173');
+          });
+        },
+      },
     },
   },
   preview: { headers: securityHeaders.SECURITY_HEADERS },

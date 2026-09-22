@@ -5,6 +5,18 @@ function optional(source, name) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
+function detectWebOrigin(source) {
+  const explicit = optional(source, 'WEB_ORIGIN');
+  if (explicit) return explicit;
+  const codespaces = optional(source, 'CODESPACES') === 'true';
+  const name = optional(source, 'CODESPACE_NAME');
+  const domain = optional(source, 'GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN') || 'app.github.dev';
+  if (codespaces && name && /^[a-z0-9-]+$/i.test(name) && /^[a-z0-9.-]+$/i.test(domain)) {
+    return `https://${name}-5173.${domain}`;
+  }
+  return 'http://localhost:5173';
+}
+
 function integer(source, name, fallback, max = Number.MAX_SAFE_INTEGER) {
   const value = optional(source, name);
   if (value === undefined) return fallback;
@@ -26,7 +38,7 @@ function validateRequired(config, { requireDiscord = false, requireSpotifyAuth =
 }
 
 function loadEnv(source, { requireDiscord = true, requireSpotifyAuth = false } = {}) {
-  const webOrigin = optional(source, 'WEB_ORIGIN') || 'http://localhost:5173';
+  const webOrigin = detectWebOrigin(source);
   const oauthRedirectUri = optional(source, 'DISCORD_OAUTH_REDIRECT_URI') || `${webOrigin}/api/auth/discord/callback`;
   for (const [name, value] of [['WEB_ORIGIN', webOrigin], ['DISCORD_OAUTH_REDIRECT_URI', oauthRedirectUri]]) {
     try {

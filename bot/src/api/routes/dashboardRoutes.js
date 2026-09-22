@@ -11,14 +11,15 @@ async function handle(request, response, { services, requestId }) {
   const { auth, dashboard } = services;
   const sessionId = readCookie(request, SESSION_COOKIE);
   let session;
-  function relogin() {
+  function relogin(reason) {
     auth.sessions.remove(sessionId);
     response.setHeader('Set-Cookie', cookie(SESSION_COOKIE, '', 0, auth.config.secure));
-    logger.info('dashboard.relogin_required', { module: 'dashboard', requestId, userId: session?.user.id });
+    logger.warn('dashboard.relogin_required', { module: 'dashboard', requestId, userId: session?.user.id,
+      hasSessionCookie: Boolean(sessionId), reason, origin: request.headers?.origin || 'missing' });
     sendJson(response, 401, { error: 'AUTH_RELOGIN_REQUIRED' });
   }
   try { session = requireSession(request, services, 'AUTH_RELOGIN_REQUIRED'); }
-  catch { relogin(); return true; }
+  catch { relogin('session_missing'); return true; }
   try {
     // Query/body não fornecem identidade, token ou permissões ao service.
     const guilds = await dashboard.guilds(session);
@@ -30,7 +31,12 @@ async function handle(request, response, { services, requestId }) {
       manageableCount: guilds.filter(guild => guild.canManage).length });
     sendJson(response, 200, { guilds });
   } catch (error) {
-    if (error.statusCode === 401) relogin();
+    if (error.statusCode === 401) {
+      const reason = !Array.isArray(session.discordScopes) || !session.discordScopes.includes('guilds')
+        ? 'scope_guilds_missing'
+        : session.discordTokenExpiresAt <= auth.sessions.now() ? 'discord_token_expired' : 'discord_token_rejected';
+      relogin(reason);
+    }
     else {
       const statusCode = error.statusCode === 503 ? 503 : 502;
       logger.warn('dashboard.guilds_failed', { module: 'dashboard', requestId, userId: session.user.id, statusCode });

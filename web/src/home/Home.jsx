@@ -1,6 +1,4 @@
 import { useEffect } from 'react';
-import backgroundUrl from '../assets/brand/cylbot-background.png';
-import logoUrl from '../assets/brand/cylbot-logo.png';
 
 const features = [
   ['Inteligência Artificial', 'Disponível'],
@@ -19,10 +17,10 @@ export default function Home({ section }) {
 
   return (
     <main className="home-page">
-      <section className="hero" id="produto" style={{ backgroundImage: `url(${backgroundUrl})` }}>
+      <section className="hero" id="produto">
         <div className="hero-content">
-          <span className="brand-symbol brand-symbol-hero" aria-hidden="true"><img src={logoUrl} alt="" /></span>
-          <h1>CYLBOT</h1>
+          <p className="hero-kicker">AUTOMAÇÃO PARA DISCORD</p>
+          <h1>CylBot</h1>
           <p>O app no seu controle.</p>
         </div>
         <div className="hero-visual" aria-hidden="true" />
@@ -61,7 +59,7 @@ export default function Home({ section }) {
       <section className="minimal-section contact-section" id="contato" aria-labelledby="contact-title">
         <span className="section-index">05 / CONTATO</span>
         <h2 id="contact-title">Entre no CylBot.</h2>
-        <div className="contact-links"><a href="#/login">Acessar <span>→</span></a><a href="https://github.com/cellixx7/CylBot" target="_blank" rel="noreferrer">GitHub <span>↗</span></a></div>
+        <div className="contact-links"><a href="/api/auth/discord">Entrar com Discord <span>→</span></a><a href="https://github.com/cellixx7/CylBot" target="_blank" rel="noreferrer">GitHub <span>↗</span></a></div>
       </section>
     </main>
   );

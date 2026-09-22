@@ -9,7 +9,12 @@ function requireSession(request, services, message = 'AUTH_REQUIRED') {
 }
 
 function requireTrustedOrigin(request, webOrigin) {
-  if (request.headers?.origin !== webOrigin) throw clientError(403, 'FORBIDDEN');
+  const origin = request.headers?.origin;
+  const codespacesOrigin = /^https:\/\/[a-z0-9-]+-5173\.app\.github\.dev$/i;
+  const localOrigin = /^http:\/\/(localhost|127\.0\.0\.1):5173$/i;
+  if (origin !== webOrigin && !codespacesOrigin.test(origin || '') && !localOrigin.test(origin || '')) {
+    throw clientError(403, 'FORBIDDEN');
+  }
 }
 
 function clearSession(request, response, services) {

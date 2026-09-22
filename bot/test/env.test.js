@@ -165,6 +165,17 @@ test('OAuth é opcional, reutiliza Client ID e valida habilitação sem expor se
 });
 
 test('OAuth exige origem/callback coerentes e HTTPS fora do desenvolvimento local', () => {
+
+  test('OAuth detecta automaticamente Codespaces ou origem local', () => {
+    const codespaces = loadEnv({ ...discord, CODESPACES: 'true', CODESPACE_NAME: 'demo-space' });
+    assert.equal(codespaces.auth.webOrigin, 'https://demo-space-5173.app.github.dev');
+    assert.equal(codespaces.auth.redirectUri, 'https://demo-space-5173.app.github.dev/api/auth/discord/callback');
+    assert.equal(codespaces.auth.secure, true);
+    const local = loadEnv({ ...discord, CODESPACES: 'false' });
+    assert.equal(local.auth.webOrigin, 'http://localhost:5173');
+    assert.equal(local.auth.redirectUri, 'http://localhost:5173/api/auth/discord/callback');
+    assert.equal(local.auth.secure, false);
+  });
   const config = loadEnv({ ...discord, WEB_ORIGIN: 'https://cyl.example' });
   assert.equal(config.auth.secure, true);
   assert.equal(config.auth.redirectUri, 'https://cyl.example/api/auth/discord/callback');

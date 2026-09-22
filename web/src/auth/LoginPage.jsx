@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import logoUrl from '../assets/brand/cylbot-logo.png';
 
 export default function LoginPage({ reloginRequired = false, authStatus = 'unauthenticated' }) {
   const [failed] = useState(() => new URLSearchParams(window.location.search).has('authError'));
@@ -15,7 +14,7 @@ export default function LoginPage({ reloginRequired = false, authStatus = 'unaut
   return (
     <main className="login-page">
       <section className="login-panel" aria-labelledby="login-title">
-        <span className="brand-symbol brand-symbol-login" aria-hidden="true"><img src={logoUrl} alt="" /></span>
+        <span className="login-wordmark" aria-hidden="true">CylBot</span>
         <p className="eyebrow">ACESSO SEGURO PELO DISCORD</p>
         <h1 id="login-title">Entre no<br /><em>CylBot.</em></h1>
         <p className="description">Use sua conta Discord para acessar seus servidores, configurações e perfil.</p>

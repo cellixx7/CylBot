@@ -64,15 +64,16 @@ cd web
 npm run dev
 ```
 
-Abra `http://localhost:5173`. Para OAuth, mantenha esse endereço igual a `WEB_ORIGIN` e ao callback cadastrado. Se a porta estiver ocupada, use `npm run dev -- --port 5173 --strictPort` para evitar troca silenciosa de porta. O proxy encaminha `/api` para `http://127.0.0.1:3001`; se alterar `API_PORT`, ajuste também o destino em `web/vite.config.js`.
+Abra a URL pública da porta 5173 mostrada pelo Codespaces. O backend detecta automaticamente Codespaces por `CODESPACES` e `CODESPACE_NAME`, usando a URL pública; fora dele usa `http://localhost:5173`. `WEB_ORIGIN` e `DISCORD_OAUTH_REDIRECT_URI` podem ser definidos manualmente para sobrescrever essa detecção. Se a porta estiver ocupada, use `npm run dev -- --port 5173 --strictPort` para evitar troca silenciosa de porta. O proxy encaminha `/api` para `http://127.0.0.1:3001`; se alterar `API_PORT`, ajuste também o destino em `web/vite.config.js`.
 
 Nas próximas execuções, basta iniciar os dois terminais; a instalação e a cópia do `.env` são etapas de preparação.
 
 ## Login com Discord
 
-Na mesma aplicação do bot, abra **OAuth2** no [Discord Developer Portal](https://discord.com/developers/applications), obtenha o Client Secret e cadastre exatamente:
+Na mesma aplicação do bot, abra **OAuth2** no [Discord Developer Portal](https://discord.com/developers/applications), obtenha o Client Secret e cadastre os callbacks de desenvolvimento:
 
 ```text
+https://SEU-CODESPACE-5173.app.github.dev/api/auth/discord/callback
 http://localhost:5173/api/auth/discord/callback
 ```
 
@@ -80,14 +81,13 @@ Em `bot/.env`, mantendo `DISCORD_CLIENT_ID` da mesma aplicação:
 
 ```env
 DISCORD_OAUTH_CLIENT_SECRET=preencha_localmente_com_o_client_secret
-DISCORD_OAUTH_REDIRECT_URI=http://localhost:5173/api/auth/discord/callback
-WEB_ORIGIN=http://localhost:5173
+# Deixe ausentes para detecção automática, ou defina os dois com a mesma origem.
 SESSION_TTL_SECONDS=28800
 ```
 
-Reinicie o bot. Acesse `http://localhost:5173`, clique **Entrar com Discord**, autorize o perfil básico e a lista de servidores (`identify guilds`) e confira o dashboard na volta. Recarregue para confirmar a sessão; **Sair** remove a sessão e volta ao login. Sessões anteriores sem o scope `guilds` exigem novo login ao abrir o dashboard. `GET /api/auth/me` responde 200 com perfil após login e 401 após logout.
+Reinicie o bot. Acesse a URL correspondente ao ambiente, clique **Entrar com Discord**, autorize o perfil básico e a lista de servidores (`identify guilds`) e confira o dashboard na volta. Recarregue para confirmar a sessão; **Sair** remove a sessão e volta ao login. Sessões anteriores sem o scope `guilds` exigem novo login ao abrir o dashboard. `GET /api/auth/me` responde 200 com perfil após login e 204 quando não há sessão.
 
-O callback passa pelo proxy do Vite para a API: não misture `localhost` com `127.0.0.1` nem use a porta 3001 no callback desta configuração. Em HTTPS, site e `/api` também devem compartilhar a mesma origem. Detalhes e limitações em [autenticação Web](bot/README.md#autenticação-web-com-discord).
+O callback passa pelo proxy do Vite para a API: em Codespaces, substitua `SEU-CODESPACE-5173.app.github.dev` pelo domínio público exibido para a porta 5173. Não use `localhost` no Discord quando estiver acessando a URL pública, nem use a porta 3001 no callback. Em HTTPS, site e `/api` também devem compartilhar a mesma origem. Detalhes e limitações em [autenticação Web](bot/README.md#autenticação-web-com-discord).
 
 ## Funcionalidades e configuração detalhada
 

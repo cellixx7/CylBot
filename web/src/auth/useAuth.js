@@ -31,7 +31,7 @@ export function useAuth() {
       await authApi.logout();
       setReloginRequired(false);
       setAuth({ status: 'unauthenticated', user: null });
-      window.location.hash = '';
+      window.location.hash = '#/login';
     } catch {
       setError('Não foi possível sair. Tente novamente.');
     } finally {

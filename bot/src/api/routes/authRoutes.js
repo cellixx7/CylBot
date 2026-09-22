@@ -36,17 +36,23 @@ async function handle(request, response, { services, requestId }) {
         code: url.searchParams.get('code'), denied: url.searchParams.has('error'), previousSessionId: sessionId });
       response.setHeader('Set-Cookie', [...cleared, cookie(SESSION_COOKIE, session.id, sessionTtlSeconds, secure)]);
       logger.info('auth.session_created', { module: 'auth', requestId, userId: session.user.id });
-      response.writeHead(302, { Location: `${webOrigin}/` }).end();
+      response.writeHead(302, { Location: `${webOrigin}/#/dashboard` }).end();
     } catch (error) {
       // Somente classificação; mensagens externas e query OAuth nunca entram em logs.
       logger[error.statusCode >= 500 || !error.statusCode ? 'error' : 'warn']('auth.discord_callback_failed', { module: 'auth', requestId, statusCode: error.statusCode || 500 });
-      response.writeHead(302, { Location: `${webOrigin}/?authError=login_failed` }).end();
+      response.writeHead(302, { Location: `${webOrigin}/#/login?authError=login_failed` }).end();
     }
     return true;
   }
   if (url.pathname === '/api/auth/me' && request.method === 'GET') {
     const session = auth.sessions.get(sessionId);
-    sendJson(response, session ? 200 : 401, session ? { user: session.user } : { error: 'Sessão ausente ou expirada.' });
+    logger[session ? 'info' : 'warn']('auth.session_check', { module: 'auth', requestId,
+      statusCode: session ? 200 : 401, hasSessionCookie: Boolean(sessionId), origin: request.headers?.origin || 'missing' });
+    if (!session) {
+      response.writeHead(204).end();
+      return true;
+    }
+    sendJson(response, 200, { user: session.user });
     return true;
   }
   if (url.pathname === '/api/auth/logout' && request.method === 'POST') {
