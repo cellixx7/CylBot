@@ -7,7 +7,7 @@ const messageEvent = require('../src/events/messageCreate');
 const { ticketAIFixture, ids } = require('./helpers/ticketAIFixture');
 
 test('messageCreate ignora bots, DMs, webhooks e mensagens de sistema', () => {
-  const seen = []; const client = { services: { ticketAIMessages: { enqueue: value => seen.push(value) } } };
+  const seen = []; const client = { services: { ticketMessageInbound: { handle: value => seen.push(value) } } };
   const message = { guildId: ids.guild, channelId: ids.panel, author: { id: ids.user, bot: false }, content: 'hi', id: 'm' };
   for (const override of [{ guildId: null }, { author: { bot: true } }, { webhookId: 'hook' }, { system: true }]) messageEvent.execute({ ...message, ...override }, client);
   assert.equal(seen.length, 0); messageEvent.execute(message, client); assert.equal(seen.length, 1);

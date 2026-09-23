@@ -106,7 +106,7 @@ for (const change of ['pause', 'off', 'capability', 'claim', 'close', 'human']) 
     return { raw: JSON.stringify(f.proposal) };
   };
   const result = await f.send();
-  assert.equal(result.status, 'denied'); assert.equal(f.sent.length, 0);
+  assert.equal(result.status, 'denied'); assert.equal(f.sent.length, change === 'human' ? 1 : 0);
 });
 
 test('analyze sempre sugere, revalida staff e bloqueia cross-guild', async t => {
@@ -157,7 +157,7 @@ test('contexto limita mensagens e exclui IDs, anexos, logs e outros tickets', as
 });
 
 test('falha na notificação humana não desfaz pausa persistente', async t => {
-  const f = await ticketAIFixture(t); f.core.adapter.aiHandoff = async () => { throw new Error('Discord indisponível'); };
+  const f = await ticketAIFixture(t); f.core.adapter.aiHandoffStaff = async () => { throw new Error('Discord indisponível'); };
   await f.send({ content: 'chama suporte' });
   assert.equal((await f.repository.getState(ids.guild, f.ticket.id)).paused, true);
   await f.send(); assert.equal(f.requests.length, 0);

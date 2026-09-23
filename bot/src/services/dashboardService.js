@@ -40,6 +40,12 @@ class DashboardService {
     if (!guild?.botInstalled || !guild.canManage) throw clientError(403, 'FORBIDDEN');
     return guild;
   }
+
+  async requireGuildMembership(session, guildId) {
+    const guild = (await this.guilds(session)).find(guild => guild.id === guildId);
+    if (!guild?.botInstalled) throw clientError(403, 'FORBIDDEN');
+    return guild;
+  }
 }
 
 module.exports = { DashboardService, canManageGuild };

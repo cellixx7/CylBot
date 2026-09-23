@@ -180,6 +180,7 @@ class DiscordTicketAdapter {
     this.checkPermissions(channel, await this.bot(channel.guild));
     const messages = await channel.messages.fetch({ ...options, cache: false });
     return [...messages.values()].map(message => ({ id: message.id, authorId: message.author.id, authorName: message.author.username,
+      authorBot: message.author.bot === true,
       createdAt: message.createdAt.toISOString(), content: message.content,
       embeds: message.embeds.map(embed => [embed.title, embed.description, ...(embed.fields || []).map(field => `${field.name}: ${field.value}`)].filter(Boolean).join('\n')),
       attachments: [...message.attachments.values()].map(attachment => ({ name: attachment.name, size: attachment.size, url: attachment.url })),
@@ -191,27 +192,22 @@ class DiscordTicketAdapter {
     if (channel.topic !== `cylbot-ticket:${ticket.id}:${ticket.reopenCount}`) throw clientError(409, 'Canal não corresponde ao ticket.');
     return channel;
   }
-  async aiMessages(ticket, limit) {
-    if (!this.config.messageContentEnabled) throw clientError(503, 'Message Content desabilitado.');
-    const channel = await this.aiChannel(ticket);
-    const messages = await channel.messages.fetch({ limit, cache: false });
-    return [...messages.values()].map(message => ({
-      source: message.author.id === this.client.user.id ? 'AI' : message.author.bot ? 'SYSTEM'
-        : message.author.id === ticket.creatorUserId ? 'USER' : 'STAFF',
-      content: typeof message.content === 'string' ? message.content : '',
-    }));
+  async publishTicketMessage(ticket, message) {
+    const internal = message.visibility === 'INTERNAL';
+    const channel = internal
+      ? await this.validatePrivateLog(ticket.guildId, ticket.logChannelId, ticket.supportRoleIds)
+      : await this.aiChannel(ticket);
+    const name = String(message.authorName || 'CylBot').replace(/[\r\n]/g, ' ').slice(0, 80);
+    let heading = `**${name} · via Web**`;
+    if (message.authorType === 'AI') heading = internal
+      ? `**Sugestão de IA · Ticket #${ticketNumber(ticket)}**`
+      : '**CylBot · Assistente IA**';
+    if (message.authorType === 'SYSTEM') heading = '**CylBot · Sistema de atendimento**';
+    const suffix = internal ? '\n\nRevisão humana necessária; nenhuma alteração administrativa foi executada.' : '';
+    const sent = await this.send(channel, { content: `${heading}\n${message.content}${suffix}` }, `ticket-message:${message.id}`);
+    return { id: sent.id, channelId: channel.id };
   }
-  async aiReply(ticket, config, text, runId) {
-    const channel = await this.aiChannel(ticket);
-    return this.send(channel, { content: `**CylBot · Assistente IA**\n${text}` }, `ticket-ai:${runId}`);
-  }
-  async aiSuggestion(ticket, proposal, runId) {
-    const channel = await this.validatePrivateLog(ticket.guildId, ticket.logChannelId, ticket.supportRoleIds);
-    return this.send(channel, { content: `**Sugestão de IA · Ticket #${ticketNumber(ticket)} · ${proposal.action}**\n${proposal.message}\n\nRevisão humana necessária; nenhuma alteração administrativa foi executada.` }, `ticket-ai-suggestion:${runId}`);
-  }
-  async aiHandoff(ticket, runId) {
-    const channel = await this.aiChannel(ticket);
-    await this.send(channel, { content: '**CylBot · Atendimento humano solicitado.** A IA foi pausada; a equipe poderá assumir normalmente.' }, `ticket-ai-human:${runId}`);
+  async aiHandoffStaff(ticket, runId) {
     const log = await this.validatePrivateLog(ticket.guildId, ticket.logChannelId, ticket.supportRoleIds);
     await this.send(log, { content: `Atendimento humano solicitado no ticket #${ticketNumber(ticket)}: <#${ticket.channelId}>. IA pausada.` }, `ticket-ai-human-log:${runId}`);
   }

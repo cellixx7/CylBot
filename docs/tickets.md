@@ -1,6 +1,6 @@
 # Tickets Discord — MVP
 
-`/ticket` inicia o setup privado da guild. Não há rotas Web de tickets, IA, cobrança, Premium ou chat Web nesta etapa. PostgreSQL é a persistência de referência quando `DATABASE_URL` está configurada.
+`/ticket` inicia o setup privado da guild. Existem routes protegidas para IA e mensagens, mas ainda não há chat React, cobrança ou Premium. PostgreSQL é a persistência de referência quando `DATABASE_URL` está configurada.
 
 ## Ativação
 
@@ -121,13 +121,13 @@ Branding continua concentrado no payload do painel. O acesso experimental à IA 
 - Não há atomicidade com Discord. Se uma chamada remota tiver sucesso e a resposta/gravação local falhar, podem restar recursos/mensagens duplicados. Nonce de envio e topic reduzem duplicações, mas não garantem entrega única após longos intervalos. Setup nunca apaga recursos como rollback.
 - Canais/logs/roles removidos ou permissões alteradas manualmente podem exigir reparo administrativo; erros preservam dados e canais em vez de conceder acesso mais amplo.
 - Os testes usam Discord simulado. Permissões, habilitação do intent e experiência real devem ser conferidas numa guild de desenvolvimento antes de uso operacional.
-- A IA opcional depende do histórico ainda disponível no Discord; mensagens multicanal persistentes ficam para a Etapa 4. Configuração, pausa, escalation e auditoria são persistentes. Consulte [IA de tickets](ticket-ai.md) para policy, routes, privacidade e roteiro manual.
+- A IA opcional usa a conversa canônica em `ticket_messages`. Somente tickets legados ainda não sincronizados dependem temporariamente do histórico disponível no Discord para importação/fallback. Configuração, pausa, escalation, auditoria e mensagens multicanal são persistentes. Consulte [IA de tickets](ticket-ai.md) e [Message Core](ticket-messages.md).
 
 ## Validação
 
 `npm --prefix bot test`, `npm --prefix web run build`, `git diff --check`. Nenhum teste registra comandos nem chama Discord/OpenRouter/Spotify reais. Veja a matriz de testes em `bot/test/README.md`.
 
-Resultado desta etapa, com Node.js 24: **171 testes passaram**, build Web passou e diff sem erros de whitespace. Inspeção dos 61 módulos locais do backend não encontrou ciclos de imports.
+Os totais da suíte mudam conforme novas etapas adicionam regressões; use a execução atual dos comandos acima como evidência, sem manter um número congelado neste documento operacional.
 
 | Arquivos novos (caminhos relativos à raiz) | Papel |
 | --- | --- |
@@ -139,3 +139,8 @@ Resultado desta etapa, com Node.js 24: **171 testes passaram**, build Web passou
 | `docs/tickets.md` | Operação e arquitetura do MVP |
 
 Arquivos existentes integrados nesta etapa: `app/createServices.js`, `handlers/interactionHandlers.js`, `commands/index.js`, `config/env.js`, `index.js`, `.env.example`, `test/composition.test.js`, `test/env.test.js`, `README.md`, `bot/README.md`, `bot/test/README.md` e `docs/architecture.md`. As alterações anteriores de saneamento permanecem no workspace.
+## Message Core e conversa multicanal
+
+Desde a Etapa 3.5, novas mensagens humanas, Web e IA são persistidas em `ticket_messages`; PostgreSQL é a fonte de verdade da conversa. Discord permanece a interface atual e o transporte de entrega. O `messageCreate` persiste antes de acionar IA, e mensagens produzidas pelo Core são gravadas diretamente para evitar loops.
+
+O transcript usa mensagens públicas canônicas quando disponíveis. Tickets anteriores à migration, sem linhas no Message Core, continuam fechando e reabrindo com fallback explícito para o histórico Discord. Ao receber a primeira mensagem nova, tickets ativos importam o canal sob demanda e de forma idempotente; não existe varredura global no startup. Mensagens internas não entram no transcript do usuário. Consulte [Message Core de tickets](ticket-messages.md) para schema, idempotência, routes, delivery/retry e smoke test.

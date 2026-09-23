@@ -29,6 +29,9 @@ Os arquivos continuam organizados por domínio. Alguns combinam regras de negóc
 | `ticketAIRoutes.test.js` | Autorização HTTP | Sessão, Origin, ManageGuild, cross-guild, body, rate limit e ausência de execute genérico |
 | `ticketAIProvider.test.js` | Contrato OpenRouter | JSON Schema, ausência de tools, timeout/abort, usage e modelo centralizado sem chamada real |
 | `ticketAI.postgres.test.js` | Integração PostgreSQL opt-in | Persistência de config/pausa/audit, isolamento por guild e reserva concorrente |
+| `ticketMessages.test.js` | Message Core + services | Ingestão/idempotência, sync legado concorrente, delivery/recovery, visibility, contexto IA e transcript multicanal |
+| `ticketMessageRoutes.test.js` | Autorização HTTP | Sessão, Origin, membership, VIEW/RESPOND, cargo de suporte sem ManageGuild e isolamento por guild |
+| `ticketMessages.postgres.test.js` | Integração PostgreSQL opt-in | Constraints, paginação, idempotência, restart e fencing de tentativas de delivery |
 
 ## Execução
 
@@ -45,7 +48,6 @@ git diff --check
 Dentro de `bot/`:
 
 ```bash
-npm test
 npm test
 npm --prefix ../web run build
 ```

@@ -25,7 +25,7 @@ async function handle(request, response, { services }) {
   if (request.method !== 'POST') throw clientError(405, 'Método não permitido.');
   const body = await readJson(request);
   if (Object.keys(body).some(key => key !== 'guildId') || !/^\d{17,20}$/.test(body.guildId || '')) throw clientError(400, 'Informe apenas guildId válido.');
-  await services.dashboard.requireManageableGuild(session, body.guildId);
+  await services.dashboard.requireGuildMembership(session, body.guildId);
   requireSession(request, services);
   const input = { guildId: body.guildId, ticketId: action[1], userId: session.user.id };
   const result = ['analyze', 'suggest'].includes(action[2]) ? await services.ticketAI.analyze(input)

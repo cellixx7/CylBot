@@ -11,28 +11,43 @@ function safeAttachmentUrl(value) {
   return null;
 }
 class TicketTranscriptService {
-  constructor({ adapter, repository, maxMessages = 5000, maxBytes = 7 * 1024 * 1024 }) {
-    Object.assign(this, { adapter, repository, maxMessages, maxBytes });
+  constructor({ adapter, repository, messages = null, maxMessages = 5000, maxBytes = 7 * 1024 * 1024 }) {
+    Object.assign(this, { adapter, repository, messages, maxMessages, maxBytes });
   }
   async generate(ticket) {
-    const messages = [];
+    let messages = [];
     let before;
     let bytes = 0;
     const seen = new Set();
-    while (true) {
-      const page = await this.adapter.fetchMessages(ticket.guildId, ticket.channelId, { before, limit: 100 });
-      if (!page.length) break;
-      for (const message of page) {
-        if (seen.has(message.id)) throw clientError(503, 'Paginação inconsistente; o canal foi preservado.');
-        seen.add(message.id);
-        bytes += Buffer.byteLength(JSON.stringify(message));
-        if (messages.length >= this.maxMessages || bytes > this.maxBytes) throw clientError(400, 'Transcrição excede o limite seguro do MVP; o canal foi preservado.');
-        messages.push(message);
+    let canonical = false;
+    if (this.messages?.repository) {
+      const stored = await this.messages.forTranscript(ticket, this.maxMessages);
+      if (stored.length) {
+        if (stored.length > this.maxMessages) throw clientError(400, 'Transcrição excede o limite seguro; o canal foi preservado.');
+        messages = stored.map(message => ({ id: message.discordMessageId || message.id, discordMessageId: message.discordMessageId,
+          authorId: message.authorDiscordId || message.authorType, authorName: message.authorName,
+          createdAt: new Date(message.createdAt).toISOString(), content: message.content, embeds: [], attachments: [] }));
+        bytes = Buffer.byteLength(JSON.stringify(messages));
+        if (bytes > this.maxBytes) throw clientError(400, 'Transcrição excede o limite seguro; o canal foi preservado.');
+        canonical = true;
       }
-      before = page.reduce((oldest, message) => BigInt(message.id) < BigInt(oldest) ? message.id : oldest, page[0].id);
-      if (page.length < 100) break;
     }
-    messages.sort((a, b) => BigInt(a.id) < BigInt(b.id) ? -1 : 1);
+    if (!canonical) {
+      while (true) {
+        const page = await this.adapter.fetchMessages(ticket.guildId, ticket.channelId, { before, limit: 100 });
+        if (!page.length) break;
+        for (const message of page) {
+          if (seen.has(message.id)) throw clientError(503, 'Paginação inconsistente; o canal foi preservado.');
+          seen.add(message.id);
+          bytes += Buffer.byteLength(JSON.stringify(message));
+          if (messages.length >= this.maxMessages || bytes > this.maxBytes) throw clientError(400, 'Transcrição excede o limite seguro do MVP; o canal foi preservado.');
+          messages.push(message);
+        }
+        before = page.reduce((oldest, message) => BigInt(message.id) < BigInt(oldest) ? message.id : oldest, page[0].id);
+        if (page.length < 100) break;
+      }
+      messages.sort((a, b) => BigInt(a.id) < BigInt(b.id) ? -1 : 1);
+    }
     const closure = ticket.closing;
     const rows = messages.map(message => `<article><h3>${escape(message.authorName)} (${escape(message.authorId)})</h3><time>${escape(message.createdAt)}</time><pre>${escape(message.content)}</pre>${(message.embeds || []).map(embed => `<pre>${escape(embed)}</pre>`).join('')}${(message.attachments || []).map(attachment => {
       const url = safeAttachmentUrl(attachment.url);
@@ -44,11 +59,13 @@ class TicketTranscriptService {
       `Criado: ${new Date(ticket.createdAt).toISOString()}`, `Assumido: ${ticket.claimedAt ? new Date(ticket.claimedAt).toISOString() : '—'}`,
       `Encerramento solicitado: ${new Date(closure.startedAt).toISOString()}`, `Ciclo: ${ticket.reopenCount}`,
       `Assunto: ${ticket.subject}`, `Descrição: ${ticket.description}`, `Motivo: ${closure.reason}`, `Resumo: ${closure.summary || '—'}`,
-    ].join('\n'))}</pre>${rows}<footer>Captura das mensagens disponíveis neste canal. Mensagens apagadas não são recuperáveis. Links de anexos podem expirar.</footer></html>`;
+    ].join('\n'))}</pre>${rows}<footer>${canonical ? 'Conversa canônica persistida pelo CylBot.' : 'Fallback legado: captura das mensagens disponíveis neste canal.'} Mensagens apagadas antes da persistência não são recuperáveis. Links de anexos podem expirar.</footer></html>`;
     if (Buffer.byteLength(html) > this.maxBytes) throw clientError(400, 'Transcrição excede o limite de arquivo; o canal foi preservado.');
     const key = this.repository.save(ticket, html);
     logger.info('ticket.transcript.generated', { guildId: ticket.guildId, ticketId: ticket.id, channelId: ticket.channelId, messageCount: messages.length });
-    return { key, sha256: createHash('sha256').update(html).digest('hex'), lastMessageId: messages.at(-1)?.id || null, messageCount: messages.length };
+    const lastDiscordMessage = canonical ? await this.adapter.latestMessageId(ticket) : messages.at(-1)?.id;
+    return { key, sha256: createHash('sha256').update(html).digest('hex'), lastMessageId: lastDiscordMessage || null,
+      messageCount: messages.length, source: canonical ? 'MESSAGE_CORE' : 'DISCORD_LEGACY' };
   }
   read(reference) {
     const data = this.repository.read(reference.key);

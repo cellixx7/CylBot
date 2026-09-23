@@ -167,3 +167,20 @@ test('adapter coleta só campos de transcript e usa paginação REST sem tokens/
   assert(!JSON.stringify(messages).includes('não copiar'));
   assert.equal(messages[0].embeds[0], 'Título\nDescrição\nCampo: Valor');
 });
+
+test('adapter publica Message Core como transporte, identifica Web/IA e mantém autoria fora do webhook', async () => {
+  const f = setup();
+  const ticket = { id: '12345678-abcd-abcd-abcd-123456789abc', sequence: 123, guildId: ids.guild,
+    supportRoleIds: [ids.role], creatorUserId: ids.user, reopenCount: 0, logChannelId: ids.log };
+  ticket.channelId = await f.adapter.createTicketChannel(ticket, f.config);
+  const web = await f.adapter.publishTicketMessage(ticket, { id: 'message-core-1', authorName: 'Member', authorType: 'USER',
+    visibility: 'PUBLIC', content: 'Olá pela Web' });
+  assert.equal(web.channelId, ticket.channelId);
+  assert.match(f.channels.get(ticket.channelId).sent.content, /Member · via Web/);
+  assert.deepEqual(f.channels.get(ticket.channelId).sent.allowedMentions, { parse: [] });
+  const ai = await f.adapter.publishTicketMessage(ticket, { id: 'message-core-2', authorName: 'CylBot', authorType: 'AI',
+    visibility: 'INTERNAL', content: 'Sugestão segura' });
+  assert.equal(ai.channelId, ids.log);
+  assert.match(f.channels.get(ids.log).sent.content, /Sugestão de IA/);
+  assert.match(f.channels.get(ids.log).sent.content, /Revisão humana necessária/);
+});

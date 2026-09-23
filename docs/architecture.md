@@ -63,7 +63,7 @@ O MVP acrescenta `ticketHandler` ao mesmo registry. `createServices` monta Ticke
 
 Ticket é uma entidade persistida independente do channelId, com UUID, sequência por guild, estados OPEN/CLAIMED/CLOSED/REOPENED, eventos e arquivos de ciclos encerrados. PostgreSQL é a referência quando `DATABASE_URL` está configurada; o fallback JSON é somente para desenvolvimento. A state machine e os checkpoints de close/reopen ficam no core, enquanto um bloqueio em memória por guild apenas melhora a UX. Canais só podem ser removidos por staff após conferência de estado, transcript íntegro e log final. A reabertura consulta o repository e cria outro canal mantendo a identidade. Contratos, permissões, falhas e limites estão em [docs/tickets.md](tickets.md).
 
-A API Web de tickets e o listener Discord usam o mesmo `TicketAIService`, sem duplicar prompt, policy ou ações. O composition root compartilha a única instância de `OpenRouterService` entre Texta_AI, anúncios e tickets. `TicketAIContextService` limita e separa contexto não confiável; `TicketAIPolicyService` decide autorização sem delegá-la ao modelo; `TicketAIActionService` recebe somente adapters de resposta/sugestão/handoff e não possui acesso a close/delete. Configuração, pausa, escalation, lease e auditoria usam repositories PostgreSQL. Veja [IA de tickets](ticket-ai.md).
+A API Web de tickets e o listener Discord usam o mesmo `TicketAIService`, sem duplicar prompt, policy ou ações. O composition root compartilha a única instância de `OpenRouterService` entre Texta_AI, anúncios e tickets. `TicketAIContextService` limita e separa contexto não confiável; `TicketAIPolicyService` decide autorização sem delegá-la ao modelo; `TicketAIActionService` não possui acesso a close/delete. Configuração, pausa, escalation, lease e auditoria usam repositories PostgreSQL. Veja [IA de tickets](ticket-ai.md).
 
 ```text
 messageCreate / ticketAIHandler / ticketAIRoutes
@@ -77,7 +77,18 @@ messageCreate / ticketAIHandler / ticketAIRoutes
        DiscordTicketAdapter + PostgreSQL
 ```
 
-O listener mantém debounce curto em memória, mas esse Map não é autoridade. Antes de publicar, o action service abre uma transação, bloqueia o ticket/estado de IA e revalida estado do Core, configuração, lease, pausa e identidade. Operações concorrentes de claim/close no repository PostgreSQL aguardam o lock e prevalecem nas gerações seguintes. O modelo nunca recebe ferramentas.
+O listener mantém debounce curto em memória, mas esse Map não é autoridade. Antes de publicar, o action service abre uma transação curta, bloqueia ticket/estado de IA, revalida Core/configuração/lease/pausa/identidade e reserva uma mensagem. O commit ocorre antes da chamada Discord; `SENT`/`FAILED` é gravado depois. Operações concorrentes de claim/close aguardam o lock e prevalecem antes da reserva. O modelo nunca recebe ferramentas.
+
+O Message Core separa conversa e transporte:
+
+```text
+Discord / Web / IA → TicketMessageService → PostgresTicketMessageRepository
+                              ├→ TicketAIContextService
+                              ├→ TicketTranscriptService
+                              └→ DiscordTicketAdapter
+```
+
+`ticket_messages` é a conversa canônica. O adapter Discord publica e ingere, mas não determina autoria nem histórico. Routes de conversa validam membership OAuth e depois `VIEW/RESPOND`; configuração administrativa preserva ManageGuild. Tickets antigos sem mensagens canônicas usam fallback controlado do transcript para o histórico Discord. Detalhes em [Message Core](ticket-messages.md).
 
 ## Origens por ambiente
 
@@ -112,7 +123,7 @@ A inspeção dos imports locais de `bot/src` não identificou ciclos. IDs despac
 
 Os comandos triviais continuam respondendo diretamente. Presence/CallSense preservam suas verificações de owner no adapter Discord e a configuração existente; antes de expor esses managers via Web, será necessário tornar essa autorização reutilizável. Anúncios mantêm a verificação de edição no service e as verificações efetivas de canal nos adapters. A importação Web → bot continua limitada às constantes de segurança do Vite. Esses limites não exigem reorganizar as features existentes neste saneamento.
 
-Validação: 133 testes passaram com Node.js 24, incluindo proxy Vite real em loopback, allowlist, composição e regressões OAuth/dashboard/anúncios/Texta_AI/rate limiting. Build Web e `git diff --check` passaram. Integrações externas foram simuladas; o login real no Discord e o túnel hospedado de Codespaces não foram exercitados. Os testes do proxy exigem também as dependências de `web/` e permissão para subprocessos/conexões locais.
+Validação: a suíte cobre proxy Vite real em loopback, allowlist, composição e regressões OAuth/dashboard/anúncios/Texta_AI/rate limiting. Use a execução atual de `npm --prefix bot test`, do build Web e de `git diff --check`; este documento não congela a contagem, que cresce com novas etapas. Integrações externas são simuladas; o login real no Discord e o túnel hospedado de Codespaces não são exercitados. Os testes do proxy exigem também as dependências de `web/` e permissão para subprocessos/conexões locais.
 
 ## Aderência parcial atual
 

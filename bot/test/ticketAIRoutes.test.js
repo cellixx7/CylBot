@@ -31,17 +31,18 @@ async function setup(t) {
   return { ...f, request, memberships, provider, sessions, session, path: `/api/tickets/${f.ticket.id}/ai/analyze`, configPath: `/api/tickets/ai/config/${ids.guild}` };
 }
 
-test('rotas IA exigem sessão, Origin confiável e OAuth ManageGuild', async t => {
+test('rotas IA exigem sessão, Origin confiável e membership; config mantém ManageGuild', async t => {
   const f = await setup(t);
   assert.equal((await f.request(f.path, { authenticated: false })).status, 401);
   assert.equal((await f.request(f.configPath, { method: 'GET', authenticated: false })).status, 401);
   assert.equal((await f.request(f.path, { origin: null })).status, 403);
   assert.equal((await f.request(f.path, { origin: 'https://attacker.invalid' })).status, 403);
   f.memberships[0].permissions = '0';
-  assert.equal((await f.request(f.path)).status, 403);
+  assert.equal((await f.request(f.path)).status, 200);
+  assert.equal((await f.request(f.configPath, { method: 'GET' })).status, 403);
   f.memberships.length = 0;
   assert.equal((await f.request(f.path)).status, 403);
-  assert.equal(f.requests.length, 0);
+  assert.equal(f.requests.length, 1);
 });
 
 test('admin autorizado configura e analisa via services compartilhados sem executar resposta', async t => {

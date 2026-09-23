@@ -9,7 +9,7 @@ Monorepo simples para o ecossistema do CylBot.
 
 As aplicações possuem dependências e configurações próprias. Execute os comandos na pasta indicada; não há `package.json` na raiz.
 
-A interface atual do sistema de tickets funciona exclusivamente pelo Discord: `/ticket` configura o painel, atendimento privado, transcrição HTML e reabertura com o mesmo ID. O estado persistente dos tickets pode utilizar PostgreSQL. Veja [ativação e operação do MVP](docs/tickets.md), incluindo Message Content Intent, permissões e backups locais.
+A interface visual atual do sistema de tickets funciona pelo Discord: `/ticket` configura o painel, atendimento privado, transcrição HTML e reabertura com o mesmo ID. A conversa canônica fica no PostgreSQL e já possui API protegida para a futura interface Web. Veja [ativação e operação do MVP](docs/tickets.md) e [Message Core](docs/ticket-messages.md).
 
 ## Guias de uso
 
@@ -32,10 +32,11 @@ Alguns endpoints internos:
 - `GET /api/dashboard/guilds`: listar servidores e acesso, exigindo sessão e token OAuth válidos.
 - `GET`/`PUT /api/tickets/ai/config/:guildId`: ler ou salvar a configuração administrativa da IA de tickets;
 - `POST /api/tickets/:ticketId/ai/analyze`: gerar sugestão estruturada para staff, sem executar ação destrutiva.
+- `GET`/`POST /api/tickets/:ticketId/messages`: paginar ou enviar mensagens pela fundação Web autenticada.
 
 Segredos ficam somente em `bot/.env`. Dashboard, IA, envio e anúncios exigem sessão. Anúncios e publicações exigem também participação e gerenciamento da guild, além das permissões do bot. Operações POST validam Origin e possuem limites por usuário. Consulte [segurança das APIs](bot/README.md#segurança-das-apis-web) para limites e cuidados ao expor o Vite/Codespaces.
 
-Consulte [bot/README.md](bot/README.md) para comandos, Spotify, OpenRouter e persistência dos anúncios. A arquitetura, policy, privacidade e o roteiro manual da IA de tickets estão em [docs/ticket-ai.md](docs/ticket-ai.md).
+Consulte [bot/README.md](bot/README.md) para comandos, Spotify, OpenRouter e persistência dos anúncios. A IA está em [docs/ticket-ai.md](docs/ticket-ai.md); conversa, idempotência, autorização e delivery estão em [docs/ticket-messages.md](docs/ticket-messages.md).
 
 ## Convenção de scripts
 

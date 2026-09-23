@@ -36,6 +36,13 @@
       "when": 1790184249496,
       "tag": "0004_ticket_ai_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790187268967,
+      "tag": "0005_yielding_wolverine",
+      "breakpoints": true
     }
   ]
 }

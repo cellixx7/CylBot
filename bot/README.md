@@ -63,7 +63,7 @@ cd bot
 npm run db:migrate
 ```
 
-O schema cria `users`, tabelas do Core de tickets e, após a migration da Etapa 3, `ticket_ai_configs`, `ticket_ai_ticket_states` e `ticket_ai_runs`. A sequência por guild é incrementada dentro da transação de criação, e `(guild_id, public_number)` possui constraint única. `channel_id` continua anulável porque ticket e canal Discord são entidades diferentes. Sessões OAuth e sessões temporárias do Texta_AI continuam em memória; reiniciar o backend exige novo login.
+O schema cria `users`, tabelas do Core de tickets, `ticket_ai_configs`, `ticket_ai_ticket_states`, `ticket_ai_runs` e `ticket_messages`. A sequência por guild é incrementada dentro da transação de criação, e `(guild_id, public_number)` possui constraint única. Ticket, canal Discord e conversa são entidades separadas; PostgreSQL é a fonte de verdade da conversa multicanal. Sessões OAuth e sessões temporárias do Texta_AI continuam em memória; reiniciar o backend exige novo login.
 
 Em Codespaces, mantenha o Postgres no mesmo ambiente Docker e use `localhost` na `DATABASE_URL`. Em hospedagem futura, substitua somente a URL por uma conexão PostgreSQL fornecida pelo provedor e rode `npm run db:migrate` antes de `npm start`. Não são persistidos access tokens ou refresh tokens do Discord.
 
@@ -85,7 +85,13 @@ Depois de aplicar migrations, configure `TICKET_AI_ENABLED=true`, adicione as gu
 
 Níveis 0/1/2/3 representam OFF, sugestões, auto reply e ações limitadas. Em V1, o nível 3 continua restrito a respostas/perguntas, resumo, handoff e sugestão de fechamento; fechamento nunca é automático. Staff pode pausar pelo botão no ticket, e um pedido explícito por atendimento humano pausa a IA de forma persistente.
 
-Consulte [arquitetura, segurança, routes e smoke test](../docs/ticket-ai.md). Nenhum teste normal chama OpenRouter real ou gasta créditos.
+Consulte [arquitetura, segurança, routes e smoke test](../docs/ticket-ai.md) e o [Message Core](../docs/ticket-messages.md). Nenhum teste normal chama OpenRouter real ou gasta créditos.
+
+## Message Core de tickets
+
+Mensagens Discord válidas são persistidas antes de disparar a IA. Mensagens Web/IA são persistidas antes da entrega ao Discord e mantêm `PENDING/SENDING/SENT/FAILED` para retry sem criar outra identidade canônica. O endpoint `GET /api/tickets/:ticketId/messages` pagina o histórico; o POST homônimo aceita apenas `guildId`, `clientMessageId` e conteúdo.
+
+Routes de conversa exigem sessão, membership OAuth e `VIEW/RESPOND` no `TicketPermissionService`. Um cargo em `supportRoleIds` pode operar sem ManageGuild; configuração administrativa continua exigindo ManageGuild. O frontend nunca define autor, nome ou papel. Consulte [schema, autorização, compatibilidade legada e smoke test](../docs/ticket-messages.md).
 
 ## Gerar o refresh token do Spotify
 

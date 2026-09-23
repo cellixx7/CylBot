@@ -34,10 +34,12 @@ class TicketAIService {
   async analyze({ guildId, ticketId, userId }) {
     return this.run({ guildId, ticketId, userId, automatic: false, trigger: 'staff' });
   }
-  async onMessage({ guildId, channelId, userId, messageId, content, bot }) {
-    if (bot || !guildId || !this.repository || typeof this.tickets.repository.findByChannelId !== 'function') return;
-    const ticket = await this.tickets.repository.findByChannelId(guildId, channelId);
-    if (!ticket || ticket.creatorUserId !== userId || !this.policy.active(ticket)) return;
+  async onMessage({ guildId, ticketId, channelId, userId, messageId, content, bot }) {
+    if (bot || !guildId || !ticketId || !this.repository) return;
+    let ticket;
+    try { ticket = await this.tickets.ticket(guildId, ticketId); }
+    catch (error) { if (error.statusCode === 404) return; throw error; }
+    if (channelId && channelId !== ticket.channelId || ticket.creatorUserId !== userId || !this.policy.active(ticket)) return;
     return this.run({ guildId, ticketId: ticket.id, userId, messageId, automatic: true, trigger: 'message', humanRequest: humanRequested(content) });
   }
   async run(input) {

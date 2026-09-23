@@ -3,6 +3,10 @@ const { check, pgEnum, pgTable, uuid, text, integer, boolean, timestamp, jsonb, 
 
 const ticketStatus = pgEnum('ticket_status', ['OPEN', 'CLAIMED', 'CLOSED', 'REOPENED']);
 const ticketEventType = pgEnum('ticket_event_type', ['TICKET_CREATED', 'TICKET_CLAIMED', 'TICKET_CLOSED', 'TICKET_REOPENED']);
+const ticketMessageOrigin = pgEnum('ticket_message_origin', ['DISCORD', 'WEB', 'AI', 'SYSTEM']);
+const ticketMessageAuthorType = pgEnum('ticket_message_author_type', ['USER', 'STAFF', 'AI', 'SYSTEM']);
+const ticketMessageVisibility = pgEnum('ticket_message_visibility', ['PUBLIC', 'INTERNAL', 'SYSTEM']);
+const ticketMessageDeliveryStatus = pgEnum('ticket_message_delivery_status', ['PENDING', 'SENDING', 'SENT', 'FAILED', 'NOT_REQUIRED']);
 
 const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -100,13 +104,45 @@ const ticketEvents = pgTable('ticket_events', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, table => ({ ticketIndex: index('ticket_events_ticket_id_idx').on(table.ticketId) }));
 
+const ticketMessages = pgTable('ticket_messages', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  ticketId: uuid('ticket_id').notNull().references(() => tickets.id, { onDelete: 'cascade' }),
+  guildId: text('guild_id').notNull(),
+  authorDiscordId: text('author_discord_id'),
+  authorName: text('author_name').notNull(),
+  authorType: ticketMessageAuthorType('author_type').notNull(),
+  origin: ticketMessageOrigin('origin').notNull(),
+  visibility: ticketMessageVisibility('visibility').notNull().default('PUBLIC'),
+  content: text('content').notNull(),
+  clientMessageId: text('client_message_id'),
+  discordMessageId: text('discord_message_id'),
+  discordChannelId: text('discord_channel_id'),
+  deliveryStatus: ticketMessageDeliveryStatus('delivery_status').notNull().default('PENDING'),
+  deliveryAttempts: integer('delivery_attempts').notNull().default(0),
+  deliveryErrorCode: text('delivery_error_code'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  editedAt: timestamp('edited_at', { withTimezone: true }),
+}, table => ({
+  ticketCreatedIndex: index('ticket_messages_ticket_created_idx').on(table.ticketId, table.createdAt, table.id),
+  guildIndex: index('ticket_messages_guild_id_idx').on(table.guildId),
+  deliveryIndex: index('ticket_messages_delivery_status_idx').on(table.deliveryStatus),
+  clientUnique: uniqueIndex('ticket_messages_client_id_unique').on(table.ticketId, table.clientMessageId)
+    .where(sql`${table.clientMessageId} is not null`),
+  discordUnique: uniqueIndex('ticket_messages_discord_id_unique').on(table.guildId, table.discordMessageId)
+    .where(sql`${table.discordMessageId} is not null`),
+  contentLength: check('ticket_messages_content_length_check', sql`char_length(${table.content}) between 1 and 2000`),
+  attemptsPositive: check('ticket_messages_delivery_attempts_check', sql`${table.deliveryAttempts} >= 0`),
+}));
+
 const ticketSequences = pgTable('ticket_sequences', {
   guildId: text('guild_id').primaryKey(),
   nextNumber: integer('next_number').notNull().default(0),
 });
 
-const ticketRelations = relations(tickets, ({ many }) => ({ events: many(ticketEvents) }));
+const ticketRelations = relations(tickets, ({ many }) => ({ events: many(ticketEvents), messages: many(ticketMessages) }));
 const eventRelations = relations(ticketEvents, ({ one }) => ({ ticket: one(tickets, { fields: [ticketEvents.ticketId], references: [tickets.id] }) }));
+const messageRelations = relations(ticketMessages, ({ one }) => ({ ticket: one(tickets, { fields: [ticketMessages.ticketId], references: [tickets.id] }) }));
 
 const ticketAIConfigs = pgTable('ticket_ai_configs', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -155,5 +191,7 @@ const ticketAIRuns = pgTable('ticket_ai_runs', {
 }, table => ({ ticketIndex: index('ticket_ai_runs_ticket_idx').on(table.ticketId, table.createdAt),
   guildIndex: index('ticket_ai_runs_guild_idx').on(table.guildId, table.createdAt) }));
 
-module.exports = { users, ticketConfigs, ticketCategories, tickets, ticketEvents, ticketSequences, ticketStatus, ticketEventType, ticketRelations, eventRelations,
+module.exports = { users, ticketConfigs, ticketCategories, tickets, ticketEvents, ticketMessages, ticketSequences,
+  ticketStatus, ticketEventType, ticketMessageOrigin, ticketMessageAuthorType, ticketMessageVisibility,
+  ticketMessageDeliveryStatus, ticketRelations, eventRelations, messageRelations,
   ticketAIConfigs, ticketAITicketStates, ticketAIRuns };

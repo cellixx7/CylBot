@@ -29,6 +29,9 @@ const { TicketAIContextService } = require('../services/ticketAIContextService')
 const { TicketAIPolicyService } = require('../services/ticketAIPolicyService');
 const { TicketAIActionService } = require('../services/ticketAIActionService');
 const { TicketAIMessageHandler } = require('../handlers/ticketAIMessageHandler');
+const { PostgresTicketMessageRepository } = require('../repositories/postgresTicketMessageRepository');
+const { TicketMessageService } = require('../services/ticketMessageService');
+const { TicketMessageHandler } = require('../handlers/ticketMessageHandler');
 
 function createServices(client, config) {
   const database = config.database?.url ? createDatabase(config.database.url) : null;
@@ -44,12 +47,17 @@ function createServices(client, config) {
   const ticketReconciliation = new TicketReconciliationService({ adapter: ticketAdapter, repository: ticketRepository });
   const tickets = new TicketService({ repository: ticketRepository, configs: ticketConfigs,
     permissions: ticketPermissions, adapter: ticketAdapter, transcripts: ticketTranscripts, reconciliation: ticketReconciliation });
+  const messageRepository = database ? new PostgresTicketMessageRepository(database) : null;
+  const ticketMessages = new TicketMessageService({ repository: messageRepository, tickets, permissions: ticketPermissions, adapter: ticketAdapter });
+  ticketTranscripts.messages = ticketMessages;
   const aiRepository = database ? new PostgresTicketAIRepository(database) : null;
   const aiSettings = config.ticketAI || { enabled: false, guildIds: [], model: config.openRouter.model, timeoutMs: 20000 };
   const aiPolicy = new TicketAIPolicyService(aiSettings);
   const ticketAI = new TicketAIService({ repository: aiRepository, tickets, provider: openRouter, settings: aiSettings,
-    context: new TicketAIContextService(ticketAdapter), policy: aiPolicy,
-    actions: new TicketAIActionService({ repository: aiRepository, adapter: ticketAdapter, policy: aiPolicy, permissions: ticketPermissions }) });
+    context: new TicketAIContextService(ticketMessages), policy: aiPolicy,
+    actions: new TicketAIActionService({ repository: aiRepository, adapter: ticketAdapter, policy: aiPolicy,
+      permissions: ticketPermissions, messages: ticketMessages }) });
+  const ticketAIMessages = new TicketAIMessageHandler(ticketAI);
 
   return {
     openRouter,
@@ -65,8 +73,10 @@ function createServices(client, config) {
     callSense: new CallSenseManager(client),
     ticketSetup: new TicketSetupService({ repository: ticketConfigs, permissions: ticketPermissions, adapter: ticketAdapter }),
     tickets,
+    ticketMessages,
     ticketAI,
-    ticketAIMessages: new TicketAIMessageHandler(ticketAI),
+    ticketAIMessages,
+    ticketMessageInbound: new TicketMessageHandler({ messages: ticketMessages, ai: ticketAIMessages }),
     ticketReconciliation,
   };
 }

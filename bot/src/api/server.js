@@ -9,6 +9,7 @@ const { RateLimiter } = require('./http/rateLimit');
 const { setSecurityHeaders } = require('./http/securityHeaders');
 const { isClientError } = require('./http/errors');
 const routes = [
+  require('./routes/ticketMessageRoutes'),
   require('./routes/ticketAIRoutes'),
   require('./routes/authRoutes'),
   require('./routes/dashboardRoutes'),

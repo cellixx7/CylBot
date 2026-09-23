@@ -32,7 +32,7 @@ class PostgresTicketAIRepository {
       await tx.select({ id: configs.id }).from(configs).where(eq(configs.guildId, guildId)).for('update');
       const ticket = await new PostgresTicketRepository({ db: tx }).get(guildId, ticketId);
       const config = await this.getConfig(guildId, tx);
-      return operation({ ticket, state, config,
+      return operation({ ticket, state, config, tx,
         patch: values => tx.update(states).set({ ...values, updatedAt: new Date() }).where(scope(states, guildId, ticketId)),
         audit: values => tx.insert(runs).values({ guildId, ticketId, ...values }),
       });

@@ -3,7 +3,7 @@
 A IA de tickets usa o mesmo Core para Discord e API. O modelo interpreta contexto e propõe uma resposta estruturada; código determinístico valida a saída, aplica a policy e decide se a proposta será apenas exibida à equipe ou publicada. O modelo não recebe ferramentas nem acesso a Discord, banco, permissões ou operações administrativas.
 
 ```text
-messageCreate / API / botão Discord
+Message Core / API / botão Discord
                 ↓
          TicketAIService
        ┌────────┴────────┐
@@ -70,7 +70,7 @@ Auto reply só ocorre quando:
 - a mensagem pertence ao criador, não é de bot/webhook/sistema e está no canal persistido do ticket;
 - capability, cooldown, rate limit e lease persistente permitem a operação.
 
-A policy e o estado são reavaliados depois da resposta do modelo e antes de publicar. Se staff assumir/fechar/pausar, se a guild desativar a IA ou remover a capability enquanto a geração está em andamento, a resposta é negada. Staff pode pausar/retomar pelo botão ou pelas routes; o estado sobrevive a restart.
+A policy e o estado são reavaliados depois da resposta do modelo. Dentro de uma transação curta, o Core bloqueia ticket/estado, valida lease e reserva a mensagem canônica. A transação termina antes da chamada ao Discord; outra atualização curta grava `SENT` ou `FAILED`. Se staff assumir/fechar/pausar, se a guild desativar a IA, remover a capability ou o lease expirar antes da reserva, a resposta é negada. Staff pode pausar/retomar pelo botão ou pelas routes; o estado sobrevive a restart.
 
 Pedidos equivalentes a “quero falar com uma pessoa”, “quero atendente”, “chama o suporte” e “não quero falar com bot” usam detecção determinística antes do modelo. Em ticket ativo, o pedido persiste o handoff e pausa a IA mesmo se geração automática estiver OFF. A notificação identifica o CylBot como IA; uma falha ao notificar não desfaz a pausa.
 
@@ -80,7 +80,7 @@ O prompt é separado em política fixa, contexto da guild, dados estruturados do
 
 São enviados no máximo 12 registros recentes, 700 caracteres por registro e 6.000 caracteres de conversa. O contexto inclui categoria, assunto, descrição, estado, presença de responsável e tipos dos cinco eventos mais recentes. Não inclui IDs desnecessários, tokens, OAuth, `DATABASE_URL`, logs técnicos, anexos, prompts completos ou outros tickets.
 
-Até a Etapa 4, o histórico depende das mensagens disponíveis no Discord. Não existe `ticket_messages` multicanal nem chat Web. O debounce de dois segundos é apenas uma otimização local; lease, cooldown, pausa, escalation e auditoria críticos ficam no PostgreSQL.
+O contexto agora vem de `ticket_messages`, a conversa canônica do Core, e inclui mensagens originadas no Discord, Web e IA. Não existe chat React ainda. Para tickets anteriores à Etapa 3.5, o transcript possui fallback Discord; novas mensagens passam pelo armazenamento canônico. O debounce de dois segundos é apenas uma otimização local; lease, cooldown, pausa, escalation e auditoria críticos ficam no PostgreSQL. Veja [Message Core](ticket-messages.md).
 
 O provider solicita JSON Schema estrito e não envia `tools`. A aplicação ainda valida JSON, chaves exatas, ação na allowlist, mensagem até 1.600 caracteres, confiança entre 0 e 1, motivo conhecido e booleano `requiresHuman`. Saída inválida vira `NO_ACTION`, é auditada como falha e não produz efeito.
 
@@ -105,7 +105,7 @@ Não são salvos prompt, resposta completa ou conteúdo de mensagens em `ticket_
 | POST | `/api/tickets/:ticketId/ai/pause` | Pausar IA no ticket |
 | POST | `/api/tickets/:ticketId/ai/resume` | Remover pausa/escalation persistida |
 
-As routes exigem sessão, guild real retornada pelo OAuth com ManageGuild/Administrator, bot instalado, autorização de staff/admin no Core, Origin confiável para mutações, validação do body e limites por usuário/guild/ticket. `guildId` do body nunca basta: o repository carrega o ticket pela combinação guild + UUID. Não existe `/execute-anything` nem endpoint de close por IA.
+Configuração exige sessão, guild real retornada pelo OAuth com ManageGuild/Administrator e bot instalado. Operações de um ticket exigem membership OAuth e autorização atual de staff no `TicketPermissionService`, permitindo cargos em `supportRoleIds` sem ManageGuild. Mutações exigem Origin confiável; `guildId` do body nunca basta. Não existe `/execute-anything` nem endpoint de close por IA.
 
 ## Falhas e custos
 
