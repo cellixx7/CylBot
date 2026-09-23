@@ -1,14 +1,14 @@
 const path = require('node:path');
 const { PermissionFlagsBits: P } = require('discord.js');
 const { tempDirectory } = require('./tempDirectory');
-const { TicketRepository } = require('../../src/repositories/ticketRepository');
-const { TicketConfigRepository } = require('../../src/repositories/ticketConfigRepository');
-const { TicketTranscriptRepository } = require('../../src/repositories/ticketTranscriptRepository');
-const { TicketPermissionService } = require('../../src/services/ticketPermissionService');
-const { TicketTranscriptService } = require('../../src/services/ticketTranscriptService');
-const { TicketSetupService } = require('../../src/services/ticketSetupService');
-const { TicketService } = require('../../src/services/ticketService');
-const { DEFAULT_CATEGORIES } = require('../../src/services/ticketConstants');
+const { TicketRepository } = require('../../src/Ticket/repositories/ticketRepository');
+const { TicketConfigRepository } = require('../../src/Ticket/repositories/ticketConfigRepository');
+const { TicketTranscriptRepository } = require('../../src/Ticket/repositories/ticketTranscriptRepository');
+const { TicketPermissionService } = require('../../src/Ticket/services/ticketPermissionService');
+const { TicketTranscriptService } = require('../../src/Ticket/services/ticketTranscriptService');
+const { TicketSetupService } = require('../../src/Ticket/services/ticketSetupService');
+const { TicketService } = require('../../src/Ticket/services/ticketService');
+const { DEFAULT_CATEGORIES } = require('../../src/Ticket/services/ticketConstants');
 const ids = { guild: '111111111111111111', otherGuild: '111111111111111112', user: '222222222222222222', staff: '333333333333333333', admin: '444444444444444444', role: '555555555555555555', panel: '666666666666666666', log: '777777777777777777', category: '888888888888888888' };
 
 function ticketFixture(t, { configured = true } = {}) {

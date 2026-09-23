@@ -1,8 +1,8 @@
 const { and, eq } = require('drizzle-orm');
-const { ticketAIConfigs: configs, ticketAITicketStates: states, ticketAIRuns: runs, tickets } = require('../database/schema');
+const { ticketAIConfigs: configs, ticketAITicketStates: states, ticketAIRuns: runs, tickets } = require('../../database/schema');
 const { PostgresTicketRepository } = require('./postgresTicketRepository');
 const { DEFAULT_CONFIG } = require('../services/ticketAIContract');
-const { clientError } = require('../api/http/errors');
+const { clientError } = require('../../api/http/errors');
 const scope = (table, guildId, ticketId) => and(eq(table.guildId, guildId), eq(table.ticketId, ticketId));
 
 class PostgresTicketAIRepository {

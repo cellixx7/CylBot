@@ -1,4 +1,4 @@
-const { clientError } = require('../api/http/errors');
+const { clientError } = require('../../api/http/errors');
 
 const MESSAGE_ORIGIN = Object.freeze({ DISCORD: 'DISCORD', WEB: 'WEB', AI: 'AI', SYSTEM: 'SYSTEM' });
 const MESSAGE_AUTHOR_TYPE = Object.freeze({ USER: 'USER', STAFF: 'STAFF', AI: 'AI', SYSTEM: 'SYSTEM' });

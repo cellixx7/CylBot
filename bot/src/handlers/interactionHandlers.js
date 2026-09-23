@@ -1,7 +1,7 @@
 const { handleAnnouncementInteraction } = require('./announcementHandler');
 const { handleTextaAIInteraction } = require('./textaAIHandler');
-const { handleTicketInteraction } = require('./ticketHandler');
-const { handleTicketAIInteraction } = require('./ticketAIHandler');
+const { handleTicketInteraction } = require('../Ticket/handlers/ticketHandler');
+const { handleTicketAIInteraction } = require('../Ticket/handlers/ticketAIHandler');
 
 const interactionHandlers = [
   (interaction, services) => handleAnnouncementInteraction(interaction, services.announcements),

@@ -1,5 +1,5 @@
-const { clientError } = require('../api/http/errors');
-const { logger } = require('../lib/logger');
+const { clientError } = require('../../api/http/errors');
+const { logger } = require('../../lib/logger');
 const { ticketNumber } = require('./ticketConstants');
 const { createHash } = require('node:crypto');
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));

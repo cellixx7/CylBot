@@ -2,7 +2,7 @@ require('./helpers/isolatedConfig');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { ticketAIFixture, ids } = require('./helpers/ticketAIFixture');
-const { validateConfig, validateOutput, DEFAULT_CONFIG, humanRequested } = require('../src/services/ticketAIContract');
+const { validateConfig, validateOutput, DEFAULT_CONFIG, humanRequested } = require('../src/Ticket/services/ticketAIContract');
 const { logger } = require('../src/lib/logger');
 
 test('config valida níveis, tipos, allowlist e campos extras; admin é revalidado', async t => {

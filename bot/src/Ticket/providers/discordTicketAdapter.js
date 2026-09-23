@@ -1,8 +1,8 @@
 const { ChannelType, PermissionFlagsBits: P, OverwriteType, AttachmentBuilder } = require('discord.js');
 const { createHash } = require('node:crypto');
-const { clientError } = require('../api/http/errors');
+const { clientError } = require('../../api/http/errors');
 const { ticketNumber } = require('../services/ticketConstants');
-const { logger } = require('../lib/logger');
+const { logger } = require('../../lib/logger');
 const { ticketLogContext } = require('../lib/ticketDiagnostics');
 const { panelPayload, initialPayload, openedPayload, closedPayload } = require('../lib/ticketComponents');
 const READ = [P.ViewChannel, P.ReadMessageHistory];

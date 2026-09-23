@@ -1,6 +1,6 @@
 const { MessageFlags, ButtonStyle } = require('discord.js');
-const { clientError, isClientError } = require('../api/http/errors');
-const { logger } = require('../lib/logger');
+const { clientError, isClientError } = require('../../api/http/errors');
+const { logger } = require('../../lib/logger');
 const { setupView, categoryView, modal, row, button } = require('../lib/ticketComponents');
 const { ticketNumber } = require('../services/ticketConstants');
 const { interactionDetails, runTicketOperation, setTicketContext, setTicketStage, ticketLogContext, errorDetails } = require('../lib/ticketDiagnostics');

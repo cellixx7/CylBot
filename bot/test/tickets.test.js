@@ -3,7 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { ticketFixture, ids } = require('./helpers/ticketFixture');
-const { TICKET_STATUS: S, TICKET_EVENT: E } = require('../src/services/ticketConstants');
+const { TICKET_STATUS: S, TICKET_EVENT: E } = require('../src/Ticket/services/ticketConstants');
 
 test('primeiro fechamento com beginClose assíncrono usa o checkpoint retornado sem exigir retry', async t => {
   const f = ticketFixture(t); const ticket = await f.create();

@@ -2,7 +2,7 @@ require('./helpers/isolatedConfig');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const OpenRouterService = require('../src/services/openRouterService');
-const { OUTPUT_SCHEMA } = require('../src/services/ticketAIContract');
+const { OUTPUT_SCHEMA } = require('../src/Ticket/services/ticketAIContract');
 const { loadEnv } = require('../src/config/env');
 
 test('provider de tickets usa cliente compartilhado, schema estrito, sem tools e usage limitado', async () => {

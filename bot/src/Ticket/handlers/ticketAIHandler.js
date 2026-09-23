@@ -1,7 +1,7 @@
 const { MessageFlags, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { modal, row } = require('../lib/ticketComponents');
-const { clientError, isClientError } = require('../api/http/errors');
-const { logger } = require('../lib/logger');
+const { clientError, isClientError } = require('../../api/http/errors');
+const { logger } = require('../../lib/logger');
 const { errorDetails } = require('../lib/ticketDiagnostics');
 const { DEFAULT_CONFIG } = require('../services/ticketAIContract');
 const UUID = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';

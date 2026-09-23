@@ -2,7 +2,7 @@ require('./helpers/isolatedConfig');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { ticketFixture, ids } = require('./helpers/ticketFixture');
-const { TicketSetupService } = require('../src/services/ticketSetupService');
+const { TicketSetupService } = require('../src/Ticket/services/ticketSetupService');
 const { PermissionFlagsBits: P } = require('discord.js');
 async function wizard(f, mode = 'auto') {
   const input = { guildId: ids.guild, userId: ids.admin };

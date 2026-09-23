@@ -1,7 +1,7 @@
 const { randomUUID } = require('node:crypto');
-const { clientError } = require('../api/http/errors');
-const { RateLimiter } = require('../api/http/rateLimit');
-const { logger } = require('../lib/logger');
+const { clientError } = require('../../api/http/errors');
+const { RateLimiter } = require('../../api/http/rateLimit');
+const { logger } = require('../../lib/logger');
 const { errorDetails } = require('../lib/ticketDiagnostics');
 const { validateConfig, validateOutput, OUTPUT_SCHEMA, humanRequested, noAction } = require('./ticketAIContract');
 

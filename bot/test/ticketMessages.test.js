@@ -3,9 +3,9 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { ticketAIFixture, ids } = require('./helpers/ticketAIFixture');
-const { TicketMessageHandler } = require('../src/handlers/ticketMessageHandler');
-const { TicketAIContextService } = require('../src/services/ticketAIContextService');
-const { TicketTranscriptService } = require('../src/services/ticketTranscriptService');
+const { TicketMessageHandler } = require('../src/Ticket/handlers/ticketMessageHandler');
+const { TicketAIContextService } = require('../src/Ticket/services/ticketAIContextService');
+const { TicketTranscriptService } = require('../src/Ticket/services/ticketTranscriptService');
 
 const discordInput = f => ({ guildId: ids.guild, channelId: f.ticket.channelId, messageId: '100000000000000099',
   userId: ids.user, content: 'Mensagem Discord', createdAt: new Date() });

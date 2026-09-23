@@ -1,11 +1,11 @@
 const { randomUUID } = require('node:crypto');
 const { ticketFixture, ids } = require('./ticketFixture');
-const { TicketAIService } = require('../../src/services/ticketAIService');
-const { TicketAIContextService } = require('../../src/services/ticketAIContextService');
-const { TicketAIPolicyService } = require('../../src/services/ticketAIPolicyService');
-const { TicketAIActionService } = require('../../src/services/ticketAIActionService');
-const { DEFAULT_CONFIG } = require('../../src/services/ticketAIContract');
-const { TicketMessageService } = require('../../src/services/ticketMessageService');
+const { TicketAIService } = require('../../src/Ticket/services/ticketAIService');
+const { TicketAIContextService } = require('../../src/Ticket/services/ticketAIContextService');
+const { TicketAIPolicyService } = require('../../src/Ticket/services/ticketAIPolicyService');
+const { TicketAIActionService } = require('../../src/Ticket/services/ticketAIActionService');
+const { DEFAULT_CONFIG } = require('../../src/Ticket/services/ticketAIContract');
+const { TicketMessageService } = require('../../src/Ticket/services/ticketMessageService');
 
 async function ticketAIFixture(t) {
   const core = ticketFixture(t);

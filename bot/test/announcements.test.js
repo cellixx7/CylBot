@@ -53,7 +53,7 @@ test('contexto substitui prévia; envio verifica dono, servidor e duplicação',
 
 test('comando anuncia opções e custom IDs esperados', t => {
   const service = new AnnouncementService({ getCategories: () => undefined });
-  const commands = require('../src/commands');
+  const commands = require('../src/commands/index');
   assert(commands.some(c => c.data.toJSON().name === 'anuncios'));
   const { categoryPicker } = require('../src/handlers/announcementHandler');
   const picker = categoryPicker('test', service);

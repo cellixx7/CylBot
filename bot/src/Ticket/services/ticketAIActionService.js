@@ -1,5 +1,5 @@
 const { randomUUID } = require('node:crypto');
-const { logger } = require('../lib/logger');
+const { logger } = require('../../lib/logger');
 
 class TicketAIActionService {
   // Não recebe TicketService: não dispõe de close, delete, SQL livre ou ferramentas do modelo.

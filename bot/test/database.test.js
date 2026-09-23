@@ -4,8 +4,8 @@ const assert = require('node:assert/strict');
 const { loadEnv } = require('../src/config/env');
 const { AuthService } = require('../src/services/authService');
 const { AuthSessionManager } = require('../src/services/authSessionManager');
-const { TICKET_STATUS: S } = require('../src/services/ticketConstants');
-const { TicketInvalidStateError, transition } = require('../src/services/ticketDomain');
+const { TICKET_STATUS: S } = require('../src/Ticket/services/ticketConstants');
+const { TicketInvalidStateError, transition } = require('../src/Ticket/services/ticketDomain');
 const healthRoute = require('../src/api/routes/healthRoutes');
 
 test('produção sem DATABASE_URL falha antes de criar configuração executável', () => {

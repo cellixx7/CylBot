@@ -2,7 +2,7 @@ require('./helpers/isolatedConfig');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { Collection, ChannelType, PermissionFlagsBits: P, PermissionsBitField } = require('discord.js');
-const { DiscordTicketAdapter, BOT_PERMISSIONS } = require('../src/providers/discordTicketAdapter');
+const { DiscordTicketAdapter, BOT_PERMISSIONS } = require('../src/Ticket/providers/discordTicketAdapter');
 const { ids } = require('./helpers/ticketFixture');
 const botId = '999999999999999999';
 function setup() {

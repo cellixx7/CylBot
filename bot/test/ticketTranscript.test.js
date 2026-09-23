@@ -3,7 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { ticketFixture, ids } = require('./helpers/ticketFixture');
-const { TicketTranscriptService, safeAttachmentUrl } = require('../src/services/ticketTranscriptService');
+const { TicketTranscriptService, safeAttachmentUrl } = require('../src/Ticket/services/ticketTranscriptService');
 
 test('transcript pagina todas as mensagens, ordena e escapa HTML, embeds, nomes e anexos', async t => {
   const f = ticketFixture(t); const ticket = await f.create();

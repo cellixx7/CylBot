@@ -1,4 +1,4 @@
-const { logger } = require('../lib/logger');
+const { logger } = require('../../lib/logger');
 const { TicketConfigurationError } = require('./ticketDomain');
 const { ticketLogContext, errorDetails } = require('../lib/ticketDiagnostics');
 

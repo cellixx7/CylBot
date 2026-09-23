@@ -1,5 +1,5 @@
 const { and, desc, eq, inArray, isNotNull, isNull, or, sql } = require('drizzle-orm');
-const { ticketEvents, ticketSequences, tickets } = require('../database/schema');
+const { ticketEvents, ticketSequences, tickets } = require('../../database/schema');
 const { TicketLimitError } = require('../domain/ticketErrors');
 
 const toDate = value => value == null ? null : value instanceof Date ? value : new Date(value);

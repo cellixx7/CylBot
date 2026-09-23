@@ -6,7 +6,7 @@ const { loadEnv } = require('../src/config/env');
 const { createServices } = require('../src/app/createServices');
 const { startApiServer } = require('../src/api/server');
 const event = require('../src/events/interactionCreate');
-const commands = require('../src/commands');
+const commands = require('../src/commands/index');
 
 const config = () => loadEnv({}, { requireDiscord: false });
 const client = () => ({ isReady: () => true, guilds: { cache: new Map() } });

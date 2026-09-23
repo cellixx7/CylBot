@@ -70,11 +70,11 @@ No Windows foi utilizado `npm.cmd` devido à política do PowerShell. O sandbox 
 
 ## Arquivos da correção
 
-- `bot/src/handlers/ticketHandler.js`: contexto e resposta segura a falhas.
-- `bot/src/lib/ticketDiagnostics.js`: contexto assíncrono e metadados seguros.
-- `bot/src/services/ticketService.js`: correção do fechamento, autoridade do delete e diagnóstico das etapas/limites.
-- `bot/src/services/ticketPermissionService.js`: identificação da etapa de autorização.
-- `bot/src/services/ticketReconciliationService.js`: diagnóstico seguro da reconciliação.
-- `bot/src/providers/discordTicketAdapter.js`: vínculo entre canal, ticket e ciclo na exclusão.
+- `bot/src/Ticket/handlers/ticketHandler.js`: contexto e resposta segura a falhas.
+- `bot/src/Ticket/lib/ticketDiagnostics.js`: contexto assíncrono e metadados seguros.
+- `bot/src/Ticket/services/ticketService.js`: correção do fechamento, autoridade do delete e diagnóstico das etapas/limites.
+- `bot/src/Ticket/services/ticketPermissionService.js`: identificação da etapa de autorização.
+- `bot/src/Ticket/services/ticketReconciliationService.js`: diagnóstico seguro da reconciliação.
+- `bot/src/Ticket/providers/discordTicketAdapter.js`: vínculo entre canal, ticket e ciclo na exclusão.
 - `bot/test/tickets.test.js`, `ticketHandler.test.js`, `discordTicketAdapter.test.js`, `ticketDiagnostics.test.js`, `postgres.integration.test.js`: regressões e contrato PostgreSQL.
 - `docs/tickets-smoke-audit.md`: este relatório.

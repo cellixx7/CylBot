@@ -3,12 +3,12 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { PermissionFlagsBits: P, MessageFlags } = require('discord.js');
 const { ticketFixture, ids } = require('./helpers/ticketFixture');
-const { handleTicketInteraction, startTicketSetup } = require('../src/handlers/ticketHandler');
-const { setupView, panelPayload, initialPayload, closedPayload } = require('../src/lib/ticketComponents');
+const { handleTicketInteraction, startTicketSetup } = require('../src/Ticket/handlers/ticketHandler');
+const { setupView, panelPayload, initialPayload, closedPayload } = require('../src/Ticket/lib/ticketComponents');
 const event = require('../src/events/interactionCreate');
-const commands = require('../src/commands');
+const commands = require('../src/commands/index');
 const { logger } = require('../src/lib/logger');
-const { setTicketContext } = require('../src/lib/ticketDiagnostics');
+const { setTicketContext } = require('../src/Ticket/lib/ticketDiagnostics');
 
 function interaction(customId, { userId = ids.user, channelId = ids.panel, kind = 'button', fields = {}, values } = {}) {
   const result = {};

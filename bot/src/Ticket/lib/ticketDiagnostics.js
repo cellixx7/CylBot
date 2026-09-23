@@ -1,6 +1,6 @@
 const { AsyncLocalStorage } = require('node:async_hooks');
 const { randomUUID } = require('node:crypto');
-const { isClientError } = require('../api/http/errors');
+const { isClientError } = require('../../api/http/errors');
 
 const operations = new AsyncLocalStorage();
 const UUID = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';

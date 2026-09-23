@@ -1,5 +1,5 @@
-const { clientError } = require('../api/http/errors');
-const { logger } = require('../lib/logger');
+const { clientError } = require('../../api/http/errors');
+const { logger } = require('../../lib/logger');
 const { TICKET_STATUS: S, TICKET_EVENT: E, ACTIVE_STATUSES } = require('./ticketConstants');
 const { TicketAlreadyClaimedError, TicketNotFoundError, assertActiveState, transition } = require('./ticketDomain');
 const { TICKET_PERMISSION } = require('./ticketPermissionService');

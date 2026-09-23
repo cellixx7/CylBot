@@ -1,4 +1,4 @@
-const { clientError } = require('../api/http/errors');
+const { clientError } = require('../../api/http/errors');
 const CAPABILITIES = Object.freeze({ REPLY: 'reply', ASK_CLARIFICATION: 'ask_clarifying_question', SUMMARIZE: 'summarize',
   ESCALATE_TO_HUMAN: 'request_human', SUGGEST_CLOSE: 'suggest_close', NO_ACTION: null });
 const REASONS = ['user_question_answered', 'clarification_needed', 'summary_requested', 'resolution_suggested', 'no_action',

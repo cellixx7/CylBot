@@ -1,6 +1,6 @@
 const { randomUUID } = require('node:crypto');
-const { clientError } = require('../api/http/errors');
-const { logger } = require('../lib/logger');
+const { clientError } = require('../../api/http/errors');
+const { logger } = require('../../lib/logger');
 const { DEFAULT_CATEGORIES } = require('./ticketConstants');
 const { TICKET_PERMISSION } = require('./ticketPermissionService');
 

@@ -5,9 +5,9 @@ const path = require('node:path');
 const { migrate } = require('drizzle-orm/node-postgres/migrator');
 const { drizzle } = require('drizzle-orm/node-postgres');
 const { createDatabase } = require('../src/database/client');
-const { PostgresTicketRepository } = require('../src/repositories/postgresTicketRepository');
-const { TICKET_EVENT: E, TICKET_STATUS: S } = require('../src/services/ticketConstants');
-const { TicketService } = require('../src/services/ticketService');
+const { PostgresTicketRepository } = require('../src/Ticket/repositories/postgresTicketRepository');
+const { TICKET_EVENT: E, TICKET_STATUS: S } = require('../src/Ticket/services/ticketConstants');
+const { TicketService } = require('../src/Ticket/services/ticketService');
 
 const url = process.env.DATABASE_TEST_URL;
 const run = url ? test : test.skip;

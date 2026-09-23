@@ -6,8 +6,8 @@ const path = require('node:path');
 const { migrate } = require('drizzle-orm/node-postgres/migrator');
 const { drizzle } = require('drizzle-orm/node-postgres');
 const { createDatabase } = require('../src/database/client');
-const { PostgresTicketAIRepository } = require('../src/repositories/postgresTicketAIRepository');
-const { DEFAULT_CONFIG } = require('../src/services/ticketAIContract');
+const { PostgresTicketAIRepository } = require('../src/Ticket/repositories/postgresTicketAIRepository');
+const { DEFAULT_CONFIG } = require('../src/Ticket/services/ticketAIContract');
 const url = process.env.DATABASE_TEST_URL;
 const run = url ? test : test.skip;
 

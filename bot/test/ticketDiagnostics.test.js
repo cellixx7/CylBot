@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { interactionDetails, errorDetails } = require('../src/lib/ticketDiagnostics');
+const { interactionDetails, errorDetails } = require('../src/Ticket/lib/ticketDiagnostics');
 
 test('diagnóstico omite custom IDs inválidos, nomes/códigos arbitrários e payloads em causas cíclicas', () => {
   const secret = 'postgresql://user:password@host/database';

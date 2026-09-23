@@ -1,5 +1,5 @@
 const { PermissionsBitField, PermissionFlagsBits: P } = require('discord.js');
-const { clientError } = require('../api/http/errors');
+const { clientError } = require('../../api/http/errors');
 const { setTicketStage } = require('../lib/ticketDiagnostics');
 const TICKET_PERMISSION = Object.freeze({ CONFIGURE: 'CONFIGURE', VIEW: 'VIEW', RESPOND: 'RESPOND',
   CLAIM: 'CLAIM', CLOSE: 'CLOSE', REOPEN: 'REOPEN', DELETE_CHANNEL: 'DELETE_CHANNEL' });

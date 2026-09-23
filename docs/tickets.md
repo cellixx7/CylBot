@@ -99,14 +99,14 @@ Se o canal antigo ainda existir, fica bloqueado e preservado; a reabertura cria 
 ## Arquitetura e pontos de extensão
 
 ```text
-commands/ticket → handlers/ticketHandler → TicketSetupService / TicketService
-                                               ├→ TicketPermissionService
-                                               ├→ TicketTranscriptService → TicketTranscriptRepository
-                                               ├→ TicketConfigRepository / TicketRepository
-                                               └→ DiscordTicketAdapter
+Ticket/commands/ticket → Ticket/handlers/ticketHandler → TicketSetupService / TicketService
+                                                        ├→ TicketPermissionService
+                                                        ├→ TicketTranscriptService → TicketTranscriptRepository
+                                                        ├→ TicketConfigRepository / TicketRepository
+                                                        └→ DiscordTicketAdapter
 ```
 
-O composition root instancia as dependências compartilhadas. O handler recebe services, interpreta componentes e produz respostas. Os services recebem DTOs com IDs/dados simples; não recebem Interaction. O adapter concentra SDK, REST, overwrites, mensagens e renderização Discord. `lib/ticketComponents.js` reúne builders de interface. Nenhum service conhece fs; nenhum handler conhece JSON. `interactionHandlers.js` registra a feature e `commands/index.js` alimenta runtime/deploy.
+O código exclusivo da feature fica em `bot/src/Ticket/`, separado por `api`, `commands`, `domain`, `handlers`, `lib`, `providers`, `repositories` e `services`. O composition root instancia as dependências compartilhadas. O handler recebe services, interpreta componentes e produz respostas. Os services recebem DTOs com IDs/dados simples; não recebem Interaction. O adapter concentra SDK, REST, overwrites, mensagens e renderização Discord. `Ticket/lib/ticketComponents.js` reúne builders de interface. Nenhum service conhece fs; nenhum handler conhece JSON. `interactionHandlers.js` registra a feature e `commands/index.js` alimenta runtime/deploy.
 
 Futuramente a Web poderá chamar o mesmo TicketService com identidade autenticada e autorização revalidada no backend. O repository PostgreSQL atual é a referência para transações, unicidade e locks; o JSON permanece apenas fallback de desenvolvimento. O adapter Discord permanecerá uma representação do ticket.
 
@@ -131,10 +131,10 @@ Os totais da suíte mudam conforme novas etapas adicionam regressões; use a exe
 
 | Arquivos novos (caminhos relativos à raiz) | Papel |
 | --- | --- |
-| `bot/src/commands/ticket.js`, `bot/src/handlers/ticketHandler.js`, `bot/src/lib/ticketComponents.js` | Comando, interações e componentes Discord |
-| `bot/src/services/ticketService.js`, `ticketSetupService.js`, `ticketPermissionService.js`, `ticketTranscriptService.js`, `ticketConstants.js` (todos em services) | Regras, autorização, setup, transcript e estados/eventos |
-| `bot/src/providers/discordTicketAdapter.js` | Integração Discord |
-| `bot/src/repositories/ticketRepository.js`, `ticketConfigRepository.js`, `ticketTranscriptRepository.js`, `ticketJsonStore.js` (todos em repositories) | Persistência local |
+| `bot/src/Ticket/commands/ticket.js`, `Ticket/handlers/ticketHandler.js`, `Ticket/lib/ticketComponents.js` | Comando, interações e componentes Discord |
+| `bot/src/Ticket/services/ticketService.js`, `ticketSetupService.js`, `ticketPermissionService.js`, `ticketTranscriptService.js`, `ticketConstants.js` | Regras, autorização, setup, transcript e estados/eventos |
+| `bot/src/Ticket/providers/discordTicketAdapter.js` | Integração Discord |
+| `bot/src/Ticket/repositories/ticketRepository.js`, `ticketConfigRepository.js`, `ticketTranscriptRepository.js`, `ticketJsonStore.js` | Persistência local |
 | `bot/test/tickets.test.js`, `ticketSetup.test.js`, `ticketTranscript.test.js`, `ticketHandler.test.js`, `discordTicketAdapter.test.js` (todos em test), `bot/test/helpers/ticketFixture.js` | Testes e fixture |
 | `docs/tickets.md` | Operação e arquitetura do MVP |
 

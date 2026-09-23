@@ -1,5 +1,5 @@
 const { and, asc, desc, eq, inArray, lt, or, sql } = require('drizzle-orm');
-const { ticketMessages } = require('../database/schema');
+const { ticketMessages } = require('../../database/schema');
 
 const millis = value => value instanceof Date ? value.getTime() : value;
 const map = row => row && ({ ...row, createdAt: millis(row.createdAt), updatedAt: millis(row.updatedAt), editedAt: millis(row.editedAt) });

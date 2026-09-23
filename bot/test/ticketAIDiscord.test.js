@@ -1,8 +1,8 @@
 require('./helpers/isolatedConfig');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { TicketAIMessageHandler } = require('../src/handlers/ticketAIMessageHandler');
-const { handleTicketAIInteraction, startTicketAIConfig } = require('../src/handlers/ticketAIHandler');
+const { TicketAIMessageHandler } = require('../src/Ticket/handlers/ticketAIMessageHandler');
+const { handleTicketAIInteraction, startTicketAIConfig } = require('../src/Ticket/handlers/ticketAIHandler');
 const messageEvent = require('../src/events/messageCreate');
 const { ticketAIFixture, ids } = require('./helpers/ticketAIFixture');
 

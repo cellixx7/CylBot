@@ -1,5 +1,5 @@
 const { and, eq } = require('drizzle-orm');
-const { ticketConfigs, ticketCategories } = require('../database/schema');
+const { ticketConfigs, ticketCategories } = require('../../database/schema');
 
 const dateValue = value => value instanceof Date ? value.getTime() : value;
 

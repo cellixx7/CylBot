@@ -1,7 +1,7 @@
 const { Client, Collection, GatewayIntentBits } = require('discord.js');
 const { getConfig } = require('./config/env');
 const config = getConfig({ requireDiscord: true });
-const commands = require('./commands');
+const commands = require('./commands/index');
 const readyEvent = require('./events/ready');
 const interactionCreateEvent = require('./events/interactionCreate');
 const voiceStateUpdateEvent = require('./events/voiceStateUpdate');

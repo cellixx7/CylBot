@@ -1,6 +1,6 @@
-const { requireSession } = require('../http/auth');
-const { readJson, sendJson } = require('../http/json');
-const { clientError } = require('../http/errors');
+const { requireSession } = require('../../api/http/auth');
+const { readJson, sendJson } = require('../../api/http/json');
+const { clientError } = require('../../api/http/errors');
 const UUID = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';
 
 async function handle(request, response, { services }) {
