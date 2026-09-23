@@ -1,0 +1,2 @@
+ALTER TABLE "tickets" ADD CONSTRAINT "tickets_public_number_positive" CHECK ("tickets"."public_number" > 0);--> statement-breakpoint
+ALTER TABLE "tickets" ADD CONSTRAINT "tickets_reopen_count_positive" CHECK ("tickets"."reopen_count" >= 0);

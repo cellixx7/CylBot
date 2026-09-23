@@ -1,5 +1,5 @@
-const { relations } = require('drizzle-orm');
-const { pgEnum, pgTable, uuid, text, integer, boolean, timestamp, jsonb, index, uniqueIndex } = require('drizzle-orm/pg-core');
+const { relations, sql } = require('drizzle-orm');
+const { check, pgEnum, pgTable, uuid, text, integer, boolean, timestamp, jsonb, index, uniqueIndex } = require('drizzle-orm/pg-core');
 
 const ticketStatus = pgEnum('ticket_status', ['OPEN', 'CLAIMED', 'CLOSED', 'REOPENED']);
 const ticketEventType = pgEnum('ticket_event_type', ['TICKET_CREATED', 'TICKET_CLAIMED', 'TICKET_CLOSED', 'TICKET_REOPENED']);
@@ -87,6 +87,8 @@ const tickets = pgTable('tickets', {
   creatorIndex: index('tickets_creator_user_id_idx').on(table.creatorUserId),
   statusIndex: index('tickets_status_idx').on(table.status),
   guildNumberUnique: uniqueIndex('tickets_guild_public_number_unique').on(table.guildId, table.publicNumber),
+  publicNumberPositive: check('tickets_public_number_positive', sql`${table.publicNumber} > 0`),
+  reopenCountPositive: check('tickets_reopen_count_positive', sql`${table.reopenCount} >= 0`),
 }));
 
 const ticketEvents = pgTable('ticket_events', {

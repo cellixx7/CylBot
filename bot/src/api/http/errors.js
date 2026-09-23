@@ -6,4 +6,4 @@ function clientError(statusCode, message) {
   return error;
 }
 
-module.exports = { clientError, isClientError: error => controlledErrors.has(error) };
+module.exports = { clientError, isClientError: error => controlledErrors.has(error) || error?.isClientError === true };

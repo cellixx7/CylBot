@@ -9,7 +9,7 @@ const codespace = { CODESPACES: 'true', CODESPACE_NAME: 'current-space' };
 const currentOrigin = 'https://current-space-5173.app.github.dev';
 const foreignOrigin = 'https://other-space-5173.app.github.dev';
 const localOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173'];
-const authConfig = source => loadEnv(source, { requireDiscord: false }).auth;
+const authConfig = source => loadEnv({ DATABASE_URL: 'postgresql://test:test@localhost:5432/cylbot_test', ...source }, { requireDiscord: false }).auth;
 const checkOrigin = (config, origin) => requireTrustedOrigin({ headers: { origin } }, config.allowedOrigins);
 
 test('DEV aceita WEB_ORIGIN, localhost, loopback e somente o Codespace atual', () => {

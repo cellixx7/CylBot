@@ -34,8 +34,9 @@ class PostgresTicketConfigRepository {
   }
 
   async save(config) {
-    const now = new Date();
-    const [row] = await this.db.insert(ticketConfigs).values({
+    return this.db.transaction(async tx => {
+      const now = new Date();
+      const [row] = await tx.insert(ticketConfigs).values({
       guildId: config.guildId,
       setupId: config.setupId || null,
       mode: config.mode || null,
@@ -49,7 +50,7 @@ class PostgresTicketConfigRepository {
       createdBy: config.createdBy || null,
       createdAt: config.createdAt ? new Date(config.createdAt) : now,
       updatedAt: now,
-    }).onConflictDoUpdate({
+      }).onConflictDoUpdate({
       target: ticketConfigs.guildId,
       set: {
         setupId: config.setupId || null,
@@ -64,19 +65,20 @@ class PostgresTicketConfigRepository {
         createdBy: config.createdBy || null,
         updatedAt: now,
       },
-    }).returning();
-    await this.db.delete(ticketCategories).where(eq(ticketCategories.guildId, config.guildId));
-    if (config.categories?.length) {
-      await this.db.insert(ticketCategories).values(config.categories.map(category => ({
+      }).returning();
+      await tx.delete(ticketCategories).where(eq(ticketCategories.guildId, config.guildId));
+      if (config.categories?.length) {
+        await tx.insert(ticketCategories).values(config.categories.map(category => ({
         guildId: config.guildId,
         key: category.id,
         name: category.name,
         description: category.description || '',
         emoji: category.emoji || null,
         enabled: category.enabled !== false,
-      })));
-    }
-    return fromRows(row, config.categories || []);
+        })));
+      }
+      return fromRows(row, config.categories || []);
+    });
   }
 }
 

@@ -1,6 +1,6 @@
 # Tickets Discord — MVP
 
-`/ticket` inicia o setup privado da guild. Não há rotas Web de tickets, IA, cobrança, Premium, PostgreSQL ou chat Web nesta etapa.
+`/ticket` inicia o setup privado da guild. Não há rotas Web de tickets, IA, cobrança, Premium ou chat Web nesta etapa. PostgreSQL é a persistência de referência quando `DATABASE_URL` está configurada.
 
 ## Ativação
 
@@ -35,11 +35,11 @@ em-atendimento (privada)
 
 Categorias padrão: Suporte, Denúncia, Financeiro e Outro. Alternativamente, informe até cinco linhas `Nome | Descrição`. Cada categoria possui `id`, `name` e `description`. `supportRoleIds` é um array; a UI seleciona um cargo neste MVP. @everyone e cargos gerenciados não são aceitos como suporte.
 
-A configuração persiste em `bot/data/ticket-config.json`: `guildId`, `setupId`, `mode`, `supportRoleIds`, `categories`, `publicCategoryId`, `activeCategoryId`, `panelChannelId`, `logChannelId`, `panelMessageId`, `createdBy`, `createdAt`, `ready`. Cada recurso criado tem seu ID salvo antes do próximo. Uma publicação interrompida é retomada por `/ticket` → Confirmar usando os dados salvos. Configuração concluída não é editável pelo wizard nesta versão; ele aponta que já existe um sistema configurado. Cancelar encerra a sessão de UI, sem apagar recursos/dados já provisionados.
+Em PostgreSQL, a configuração persiste em `ticket_configs` e `ticket_categories`; sem `DATABASE_URL`, o fallback de desenvolvimento usa `bot/data/ticket-config.json`. Cada recurso criado tem seu ID salvo antes do próximo. Uma publicação interrompida é retomada por `/ticket` → Confirmar usando os dados salvos. Configuração concluída não é editável pelo wizard nesta versão; ele aponta que já existe um sistema configurado. Cancelar encerra a sessão de UI, sem apagar recursos/dados já provisionados.
 
 ## Entidade e armazenamento
 
-Ticket não é canal. `bot/data/tickets.json` guarda um contador por guild e os registros por UUID. Um ticket possui:
+Ticket não é canal. Em PostgreSQL, `tickets` guarda a entidade e `ticket_sequences` gera o número por guild; sem banco, o fallback usa `bot/data/tickets.json`. Um ticket possui:
 
 | Grupo | Campos |
 | --- | --- |
@@ -53,7 +53,7 @@ Estados centralizados: `OPEN`, `CLAIMED`, `CLOSED`, `REOPENED`. `closing` e `reo
 
 Eventos persistidos: `TICKET_CREATED`, `TICKET_CLAIMED`, `TICKET_CLOSED`, `TICKET_REOPENED`, com `type`, `ticketId`, `actorUserId`, `createdAt`, `metadata`. Eventos descrevem transições; transcript descreve mensagens. `archives` mantém cada ciclo encerrado, canal antigo, motivo/resumo, referência da captura e mensagem de log.
 
-Os repositories encapsulam todo acesso a filesystem. Escritas usam arquivo temporário e rename, sem substituir silenciosamente JSON inválido. O modelo pressupõe **um processo do bot**: não há locks entre processos, WAL, fsync ou transação distribuída com Discord. Inclua toda a pasta `bot/data/` nos backups; ela já é ignorada pelo Git. A sequência nunca usa channelId; reservas interrompidas podem deixar lacunas.
+Os repositories encapsulam persistência. PostgreSQL usa transações, advisory lock por guild/usuário, constraint única `(guild_id, public_number)` e atualização condicional para claim. O fallback JSON usa arquivo temporário e rename e pressupõe um processo. A sequência nunca usa `channelId`; reservas interrompidas podem deixar lacunas. Transcripts HTML continuam em `bot/data/ticket-transcripts/`, fora do banco, com hash SHA-256 e limites de tamanho.
 
 ## Abertura e claim
 
@@ -65,7 +65,7 @@ O registro é reservado antes de criar o canal. O canal nega ViewChannel a @ever
 
 Uma abertura interrompida pode ser retomada submetendo novamente a categoria pelo mesmo usuário. O ticket reservado e os dados originais são preservados. Canais são identificados também por topic contendo ticketId/ciclo, permitindo recuperar um canal criado antes de falhar a persistência do ID.
 
-Somente suporte ou administradores assumem. A atribuição e o evento são persistidos antes de atualizar o embed. Um bloqueio por guild impede claims/criações/fechamentos concorrentes; uma segunda ação recebe uma mensagem para aguardar, ou a identificação do atendente já atribuído. O bloqueio é liberado em falhas. Falha puramente visual não desfaz um claim persistido.
+Somente suporte ou administradores assumem. A atribuição e o evento são persistidos antes de atualizar o embed. O bloqueio por guild melhora a UX dentro do processo, mas PostgreSQL é a autoridade: claim usa atualização condicional e criação revalida limites sob advisory lock. Falha puramente visual não desfaz um claim persistido.
 
 ## Encerramento, transcript e remoção
 
@@ -73,6 +73,7 @@ Criador, suporte ou administrador podem fechar; membros comuns alheios não pode
 
 1. Revalidar guild, canal, ator e estado.
 2. Persistir `closing` com ator, motivo, resumo e horário; claim/reabertura ficam bloqueados.
+3. Avançar checkpoints `transcriptGenerated`, `transcriptPersisted`, `logPublished`, `channelLocked` e `completed` após cada operação externa.
 3. Paginar mensagens (100 por chamada) e salvar HTML local versionado.
 4. Persistir referência/hash do transcript.
 5. Publicar log privado com HTML anexado e salvar messageId.
@@ -81,7 +82,7 @@ Criador, suporte ou administrador podem fechar; membros comuns alheios não pode
 
 O fechamento **não apaga o canal**. No log, staff pode selecionar Remover canal e confirmar em uma resposta privada. O service exige ciclo atual encerrado, checkpoints completos, arquivo local íntegro e log final existente com anexo. O adapter bloqueia novamente o canal e recusa remover se há mensagens posteriores à captura. Só então chama a exclusão Discord e limpa channelId no registro.
 
-Falha na geração, escrita, persistência, publicação ou bloqueio preserva o canal. Use Fechar novamente para retomar o checkpoint, inclusive após reiniciar o bot; motivo/resumo originais são mantidos. Se o Discord aceitou uma exclusão e a gravação posterior falhou, repetir Remover reconhece o canal já ausente e termina a atualização local.
+Falha na geração, escrita, persistência, publicação ou bloqueio preserva o canal. Use Fechar novamente para retomar o checkpoint, inclusive após reiniciar o bot; motivo/resumo originais são mantidos. O log usa nonce/ID persistido para edição em retries. Se o Discord aceitou uma exclusão e a gravação posterior falhou, repetir Remover reconhece o canal já ausente e termina a atualização local.
 
 O HTML inclui ticket/guild/categoria/criador/atendente/datas, assunto, descrição, motivo/resumo, mensagens, IDs dos autores, timestamps, texto de embeds e links de anexos Discord. Todo texto é escapado; não há JavaScript, recursos externos embutidos ou objetos internos do SDK. Links só aceitam HTTPS nos hosts CDN Discord previstos. O arquivo inclui CSP restritiva e política de referrer. O serviço não recebe configuração de autenticação nem adiciona tokens/secrets do bot. Conteúdo que os próprios participantes escreverem faz parte do atendimento: orientar usuários a não publicar credenciais.
 
@@ -107,13 +108,14 @@ commands/ticket → handlers/ticketHandler → TicketSetupService / TicketServic
 
 O composition root instancia as dependências compartilhadas. O handler recebe services, interpreta componentes e produz respostas. Os services recebem DTOs com IDs/dados simples; não recebem Interaction. O adapter concentra SDK, REST, overwrites, mensagens e renderização Discord. `lib/ticketComponents.js` reúne builders de interface. Nenhum service conhece fs; nenhum handler conhece JSON. `interactionHandlers.js` registra a feature e `commands/index.js` alimenta runtime/deploy.
 
-Futuramente a Web poderá chamar o mesmo TicketService com identidade autenticada e autorização revalidada no backend. TicketRepository poderá ganhar implementação PostgreSQL com transações, unicidade e locks; a interface JSON atual não promete concorrência distribuída. O adapter Discord permanecerá uma representação do ticket.
+Futuramente a Web poderá chamar o mesmo TicketService com identidade autenticada e autorização revalidada no backend. O repository PostgreSQL atual é a referência para transações, unicidade e locks; o JSON permanece apenas fallback de desenvolvimento. O adapter Discord permanecerá uma representação do ticket.
 
 Branding está concentrado no payload do painel. Uma política de entitlements poderá entrar no setup com `entitlements.tickets.customBranding`, `.ai` e `.advancedConfig`, sem espalhar `if (premium)`. Futuramente TicketAIService, AIPolicyService e AIActionService devem ser colaboradores separados, respeitando autorização e auditoria. Nenhum deles é implementado aqui.
 
 ## Limitações operacionais
 
-- Um processo, JSON local, bloqueio conservador por guild; um fechamento longo faz outras ações da guild aguardarem nova tentativa.
+- PostgreSQL é obrigatório em produção; sem `DATABASE_URL`, o startup falha. Em desenvolvimento, o fallback JSON e o bloqueio conservador por guild continuam disponíveis.
+- SIGINT/SIGTERM encerram HTTP, Discord e pool PostgreSQL; retries de fechamento/reabertura usam checkpoints persistidos.
 - Sem edição de configuração concluída, adicionar participantes, prioridades ou regras por categoria.
 - Sem limpeza automática/retention de tickets, arquivos HTML antigos ou capturas sem referência; administrar backups e acesso ao disco/logs.
 - Não há atomicidade com Discord. Se uma chamada remota tiver sucesso e a resposta/gravação local falhar, podem restar recursos/mensagens duplicados. Nonce de envio e topic reduzem duplicações, mas não garantem entrega única após longos intervalos. Setup nunca apaga recursos como rollback.

@@ -1,5 +1,6 @@
-const { and, desc, eq, inArray, isNull, sql } = require('drizzle-orm');
+const { and, desc, eq, inArray, isNotNull, isNull, or, sql } = require('drizzle-orm');
 const { ticketEvents, ticketSequences, tickets } = require('../database/schema');
+const { TicketLimitError } = require('../domain/ticketErrors');
 
 const toDate = value => value == null ? null : value instanceof Date ? value : new Date(value);
 const millis = value => value instanceof Date ? value.getTime() : value;
@@ -101,7 +102,48 @@ class PostgresTicketRepository {
     return Promise.all(rows.map(async row => mapTicket(row, await this.readEvents(row.id))));
   }
 
+  async findByUser(guildId, userId) {
+    const rows = await this.db.select().from(tickets).where(and(eq(tickets.guildId, guildId), eq(tickets.creatorUserId, userId))).orderBy(desc(tickets.createdAt));
+    return Promise.all(rows.map(async row => mapTicket(row, await this.readEvents(row.id))));
+  }
+
+  async findPending(guildId, userId, categoryId) {
+    const [row] = await this.db.select().from(tickets).where(and(
+      eq(tickets.guildId, guildId), eq(tickets.creatorUserId, userId), eq(tickets.categoryId, categoryId),
+      eq(tickets.status, 'OPEN'), eq(tickets.initialized, false),
+    )).limit(1);
+    return row ? mapTicket(row, await this.readEvents(row.id)) : null;
+  }
+
+  async findActiveByUser(guildId, userId, excludeId) {
+    const active = or(inArray(tickets.status, ['OPEN', 'CLAIMED', 'REOPENED']), isNotNull(tickets.reopening));
+    const conditions = [eq(tickets.guildId, guildId), eq(tickets.creatorUserId, userId), active];
+    if (excludeId) conditions.push(sql`${tickets.id} <> ${excludeId}`);
+    const rows = await this.db.select().from(tickets).where(and(...conditions)).orderBy(desc(tickets.createdAt));
+    return Promise.all(rows.map(async row => mapTicket(row, await this.readEvents(row.id))));
+  }
+
+  async findByChannelId(guildId, channelId) {
+    const [row] = await this.db.select().from(tickets).where(and(eq(tickets.guildId, guildId), eq(tickets.channelId, channelId))).limit(1);
+    return row ? mapTicket(row, await this.readEvents(row.id)) : null;
+  }
+
   async createInTransaction(tx, input, event) {
+    const active = or(inArray(tickets.status, ['OPEN', 'CLAIMED', 'REOPENED']), isNotNull(tickets.reopening));
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${input.guildId}:${input.creatorUserId}`}))`);
+    const [sameCategory] = await tx.select({ count: sql`count(*)::int` }).from(tickets).where(and(
+      eq(tickets.guildId, input.guildId), eq(tickets.creatorUserId, input.creatorUserId), eq(tickets.categoryId, input.categoryId), active,
+    ));
+    if (Number(sameCategory.count) > 0) throw new TicketLimitError('Você já possui um ticket ativo nesta categoria.');
+    const [activeTotal] = await tx.select({ count: sql`count(*)::int` }).from(tickets).where(and(
+      eq(tickets.guildId, input.guildId), eq(tickets.creatorUserId, input.creatorUserId), active,
+    ));
+    if (Number(activeTotal.count) >= 3) throw new TicketLimitError('O limite é de três tickets ativos por usuário.');
+    const [recent] = await tx.select({ count: sql`count(*)::int` }).from(tickets).where(and(
+      eq(tickets.guildId, input.guildId), eq(tickets.creatorUserId, input.creatorUserId),
+      sql`(${tickets.createdAt} > now() - interval '60 seconds' OR ${tickets.reopenedAt} > now() - interval '60 seconds')`,
+    ));
+    if (Number(recent.count) > 0) throw new TicketLimitError('Aguarde 60 segundos entre aberturas de tickets.');
     const [sequence] = await tx.insert(ticketSequences).values({ guildId: input.guildId, nextNumber: 1 })
       .onConflictDoUpdate({ target: ticketSequences.guildId, set: { nextNumber: sql`${ticketSequences.nextNumber} + 1` } }).returning({ number: ticketSequences.nextNumber });
     const ticket = { ...input, sequence: sequence.number, id: input.id };
@@ -133,6 +175,14 @@ class PostgresTicketRepository {
       await tx.insert(ticketEvents).values(eventRow);
       return mapTicket(row, [...(ticket.events || []), eventRow]);
     });
+  }
+
+  async beginClose(ticket, closing) {
+    const [row] = await this.db.update(tickets).set({ closing })
+      .where(and(eq(tickets.guildId, ticket.guildId), eq(tickets.id, ticket.id), isNull(tickets.closing), inArray(tickets.status, ['OPEN', 'CLAIMED', 'REOPENED'])))
+      .returning();
+    if (!row) return null;
+    return mapTicket(row, ticket.events || []);
   }
 
   async save(ticket) {

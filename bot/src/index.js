@@ -18,12 +18,34 @@ const client = new Client({
 client.commands = new Collection(
   commands.map((command) => [command.data.name, command]),
 );
+let apiServer;
+let shuttingDown = false;
+
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info('app.shutdown_started', { signal });
+  try {
+    if (typeof apiServer?.closeIdleConnections === 'function') apiServer.closeIdleConnections();
+    if (typeof apiServer?.closeAllConnections === 'function') apiServer.closeAllConnections();
+    if (apiServer?.listening) await new Promise(resolve => apiServer.close(resolve));
+    client.destroy();
+    if (client.services?.database) await client.services.database.close();
+    logger.info('app.shutdown_completed', { signal });
+  } catch (error) {
+    logger.error('app.shutdown_failed', { signal, error: { name: error.name, message: 'cleanup failed' } });
+  }
+}
+
+process.once('SIGINT', () => { shutdown('SIGINT'); });
+process.once('SIGTERM', () => { shutdown('SIGTERM'); });
+
 async function start() {
   client.services = createServices(client, config);
   if (client.services.database) await client.services.database.ping();
   client.presenceManager = client.services.presence;
   client.callSenseManager = client.services.callSense;
-  startApiServer(client, client.services, config.api);
+  apiServer = startApiServer(client, client.services, config.api);
 
   client.once(readyEvent.name, () => readyEvent.execute(client));
   client.on(interactionCreateEvent.name, (interaction) =>
@@ -38,5 +60,6 @@ async function start() {
 
 start().catch(error => {
   logger.error('app.start_failed', { error });
+  shutdown('startup_failure');
   process.exitCode = 1;
 });

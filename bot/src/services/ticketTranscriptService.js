@@ -47,7 +47,7 @@ class TicketTranscriptService {
     ].join('\n'))}</pre>${rows}<footer>Captura das mensagens disponíveis neste canal. Mensagens apagadas não são recuperáveis. Links de anexos podem expirar.</footer></html>`;
     if (Buffer.byteLength(html) > this.maxBytes) throw clientError(400, 'Transcrição excede o limite de arquivo; o canal foi preservado.');
     const key = this.repository.save(ticket, html);
-    logger.info('ticket.transcript_generated', { guildId: ticket.guildId, ticketId: ticket.id, channelId: ticket.channelId, messageCount: messages.length });
+    logger.info('ticket.transcript.generated', { guildId: ticket.guildId, ticketId: ticket.id, channelId: ticket.channelId, messageCount: messages.length });
     return { key, sha256: createHash('sha256').update(html).digest('hex'), lastMessageId: messages.at(-1)?.id || null, messageCount: messages.length };
   }
   read(reference) {

@@ -72,6 +72,9 @@ function loadEnv(source, { requireDiscord = true, requireSpotifyAuth = false } =
     throw new Error('LOG_LEVEL deve ser debug, info, warn ou error.');
   }
   const databaseUrl = optional(source, 'DATABASE_URL');
+  if (environment === 'production' && !databaseUrl) {
+    throw new Error('DATABASE_URL is required in production.');
+  }
   const config = {
     auth: {
       enabled: Boolean(oauthSecret), clientId: oauthClientId, clientSecret: oauthSecret,

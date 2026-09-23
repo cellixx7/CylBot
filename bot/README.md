@@ -53,7 +53,7 @@ Para iniciar novamente, execute `npm start` dentro de `bot/`. Repita `npm run co
 
 ## PostgreSQL
 
-Com `DATABASE_URL` ausente, o fallback JSON mantém o desenvolvimento e os testes locais compatíveis. Com `DATABASE_URL` definida, o composition root cria um único pool `pg`, usa Drizzle ORM e exige uma conexão válida no startup principal.
+Com `DATABASE_URL` ausente, o fallback JSON mantém o desenvolvimento e os testes locais compatíveis. Em `NODE_ENV=production`, a configuração falha explicitamente sem `DATABASE_URL`. Com a URL definida, o composition root cria um único pool `pg`, verifica readiness antes de iniciar Discord/API e encerra o pool em `SIGINT`/`SIGTERM`.
 
 Na raiz do projeto, o ambiente local é:
 

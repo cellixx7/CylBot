@@ -22,6 +22,7 @@ const { createDatabase } = require('../database/client');
 const { PostgresUserRepository } = require('../repositories/postgresUserRepository');
 const { PostgresTicketRepository } = require('../repositories/postgresTicketRepository');
 const { PostgresTicketConfigRepository } = require('../repositories/postgresTicketConfigRepository');
+const { TicketReconciliationService } = require('../services/ticketReconciliationService');
 
 function createServices(client, config) {
   const database = config.database?.url ? createDatabase(config.database.url) : null;
@@ -34,6 +35,7 @@ function createServices(client, config) {
   const ticketAdapter = new DiscordTicketAdapter(client, config.tickets);
   const ticketPermissions = new TicketPermissionService(ticketAdapter);
   const ticketTranscripts = new TicketTranscriptService({ adapter: ticketAdapter, repository: new TicketTranscriptRepository() });
+  const ticketReconciliation = new TicketReconciliationService({ adapter: ticketAdapter, repository: ticketRepository });
 
   return {
     openRouter,
@@ -49,7 +51,8 @@ function createServices(client, config) {
     callSense: new CallSenseManager(client),
     ticketSetup: new TicketSetupService({ repository: ticketConfigs, permissions: ticketPermissions, adapter: ticketAdapter }),
     tickets: new TicketService({ repository: ticketRepository, configs: ticketConfigs,
-      permissions: ticketPermissions, adapter: ticketAdapter, transcripts: ticketTranscripts }),
+      permissions: ticketPermissions, adapter: ticketAdapter, transcripts: ticketTranscripts, reconciliation: ticketReconciliation }),
+    ticketReconciliation,
   };
 }
 

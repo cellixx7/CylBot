@@ -2,6 +2,7 @@ const { randomUUID } = require('node:crypto');
 const { clientError } = require('../api/http/errors');
 const { logger } = require('../lib/logger');
 const { DEFAULT_CATEGORIES } = require('./ticketConstants');
+const { TICKET_PERMISSION } = require('./ticketPermissionService');
 
 class TicketSetupService {
   constructor({ repository, permissions, adapter, now = Date.now }) {
@@ -10,7 +11,7 @@ class TicketSetupService {
     this.busy = new Set();
   }
   async begin({ guildId, userId }) {
-    await this.permissions.requireAdmin(guildId, userId);
+    await this.permissions.requireAction(TICKET_PERMISSION.CONFIGURE, guildId, userId);
     const existing = await this.repository.get(guildId);
     if (existing?.ready) throw clientError(409, 'Tickets já configurados neste servidor. O painel existente continua ativo.');
     for (const [id, session] of this.sessions) if (session.expiresAt <= this.now() || (session.guildId === guildId && session.userId === userId)) this.sessions.delete(id);
@@ -22,7 +23,7 @@ class TicketSetupService {
     return structuredClone(session);
   }
   async session({ guildId, userId, sessionId }, internal = false) {
-    await this.permissions.requireAdmin(guildId, userId);
+    await this.permissions.requireAction(TICKET_PERMISSION.CONFIGURE, guildId, userId);
     const session = this.sessions.get(sessionId);
     if (!session || session.guildId !== guildId || session.userId !== userId || session.expiresAt <= this.now()) throw clientError(400, 'Configuração expirada ou de outro usuário. Execute /ticket novamente.');
     if (!internal && this.busy.has(guildId)) throw clientError(409, 'A configuração está sendo publicada. Aguarde.');
@@ -77,7 +78,7 @@ class TicketSetupService {
       await this.repository.save(config);
       config = await this.adapter.ensureStructure(config, updated => this.repository.save(updated));
       // Revalida a autoridade após as operações assíncronas de provisionamento.
-      await this.permissions.requireAdmin(input.guildId, input.userId);
+      await this.permissions.requireAction(TICKET_PERMISSION.CONFIGURE, input.guildId, input.userId);
       await this.adapter.validateStructure(config);
       if (!config.panelMessageId) {
         config.panelMessageId = await this.adapter.publishPanel(config);

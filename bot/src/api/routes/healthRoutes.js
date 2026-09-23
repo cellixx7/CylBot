@@ -1,7 +1,7 @@
 const { sendJson } = require('../http/json');
 
 async function handle(request, response, { services } = {}) {
-  if (request.method !== 'GET' || request.url !== '/api/health') return false;
+  if (request.method !== 'GET' || new URL(request.url, 'http://localhost').pathname !== '/api/health') return false;
   if (!services?.database) {
     sendJson(response, 200, { ok: true });
     return true;
