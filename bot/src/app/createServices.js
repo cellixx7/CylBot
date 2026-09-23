@@ -23,6 +23,12 @@ const { PostgresUserRepository } = require('../repositories/postgresUserReposito
 const { PostgresTicketRepository } = require('../repositories/postgresTicketRepository');
 const { PostgresTicketConfigRepository } = require('../repositories/postgresTicketConfigRepository');
 const { TicketReconciliationService } = require('../services/ticketReconciliationService');
+const { PostgresTicketAIRepository } = require('../repositories/postgresTicketAIRepository');
+const { TicketAIService } = require('../services/ticketAIService');
+const { TicketAIContextService } = require('../services/ticketAIContextService');
+const { TicketAIPolicyService } = require('../services/ticketAIPolicyService');
+const { TicketAIActionService } = require('../services/ticketAIActionService');
+const { TicketAIMessageHandler } = require('../handlers/ticketAIMessageHandler');
 
 function createServices(client, config) {
   const database = config.database?.url ? createDatabase(config.database.url) : null;
@@ -36,6 +42,14 @@ function createServices(client, config) {
   const ticketPermissions = new TicketPermissionService(ticketAdapter);
   const ticketTranscripts = new TicketTranscriptService({ adapter: ticketAdapter, repository: new TicketTranscriptRepository() });
   const ticketReconciliation = new TicketReconciliationService({ adapter: ticketAdapter, repository: ticketRepository });
+  const tickets = new TicketService({ repository: ticketRepository, configs: ticketConfigs,
+    permissions: ticketPermissions, adapter: ticketAdapter, transcripts: ticketTranscripts, reconciliation: ticketReconciliation });
+  const aiRepository = database ? new PostgresTicketAIRepository(database) : null;
+  const aiSettings = config.ticketAI || { enabled: false, guildIds: [], model: config.openRouter.model, timeoutMs: 20000 };
+  const aiPolicy = new TicketAIPolicyService(aiSettings);
+  const ticketAI = new TicketAIService({ repository: aiRepository, tickets, provider: openRouter, settings: aiSettings,
+    context: new TicketAIContextService(ticketAdapter), policy: aiPolicy,
+    actions: new TicketAIActionService({ repository: aiRepository, adapter: ticketAdapter, policy: aiPolicy, permissions: ticketPermissions }) });
 
   return {
     openRouter,
@@ -50,8 +64,9 @@ function createServices(client, config) {
     presence: new PresenceManager(client),
     callSense: new CallSenseManager(client),
     ticketSetup: new TicketSetupService({ repository: ticketConfigs, permissions: ticketPermissions, adapter: ticketAdapter }),
-    tickets: new TicketService({ repository: ticketRepository, configs: ticketConfigs,
-      permissions: ticketPermissions, adapter: ticketAdapter, transcripts: ticketTranscripts, reconciliation: ticketReconciliation }),
+    tickets,
+    ticketAI,
+    ticketAIMessages: new TicketAIMessageHandler(ticketAI),
     ticketReconciliation,
   };
 }

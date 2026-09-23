@@ -11,6 +11,21 @@ class OpenRouterService {
     this.maxTokens = config.maxTokens;
   }
 
+  getClient() {
+    if (!this.apiKey) throw new Error('OPENROUTER_API_KEY não foi configurada no .env.');
+    this.client ||= new OpenAI({ apiKey: this.apiKey, baseURL: OPENROUTER_BASE_URL });
+    return this.client;
+  }
+
+  async generateTicket({ messages, schema, model, timeoutMs }) {
+    const response = await this.getClient().chat.completions.create({ model, messages,
+      max_tokens: 700, response_format: { type: 'json_schema', json_schema: { name: 'ticket_assistant', strict: true, schema } },
+    }, { timeout: timeoutMs, signal: AbortSignal.timeout(timeoutMs), maxRetries: 0 });
+    const tokens = value => Number.isSafeInteger(value) && value >= 0 && value < 10000000 ? value : null;
+    return { raw: response.choices?.[0]?.message?.content, model,
+      inputTokens: tokens(response.usage?.prompt_tokens), outputTokens: tokens(response.usage?.completion_tokens) };
+  }
+
   async generate({
     outputType,
     idea,
@@ -23,10 +38,7 @@ class OpenRouterService {
       throw new Error('OPENROUTER_API_KEY não foi configurada no .env.');
     }
 
-    const client = new OpenAI({
-      apiKey: this.apiKey,
-      baseURL: OPENROUTER_BASE_URL,
-    });
+    const client = this.getClient();
     let response;
 
     try {

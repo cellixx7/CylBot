@@ -53,7 +53,7 @@ test('health, CORS, OPTIONS e fallback mantêm os contratos', async () => {
   assert.deepEqual(health.body, { ok: true });
   assert.equal(health.headers['Content-Type'], 'application/json; charset=utf-8');
   assert.equal(health.headers['Access-Control-Allow-Origin'], 'http://localhost:5173');
-  assert.equal(health.headers['Access-Control-Allow-Methods'], 'GET,POST,OPTIONS');
+  assert.equal(health.headers['Access-Control-Allow-Methods'], 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
   assert.equal(health.headers['Access-Control-Allow-Headers'], 'Content-Type');
   const missing = await request({}, 'GET', '/api/missing');
   assert.equal(missing.status, 404);

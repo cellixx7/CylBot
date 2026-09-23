@@ -43,7 +43,7 @@ function initialPayload(ticket) {
       { name: 'Responsável', value: ticket.assignedUserId ? `${ticket.assignedName} (${ticket.assignedUserId})` : 'Nenhum' },
     );
   if (ticket.reopenCount) embed.addFields({ name: 'Histórico anterior', value: `Encerrado em ${new Date(ticket.closedAt).toISOString()}.\nReaberto por ${ticket.reopenedByName} (${ticket.reopenedBy}).\nTranscrição anterior anexada.` });
-  return { embeds: [embed], components: ticket.status === TICKET_STATUS.CLOSED ? [] : [row(button(`claim:${ticket.id}`, 'Assumir', ButtonStyle.Primary), button(`close:${ticket.id}`, 'Fechar', ButtonStyle.Danger))], allowedMentions: { parse: [] } };
+  return { embeds: [embed], components: ticket.status === TICKET_STATUS.CLOSED ? [] : [row(button(`claim:${ticket.id}`, 'Assumir', ButtonStyle.Primary), button(`close:${ticket.id}`, 'Fechar', ButtonStyle.Danger), button(`ai:menu:${ticket.id}`, 'Assistente IA'))], allowedMentions: { parse: [] } };
 }
 function openedPayload(ticket) {
   return { embeds: [new EmbedBuilder().setTitle(`Ticket #${ticketNumber(ticket)} aberto`).setColor(0x176b57)

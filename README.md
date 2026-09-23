@@ -30,10 +30,12 @@ Alguns endpoints internos:
 - `POST /api/discord/send`: publicar no canal informado;
 - `GET /api/health`: verificar disponibilidade da API;
 - `GET /api/dashboard/guilds`: listar servidores e acesso, exigindo sessão e token OAuth válidos.
+- `GET`/`PUT /api/tickets/ai/config/:guildId`: ler ou salvar a configuração administrativa da IA de tickets;
+- `POST /api/tickets/:ticketId/ai/analyze`: gerar sugestão estruturada para staff, sem executar ação destrutiva.
 
 Segredos ficam somente em `bot/.env`. Dashboard, IA, envio e anúncios exigem sessão. Anúncios e publicações exigem também participação e gerenciamento da guild, além das permissões do bot. Operações POST validam Origin e possuem limites por usuário. Consulte [segurança das APIs](bot/README.md#segurança-das-apis-web) para limites e cuidados ao expor o Vite/Codespaces.
 
-Consulte [bot/README.md](bot/README.md) para comandos, Spotify, OpenRouter e persistência dos anúncios.
+Consulte [bot/README.md](bot/README.md) para comandos, Spotify, OpenRouter e persistência dos anúncios. A arquitetura, policy, privacidade e o roteiro manual da IA de tickets estão em [docs/ticket-ai.md](docs/ticket-ai.md).
 
 ## Convenção de scripts
 

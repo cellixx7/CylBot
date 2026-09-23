@@ -185,5 +185,35 @@ class DiscordTicketAdapter {
       attachments: [...message.attachments.values()].map(attachment => ({ name: attachment.name, size: attachment.size, url: attachment.url })),
     }));
   }
+
+  async aiChannel(ticket) {
+    const channel = await this.channel(ticket.guildId, ticket.channelId);
+    if (channel.topic !== `cylbot-ticket:${ticket.id}:${ticket.reopenCount}`) throw clientError(409, 'Canal não corresponde ao ticket.');
+    return channel;
+  }
+  async aiMessages(ticket, limit) {
+    if (!this.config.messageContentEnabled) throw clientError(503, 'Message Content desabilitado.');
+    const channel = await this.aiChannel(ticket);
+    const messages = await channel.messages.fetch({ limit, cache: false });
+    return [...messages.values()].map(message => ({
+      source: message.author.id === this.client.user.id ? 'AI' : message.author.bot ? 'SYSTEM'
+        : message.author.id === ticket.creatorUserId ? 'USER' : 'STAFF',
+      content: typeof message.content === 'string' ? message.content : '',
+    }));
+  }
+  async aiReply(ticket, config, text, runId) {
+    const channel = await this.aiChannel(ticket);
+    return this.send(channel, { content: `**CylBot · Assistente IA**\n${text}` }, `ticket-ai:${runId}`);
+  }
+  async aiSuggestion(ticket, proposal, runId) {
+    const channel = await this.validatePrivateLog(ticket.guildId, ticket.logChannelId, ticket.supportRoleIds);
+    return this.send(channel, { content: `**Sugestão de IA · Ticket #${ticketNumber(ticket)} · ${proposal.action}**\n${proposal.message}\n\nRevisão humana necessária; nenhuma alteração administrativa foi executada.` }, `ticket-ai-suggestion:${runId}`);
+  }
+  async aiHandoff(ticket, runId) {
+    const channel = await this.aiChannel(ticket);
+    await this.send(channel, { content: '**CylBot · Atendimento humano solicitado.** A IA foi pausada; a equipe poderá assumir normalmente.' }, `ticket-ai-human:${runId}`);
+    const log = await this.validatePrivateLog(ticket.guildId, ticket.logChannelId, ticket.supportRoleIds);
+    await this.send(log, { content: `Atendimento humano solicitado no ticket #${ticketNumber(ticket)}: <#${ticket.channelId}>. IA pausada.` }, `ticket-ai-human-log:${runId}`);
+  }
 }
 module.exports = { DiscordTicketAdapter, BOT_PERMISSIONS };

@@ -110,7 +110,7 @@ O composition root instancia as dependências compartilhadas. O handler recebe s
 
 Futuramente a Web poderá chamar o mesmo TicketService com identidade autenticada e autorização revalidada no backend. O repository PostgreSQL atual é a referência para transações, unicidade e locks; o JSON permanece apenas fallback de desenvolvimento. O adapter Discord permanecerá uma representação do ticket.
 
-Branding está concentrado no payload do painel. Uma política de entitlements poderá entrar no setup com `entitlements.tickets.customBranding`, `.ai` e `.advancedConfig`, sem espalhar `if (premium)`. Futuramente TicketAIService, AIPolicyService e AIActionService devem ser colaboradores separados, respeitando autorização e auditoria. Nenhum deles é implementado aqui.
+Branding continua concentrado no payload do painel. O acesso experimental à IA fica centralizado na policy por configuração do ambiente, sem billing ou condicionais de Premium espalhadas. `TicketAIService`, context, policy e action services já atendem Discord/API com autorização e auditoria persistentes; capacidades comerciais futuras podem substituir somente essa decisão de acesso. Veja [IA de tickets](ticket-ai.md).
 
 ## Limitações operacionais
 
@@ -121,6 +121,7 @@ Branding está concentrado no payload do painel. Uma política de entitlements p
 - Não há atomicidade com Discord. Se uma chamada remota tiver sucesso e a resposta/gravação local falhar, podem restar recursos/mensagens duplicados. Nonce de envio e topic reduzem duplicações, mas não garantem entrega única após longos intervalos. Setup nunca apaga recursos como rollback.
 - Canais/logs/roles removidos ou permissões alteradas manualmente podem exigir reparo administrativo; erros preservam dados e canais em vez de conceder acesso mais amplo.
 - Os testes usam Discord simulado. Permissões, habilitação do intent e experiência real devem ser conferidas numa guild de desenvolvimento antes de uso operacional.
+- A IA opcional depende do histórico ainda disponível no Discord; mensagens multicanal persistentes ficam para a Etapa 4. Configuração, pausa, escalation e auditoria são persistentes. Consulte [IA de tickets](ticket-ai.md) para policy, routes, privacidade e roteiro manual.
 
 ## Validação
 

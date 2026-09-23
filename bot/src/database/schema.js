@@ -108,4 +108,52 @@ const ticketSequences = pgTable('ticket_sequences', {
 const ticketRelations = relations(tickets, ({ many }) => ({ events: many(ticketEvents) }));
 const eventRelations = relations(ticketEvents, ({ one }) => ({ ticket: one(tickets, { fields: [ticketEvents.ticketId], references: [tickets.id] }) }));
 
-module.exports = { users, ticketConfigs, ticketCategories, tickets, ticketEvents, ticketSequences, ticketStatus, ticketEventType, ticketRelations, eventRelations };
+const ticketAIConfigs = pgTable('ticket_ai_configs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  guildId: text('guild_id').notNull().unique(),
+  enabled: boolean('enabled').notNull().default(false),
+  autonomyLevel: integer('autonomy_level').notNull().default(0),
+  assistantName: text('assistant_name').notNull().default('CylBot'),
+  tone: text('tone').notNull().default('cordial'),
+  language: text('language').notNull().default('pt-BR'),
+  serverContext: text('server_context').notNull().default(''),
+  supportInstructions: text('support_instructions').notNull().default(''),
+  capabilities: text('capabilities').array().notNull().default(['reply', 'ask_clarifying_question', 'summarize', 'request_human', 'suggest_close']),
+  humanEscalationEnabled: boolean('human_escalation_enabled').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, table => ({ levelCheck: check('ticket_ai_autonomy_level_check', sql`${table.autonomyLevel} between 0 and 3`) }));
+
+const ticketAITicketStates = pgTable('ticket_ai_ticket_states', {
+  ticketId: uuid('ticket_id').primaryKey().references(() => tickets.id, { onDelete: 'cascade' }),
+  guildId: text('guild_id').notNull(),
+  paused: boolean('paused').notNull().default(false),
+  escalatedAt: timestamp('escalated_at', { withTimezone: true }),
+  lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+  lastMessageId: text('last_message_id'),
+  leaseId: uuid('lease_id'),
+  leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, table => ({ guildIndex: index('ticket_ai_states_guild_idx').on(table.guildId) }));
+
+const ticketAIRuns = pgTable('ticket_ai_runs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  ticketId: uuid('ticket_id').notNull().references(() => tickets.id, { onDelete: 'cascade' }),
+  guildId: text('guild_id').notNull(),
+  trigger: text('trigger').notNull(),
+  model: text('model'),
+  actionProposed: text('action_proposed'),
+  actionExecuted: text('action_executed'),
+  confidence: integer('confidence_percent'),
+  requiredHuman: boolean('required_human').notNull().default(false),
+  status: text('status').notNull(),
+  reason: text('reason'),
+  inputTokens: integer('input_tokens'),
+  outputTokens: integer('output_tokens'),
+  latencyMs: integer('latency_ms'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, table => ({ ticketIndex: index('ticket_ai_runs_ticket_idx').on(table.ticketId, table.createdAt),
+  guildIndex: index('ticket_ai_runs_guild_idx').on(table.guildId, table.createdAt) }));
+
+module.exports = { users, ticketConfigs, ticketCategories, tickets, ticketEvents, ticketSequences, ticketStatus, ticketEventType, ticketRelations, eventRelations,
+  ticketAIConfigs, ticketAITicketStates, ticketAIRuns };

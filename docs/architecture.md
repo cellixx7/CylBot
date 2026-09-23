@@ -63,7 +63,21 @@ O MVP acrescenta `ticketHandler` ao mesmo registry. `createServices` monta Ticke
 
 Ticket é uma entidade persistida independente do channelId, com UUID, sequência por guild, estados OPEN/CLAIMED/CLOSED/REOPENED, eventos e arquivos de ciclos encerrados. PostgreSQL é a referência quando `DATABASE_URL` está configurada; o fallback JSON é somente para desenvolvimento. A state machine e os checkpoints de close/reopen ficam no core, enquanto um bloqueio em memória por guild apenas melhora a UX. Canais só podem ser removidos por staff após conferência de estado, transcript íntegro e log final. A reabertura consulta o repository e cria outro canal mantendo a identidade. Contratos, permissões, falhas e limites estão em [docs/tickets.md](tickets.md).
 
-Uma futura API Web poderá usar os mesmos services com DTOs e identidade autenticada. Os repositories PostgreSQL atuais substituem os repositories JSON quando `DATABASE_URL` está definida, acrescentando transações e contador por guild sem usar `channelId` como identidade. Entitlements de branding/IA/configuração e TicketAIService/AIPolicyService/AIActionService são extensões documentadas, ainda não implementadas.
+A API Web de tickets e o listener Discord usam o mesmo `TicketAIService`, sem duplicar prompt, policy ou ações. O composition root compartilha a única instância de `OpenRouterService` entre Texta_AI, anúncios e tickets. `TicketAIContextService` limita e separa contexto não confiável; `TicketAIPolicyService` decide autorização sem delegá-la ao modelo; `TicketAIActionService` recebe somente adapters de resposta/sugestão/handoff e não possui acesso a close/delete. Configuração, pausa, escalation, lease e auditoria usam repositories PostgreSQL. Veja [IA de tickets](ticket-ai.md).
+
+```text
+messageCreate / ticketAIHandler / ticketAIRoutes
+                    ↓
+             TicketAIService
+       ┌────────────┼────────────┐
+  ContextService  OpenRouter  PolicyService
+                    ↓
+              AIActionService
+                    ↓
+       DiscordTicketAdapter + PostgreSQL
+```
+
+O listener mantém debounce curto em memória, mas esse Map não é autoridade. Antes de publicar, o action service abre uma transação, bloqueia o ticket/estado de IA e revalida estado do Core, configuração, lease, pausa e identidade. Operações concorrentes de claim/close no repository PostgreSQL aguardam o lock e prevalecem nas gerações seguintes. O modelo nunca recebe ferramentas.
 
 ## Origens por ambiente
 

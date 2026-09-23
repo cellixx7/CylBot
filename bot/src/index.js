@@ -5,6 +5,7 @@ const commands = require('./commands');
 const readyEvent = require('./events/ready');
 const interactionCreateEvent = require('./events/interactionCreate');
 const voiceStateUpdateEvent = require('./events/voiceStateUpdate');
+const messageCreateEvent = require('./events/messageCreate');
 const { createServices } = require('./app/createServices');
 const { startApiServer } = require('./api/server');
 const { logger } = require('./lib/logger');
@@ -30,6 +31,7 @@ async function shutdown(signal) {
     if (typeof apiServer?.closeAllConnections === 'function') apiServer.closeAllConnections();
     if (apiServer?.listening) await new Promise(resolve => apiServer.close(resolve));
     client.destroy();
+    client.services?.ticketAIMessages?.stop();
     if (client.services?.database) await client.services.database.close();
     logger.info('app.shutdown_completed', { signal });
   } catch (error) {
@@ -54,6 +56,7 @@ async function start() {
   client.on(voiceStateUpdateEvent.name, (oldState, newState) =>
     voiceStateUpdateEvent.execute(oldState, newState, client),
   );
+  client.on(messageCreateEvent.name, message => messageCreateEvent.execute(message, client));
 
   await client.login(config.discord.token);
 }

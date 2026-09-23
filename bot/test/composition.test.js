@@ -15,6 +15,10 @@ test('composition root compartilha providers, services e repository sem iniciar 
   const bot = client();
   const services = createServices(bot, config());
   assert.equal(services.textaAI.ai, services.openRouter);
+  assert.equal(services.ticketAI.provider, services.openRouter);
+  assert.equal(services.ticketAI.tickets, services.tickets);
+  assert.equal(services.ticketAI.context.adapter, services.tickets.adapter);
+  assert.equal(services.ticketAI.repository, null);
   assert.equal(services.announcements.ai, services.openRouter);
   assert.equal(services.auth.provider, services.dashboard.provider);
   assert.equal(services.dashboard.client, bot);

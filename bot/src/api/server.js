@@ -9,6 +9,7 @@ const { RateLimiter } = require('./http/rateLimit');
 const { setSecurityHeaders } = require('./http/securityHeaders');
 const { isClientError } = require('./http/errors');
 const routes = [
+  require('./routes/ticketAIRoutes'),
   require('./routes/authRoutes'),
   require('./routes/dashboardRoutes'),
   require('./routes/healthRoutes'),
@@ -34,6 +35,10 @@ function createRequestHandler(context) {
 
     try {
       const path = new URL(request.url, 'http://localhost').pathname;
+      if (path.startsWith('/api/tickets/')) {
+        const session = requireSession(request, context.services);
+        limiter.consume(`ticket-api:${session.user.id}`, 30);
+      }
       const sensitivePost = request.method === 'POST' &&
         (path === '/api/ai/generate' || path === '/api/discord/send' || path.startsWith('/api/announcements/'));
       if (sensitivePost) {

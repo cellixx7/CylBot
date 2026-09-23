@@ -29,6 +29,13 @@
       "when": 1790178088336,
       "tag": "0003_massive_black_tarantula",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790184249496,
+      "tag": "0004_ticket_ai_foundation",
+      "breakpoints": true
     }
   ]
 }

@@ -24,6 +24,11 @@ Os arquivos continuam organizados por domínio. Alguns combinam regras de negóc
 | `ticketTranscript.test.js` | Transcript + filesystem | Paginação, HTML seguro, links, tamanho máximo, versões imutáveis, integridade, JSON inválido e falhas de escrita |
 | `ticketHandler.test.js` | Contrato Discord | Registry, comando/permissões, componentes, modais, fluxo completo, IDs inválidos e erros sem conteúdo privado |
 | `discordTicketAdapter.test.js` | Adapter Discord simulado | Tipos de canal, permissões/overwrites, logs privados, reutilização por topic, intent e coleta restrita de campos |
+| `ticketAI.test.js` | Service + policy + segurança | Níveis, capabilities, injection, handoff, pausa, concorrência, contexto, falhas e auditoria sem conteúdo |
+| `ticketAIDiscord.test.js` | Eventos/handlers Discord | Filtros de loop, debounce, pedido humano imediato e controles de staff/admin |
+| `ticketAIRoutes.test.js` | Autorização HTTP | Sessão, Origin, ManageGuild, cross-guild, body, rate limit e ausência de execute genérico |
+| `ticketAIProvider.test.js` | Contrato OpenRouter | JSON Schema, ausência de tools, timeout/abort, usage e modelo centralizado sem chamada real |
+| `ticketAI.postgres.test.js` | Integração PostgreSQL opt-in | Persistência de config/pausa/audit, isolamento por guild e reserva concorrente |
 
 ## Execução
 

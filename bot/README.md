@@ -63,7 +63,7 @@ cd bot
 npm run db:migrate
 ```
 
-O schema cria `users`, `ticket_configs`, `ticket_categories`, `tickets`, `ticket_events` e `ticket_sequences`. A sequência por guild é incrementada dentro da transação de criação, e `(guild_id, public_number)` possui constraint única. `channel_id` continua anulável porque ticket e canal Discord são entidades diferentes. Sessões OAuth e sessões temporárias do Texta_AI continuam em memória; reiniciar o backend exige novo login.
+O schema cria `users`, tabelas do Core de tickets e, após a migration da Etapa 3, `ticket_ai_configs`, `ticket_ai_ticket_states` e `ticket_ai_runs`. A sequência por guild é incrementada dentro da transação de criação, e `(guild_id, public_number)` possui constraint única. `channel_id` continua anulável porque ticket e canal Discord são entidades diferentes. Sessões OAuth e sessões temporárias do Texta_AI continuam em memória; reiniciar o backend exige novo login.
 
 Em Codespaces, mantenha o Postgres no mesmo ambiente Docker e use `localhost` na `DATABASE_URL`. Em hospedagem futura, substitua somente a URL por uma conexão PostgreSQL fornecida pelo provedor e rode `npm run db:migrate` antes de `npm start`. Não são persistidos access tokens ou refresh tokens do Discord.
 
@@ -75,7 +75,17 @@ Para executar o frontend junto do bot, siga [o guia da raiz](../README.md#inicia
 
 Antes do setup, habilite Message Content Intent no Developer Portal, defina `TICKETS_MESSAGE_CONTENT_ENABLED=true` em `.env` e reinicie. Atualize os comandos pelo script existente quando quiser disponibilizar `/ticket` no Discord. Nenhum registro real é executado pela suíte de testes.
 
-Dados ficam em `data/tickets.json`, `data/ticket-config.json` e `data/ticket-transcripts/`. Preserve a pasta `data/` em backups. O MVP utiliza um processo e não depende de Web, IA ou Premium. Permissões completas, recuperação de falhas, limites e operação estão no [guia de tickets](../docs/tickets.md).
+Dados do fallback ficam em `data/tickets.json`, `data/ticket-config.json` e `data/ticket-transcripts/`. Preserve a pasta `data/` em backups. Permissões completas, recuperação de falhas, limites e operação estão no [guia de tickets](../docs/tickets.md).
+
+## IA de tickets
+
+A IA de tickets é opcional, desativada por padrão e exige PostgreSQL. Ela reutiliza `OPENROUTER_API_KEY` e o mesmo provider do Texta_AI, mas não recebe ferramentas nem autoridade para fechar tickets, apagar canais, punir usuários ou alterar permissões.
+
+Depois de aplicar migrations, configure `TICKET_AI_ENABLED=true`, adicione as guilds de desenvolvimento em `TICKET_AI_GUILD_IDS` e use `/ticket ia:Configurar IA`. `TICKET_AI_MODEL` pode sobrescrever o modelo somente para tickets; vazio reutiliza `OPENROUTER_MODEL`. Para auto reply, mantenha também `TICKETS_MESSAGE_CONTENT_ENABLED=true` e o intent correspondente habilitado no Portal.
+
+Níveis 0/1/2/3 representam OFF, sugestões, auto reply e ações limitadas. Em V1, o nível 3 continua restrito a respostas/perguntas, resumo, handoff e sugestão de fechamento; fechamento nunca é automático. Staff pode pausar pelo botão no ticket, e um pedido explícito por atendimento humano pausa a IA de forma persistente.
+
+Consulte [arquitetura, segurança, routes e smoke test](../docs/ticket-ai.md). Nenhum teste normal chama OpenRouter real ou gasta créditos.
 
 ## Gerar o refresh token do Spotify
 
