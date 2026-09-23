@@ -56,7 +56,7 @@ async function handle(request, response, { services, requestId }) {
     return true;
   }
   if (url.pathname === '/api/auth/logout' && request.method === 'POST') {
-    requireTrustedOrigin(request, webOrigin);
+    requireTrustedOrigin(request, auth.config.allowedOrigins);
     auth.sessions.remove(sessionId);
     logger.info('auth.logout', { module: 'auth', requestId });
     response.setHeader('Set-Cookie', cookie(SESSION_COOKIE, '', 0, secure));

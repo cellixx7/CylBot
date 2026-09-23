@@ -1,9 +1,8 @@
 const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits } = require('discord.js');
-const { announcements } = require('../services/announcementService');
 const { assertCanManageAnnouncements } = require('../services/announcementPermissions');
 const row = (...components) => new ActionRowBuilder().addComponents(...components);
 const button = (id, label, primary = false) => new ButtonBuilder().setCustomId(`ann:${id}`).setLabel(label).setStyle(primary ? ButtonStyle.Success : ButtonStyle.Secondary);
-function categoryPicker(guildId) {
+function categoryPicker(guildId, announcements) {
   return { content: 'Escolha uma categoria ou use Adicionar para criar uma categoria do servidor.', embeds: [], components: [
     row(new StringSelectMenuBuilder().setCustomId('ann:choose').setPlaceholder('Categoria do anúncio').addOptions(announcements.categories(guildId).map(c => ({ label: c.name, value: c.id })))),
     row(button('add', 'Adicionar')),
@@ -19,7 +18,7 @@ function modal(id, title, fields) {
 function preview(result) {
   return { content: 'Revise o anúncio antes de confirmar o envio.', embeds: [result.embed], components: [row(button(`send:${result.draftId}`, 'Confirmar envio', true), button(`context:${result.draftId}`, 'Adicionar Contexto'))] };
 }
-async function handleAnnouncementInteraction(i) {
+async function handleAnnouncementInteraction(i, announcements = i.client?.services.announcements) {
   if (!i.customId?.startsWith('ann:')) return false;
   try {
     if (!i.guildId) throw new Error('Use este comando em um servidor.');
@@ -35,7 +34,7 @@ async function handleAnnouncementInteraction(i) {
       const c = announcements.categories(i.guildId).find(c => c.id === i.values[0]);
       if (!c) throw new Error('Categoria não encontrada.');
       await i.update({ content: `Categoria: **${c.name}**. Os padrões são compartilhados com o servidor.`, components: [row(button(`write:${c.id}`, 'Criar anúncio', true), button(`edit:${c.id}`, 'Editar padrão'), button('back', 'Categorias'))] });
-    } else if (action === 'back') await i.update(categoryPicker(i.guildId));
+    } else if (action === 'back') await i.update(categoryPicker(i.guildId, announcements));
     else if (action === 'add' || action === 'edit') {
       const c = action === 'edit' ? category() : {};
       await i.showModal(modal(`save:${c.id || 'new'}`, 'Padrão do servidor', [
@@ -45,7 +44,7 @@ async function handleAnnouncementInteraction(i) {
     } else if (action === 'save') {
       const input = Object.fromEntries(['name', 'title', 'description', 'image'].map(key => [key, i.fields.getTextInputValue(key)]));
       announcements.save(i.guildId, { ...input, id: id === 'new' ? undefined : id }, authorization);
-      await i.reply({ ...categoryPicker(i.guildId), ephemeral: true });
+      await i.reply({ ...categoryPicker(i.guildId, announcements), ephemeral: true });
     } else if (action === 'write') {
       const c = category();
       await i.showModal(modal(`generate:${id}`, 'Descrição do anúncio', [['description', 'O que deseja anunciar?', c.description, 2000, true]]));

@@ -5,16 +5,14 @@ function optional(source, name) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
-function detectWebOrigin(source) {
-  const explicit = optional(source, 'WEB_ORIGIN');
-  if (explicit) return explicit;
+function detectCodespaceOrigin(source) {
   const codespaces = optional(source, 'CODESPACES') === 'true';
   const name = optional(source, 'CODESPACE_NAME');
   const domain = optional(source, 'GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN') || 'app.github.dev';
   if (codespaces && name && /^[a-z0-9-]+$/i.test(name) && /^[a-z0-9.-]+$/i.test(domain)) {
     return `https://${name}-5173.${domain}`;
   }
-  return 'http://localhost:5173';
+  return undefined;
 }
 
 function integer(source, name, fallback, max = Number.MAX_SAFE_INTEGER) {
@@ -38,7 +36,15 @@ function validateRequired(config, { requireDiscord = false, requireSpotifyAuth =
 }
 
 function loadEnv(source, { requireDiscord = true, requireSpotifyAuth = false } = {}) {
-  const webOrigin = detectWebOrigin(source);
+  const environment = optional(source, 'NODE_ENV') || 'development';
+  const codespaceOrigin = detectCodespaceOrigin(source);
+  const webOrigin = optional(source, 'WEB_ORIGIN') || codespaceOrigin || 'http://localhost:5173';
+  const allowedOrigins = [...new Set([
+    webOrigin,
+    ...(environment === 'production' ? [] : [
+      'http://localhost:5173', 'http://127.0.0.1:5173', codespaceOrigin,
+    ]),
+  ].filter(Boolean))];
   const oauthRedirectUri = optional(source, 'DISCORD_OAUTH_REDIRECT_URI') || `${webOrigin}/api/auth/discord/callback`;
   for (const [name, value] of [['WEB_ORIGIN', webOrigin], ['DISCORD_OAUTH_REDIRECT_URI', oauthRedirectUri]]) {
     try {
@@ -68,7 +74,7 @@ function loadEnv(source, { requireDiscord = true, requireSpotifyAuth = false } =
   const config = {
     auth: {
       enabled: Boolean(oauthSecret), clientId: oauthClientId, clientSecret: oauthSecret,
-      redirectUri: oauthRedirectUri, webOrigin,
+      redirectUri: oauthRedirectUri, webOrigin, allowedOrigins,
       secure: webOrigin.startsWith('https:'),
       sessionTtlSeconds: integer(source, 'SESSION_TTL_SECONDS', 28800, 2592000),
     },
@@ -78,6 +84,7 @@ function loadEnv(source, { requireDiscord = true, requireSpotifyAuth = false } =
       clientId: oauthClientId,
     },
     api: { port: integer(source, 'API_PORT', 3001, 65535) },
+    tickets: { messageContentEnabled: optional(source, 'TICKETS_MESSAGE_CONTENT_ENABLED') === 'true' },
     openRouter: {
       apiKey: optional(source, 'OPENROUTER_API_KEY'),
       model: optional(source, 'OPENROUTER_MODEL') || 'openai/gpt-4.1-mini',

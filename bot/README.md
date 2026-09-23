@@ -11,7 +11,7 @@ Base modular para um bot do Discord usando Node.js e discord.js.
 - `src/index.js`: ponto de entrada e montagem do cliente.
 - `scripts/`: tarefas operacionais, como o registro dos comandos.
 
-Essa divisão permite adicionar `voiceStateUpdate` em `src/events/`, sem misturar o monitoramento com os comandos atuais. Uma futura camada de persistência pode ser introduzida quando houver dados reais para armazenar.
+Essa divisão permite adicionar `voiceStateUpdate` em `src/events/`, sem misturar o monitoramento com os comandos atuais. Anúncios e tickets usam repositories JSON locais; dependências são criadas em `src/app/createServices.js`.
 
 ## Requisitos
 
@@ -52,6 +52,14 @@ Execute os comandos abaixo dentro de `bot/` (`cd bot` a partir da raiz). Copie o
 Para iniciar novamente, execute `npm start` dentro de `bot/`. Repita `npm run commands:register` quando adicionar ou alterar definições dos comandos slash. O nome legado `npm run deploy` continua disponível para compatibilidade.
 
 Para executar o frontend junto do bot, siga [o guia da raiz](../README.md#iniciar-em-desenvolvimento).
+
+## Tickets via Discord
+
+`/ticket` inicia um wizard privado para administradores com ManageGuild/Administrator. Selecione o cargo de suporte, crie a estrutura automática ou reutilize canais existentes, escolha categorias e confirme o painel. Usuários abrem tickets por categoria; suporte assume; criador/suporte fecha; a equipe pode remover o canal após transcrição/log e reabrir o mesmo ticket em um novo canal.
+
+Antes do setup, habilite Message Content Intent no Developer Portal, defina `TICKETS_MESSAGE_CONTENT_ENABLED=true` em `.env` e reinicie. Atualize os comandos pelo script existente quando quiser disponibilizar `/ticket` no Discord. Nenhum registro real é executado pela suíte de testes.
+
+Dados ficam em `data/tickets.json`, `data/ticket-config.json` e `data/ticket-transcripts/`. Preserve a pasta `data/` em backups. O MVP utiliza um processo e não depende de Web, IA ou Premium. Permissões completas, recuperação de falhas, limites e operação estão no [guia de tickets](../docs/tickets.md).
 
 ## Gerar o refresh token do Spotify
 
@@ -221,7 +229,7 @@ Sem Client Secret o bot continua funcionando; iniciar OAuth retorna 503. Preench
 
 O frontend usa URLs relativas `/api` com `credentials: 'include'`. O callback externo passa pelo proxy Vite, que encaminha para `127.0.0.1:3001`. Site e callback devem usar a **mesma origem**; isso evita cookies perdidos por alternância de hostname. Não use o callback em `127.0.0.1:3001` junto do site em `localhost:5173`. `WEB_ORIGIN` não aceita path ou barra final. Se alterar a porta do Vite, atualize origem, callback e cadastro no Discord.
 
-Para HTTPS, configure origem e callback HTTPS e encaminhe `/api` na mesma origem até o listener local. O cookie recebe `Secure` com base nessa configuração validada, sem confiar em `X-Forwarded-Proto`. HTTP é aceito somente em localhost/loopback. CORS anuncia somente `WEB_ORIGIN`, com credentials; não usa wildcard. O proxy atual do Vite é de desenvolvimento, não uma configuração de publicação.
+Para HTTPS, configure origem e callback HTTPS e encaminhe `/api` na mesma origem até o listener local. O cookie recebe `Secure` com base nessa configuração validada, sem confiar em `X-Forwarded-Proto`. HTTP é aceito somente em localhost/loopback. CORS usa a allowlist derivada na configuração, com credentials e sem wildcard. Em DEV: WEB_ORIGIN, localhost/127.0.0.1 na porta 5173 e Codespace atual detectado. Com `NODE_ENV=production`: somente WEB_ORIGIN exata. O proxy Vite preserva Origin e continua destinado ao desenvolvimento.
 
 ### Endpoints e sessão
 
@@ -230,7 +238,7 @@ Para HTTPS, configure origem e callback HTTPS e encaminhe `/api` na mesma origem
 | `GET /api/auth/discord` | Cria state e vínculo com navegador, cookies temporários e redirect Discord |
 | `GET /api/auth/discord/callback` | Consome state, troca code, busca perfil, cria sessão e retorna ao site |
 | `GET /api/auth/me` | 200 com `user: { id, username, displayName, avatarUrl }`; 401 sem sessão válida |
-| `POST /api/auth/logout` | Exige Origin igual a WEB_ORIGIN, remove sessão, expira cookie e retorna 204 |
+| `POST /api/auth/logout` | Exige Origin na allowlist do ambiente, remove sessão, expira cookie e retorna 204 |
 
 State e vínculo com navegador usam aleatoriedade criptográfica, TTL de cinco minutos e uso único. Dois cookies temporários HttpOnly vinculam a tentativa ao navegador; possuir apenas code/state na URL não é suficiente. Uma nova tentativa no mesmo navegador substitui a anterior. Erros/cancelamento voltam à LoginPage com mensagem genérica, sem resposta bruta do Discord.
 
@@ -330,7 +338,7 @@ O dashboard permanece informativo. Seu DTO no navegador não autoriza operaçõe
 - IA geral não exige guild, mas exige sessão e limite de uso. Anúncios (inclusive consulta de categorias) e envio exigem guild gerenciável: participação via `/users/@me/guilds`, bot no cache pronto e owner/Administrator/ManageGuild. O cálculo BigInt é reaproveitado do dashboard; não vem do navegador.
 - No envio direto, a guild é derivada do canal retornado pelo Discord, ignorando guildId do body. Anúncios também compara guild autorizada com a guild do canal. DMs são proibidas. O bot precisa de ViewChannel e SendMessages; em threads, SendMessagesInThreads substitui SendMessages, conforme as regras do Discord. `allowedMentions: { parse: [] }` permanece em ambos os envios.
 - Drafts Web usam `web:<session.user.id>`. Prévias anteriores com owner compartilhado deixam de ser utilizáveis e devem ser geradas novamente.
-- POST/PUT/PATCH/DELETE exigem `Origin === WEB_ORIGIN`. Logout reutiliza o helper e permanece idempotente; não há token CSRF adicional. As chamadas frontend enviam `credentials: 'include'`.
+- POST/PUT/PATCH/DELETE exigem Origin exata na allowlist de `config/env.js`: em DEV, WEB_ORIGIN configurada/detectada, localhost/127.0.0.1:5173 e Codespace atual detectado; em produção, somente WEB_ORIGIN. Outro Codespace não é autorizado apenas pelo formato. Logout reutiliza o helper e permanece idempotente; não há token CSRF adicional. As chamadas frontend enviam `credentials: 'include'`.
 - CORS só concede a origem configurada, nunca wildcard ou reflexão arbitrária. Origem recebida diferente não recebe headers de concessão; OPTIONS permanece 204, sem operação de negócio.
 - O body JSON aceita objeto e no máximo 20.000 bytes. Ao exceder, retorna 413 e descarta a acumulação dos próximos chunks; UTF-8 fracionado entre chunks é preservado.
 

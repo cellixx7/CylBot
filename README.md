@@ -9,6 +9,8 @@ Monorepo simples para o ecossistema do CylBot.
 
 As aplicações possuem dependências e configurações próprias. Execute os comandos na pasta indicada; não há `package.json` na raiz.
 
+Tickets funcionam exclusivamente pelo Discord: `/ticket` configura o painel, atendimento privado, transcrição HTML e reabertura com o mesmo ID. Veja [ativação e operação do MVP](docs/tickets.md), incluindo Message Content Intent, permissões e backups locais.
+
 ## Instalação e configuração
 
 Para executar bot e frontend juntos, use Node.js 22.12 ou superior e npm, atendendo ao requisito do Vite instalado. Você também precisa de uma aplicação e um bot no Discord, com token e ID da aplicação.

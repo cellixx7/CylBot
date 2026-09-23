@@ -131,7 +131,11 @@ test('somente env.js acessa o ambiente e o exemplo cobre todas as variáveis', (
   const names = [...source.matchAll(/(?:optional|integer)\(source, '([^']+)'/g)].map(match => match[1]).sort();
   const example = dotenv.parse(fs.readFileSync(path.join(bot, '.env.example')));
   assert.deepEqual(Object.keys(example).sort(), names);
-  assert.doesNotThrow(() => loadEnv(example));
+  for (const name of ['DISCORD_TOKEN', 'DISCORD_CLIENT_ID', 'DISCORD_OAUTH_CLIENT_SECRET',
+    'OPENROUTER_API_KEY', 'SPOTIFY_CLIENT_ID', 'SPOTIFY_CLIENT_SECRET', 'SPOTIFY_REFRESH_TOKEN']) {
+    assert.equal(example[name], '', `${name} deve permanecer vazio`);
+  }
+  assert.doesNotThrow(() => loadEnv(example, { requireDiscord: false }));
 });
 
 
@@ -194,4 +198,10 @@ test('OAuth exige origem/callback coerentes e HTTPS fora do desenvolvimento loca
 test('SESSION_TTL_SECONDS exige inteiro positivo limitado a trinta dias', () => {
   for (const value of ['1', '3600', '2592000']) assert.equal(loadEnv({ ...discord, SESSION_TTL_SECONDS: value }).auth.sessionTtlSeconds, Number(value));
   for (const value of ['0', '-1', '1.5', 'abc', '2592001']) assert.throws(() => loadEnv({ ...discord, SESSION_TTL_SECONDS: value }), /SESSION_TTL_SECONDS/);
+});
+
+test('Message Content de tickets requer habilitação explícita sem alterar integrações existentes', () => {
+  assert.equal(loadEnv(discord).tickets.messageContentEnabled, false);
+  assert.equal(loadEnv({ ...discord, TICKETS_MESSAGE_CONTENT_ENABLED: 'true' }).tickets.messageContentEnabled, true);
+  assert.equal(loadEnv({ ...discord, TICKETS_MESSAGE_CONTENT_ENABLED: 'false' }).tickets.messageContentEnabled, false);
 });

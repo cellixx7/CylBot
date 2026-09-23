@@ -1,5 +1,4 @@
 const { logger } = require('../lib/logger');
-const { getConfig } = require('../config/env');
 const {
   ActionRowBuilder,
   ButtonBuilder,
@@ -10,16 +9,7 @@ const {
   TextInputBuilder,
   TextInputStyle,
 } = require('discord.js');
-const OpenRouterService = require('../services/openRouterService');
-const TextaAISessionManager = require('../services/textaAISessionManager');
-const { TextaAIService } = require('../services/textaAIService');
-
-const textaAIService = new TextaAIService({
-  ai: new OpenRouterService(getConfig().openRouter),
-  sessions: new TextaAISessionManager(),
-});
-
-async function handleTextaAIInteraction(interaction, service = textaAIService) {
+async function handleTextaAIInteraction(interaction, service = interaction.client?.services.textaAI) {
   if (interaction.isModalSubmit() && interaction.customId.startsWith('texta_ai:idea:')) {
     await handleIdea(interaction, service);
     return true;

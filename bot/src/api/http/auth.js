@@ -8,11 +8,9 @@ function requireSession(request, services, message = 'AUTH_REQUIRED') {
   return session;
 }
 
-function requireTrustedOrigin(request, webOrigin) {
+function requireTrustedOrigin(request, allowedOrigins) {
   const origin = request.headers?.origin;
-  const codespacesOrigin = /^https:\/\/[a-z0-9-]+-5173\.app\.github\.dev$/i;
-  const localOrigin = /^http:\/\/(localhost|127\.0\.0\.1):5173$/i;
-  if (origin !== webOrigin && !codespacesOrigin.test(origin || '') && !localOrigin.test(origin || '')) {
+  if (typeof origin !== 'string' || !allowedOrigins.includes(origin)) {
     throw clientError(403, 'FORBIDDEN');
   }
 }

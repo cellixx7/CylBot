@@ -52,22 +52,19 @@ test('contexto substitui prévia; envio verifica dono, servidor e duplicação',
 });
 
 test('comando anuncia opções e custom IDs esperados', t => {
-  const { announcements } = require('../src/services/announcementService');
   const service = new AnnouncementService({ getCategories: () => undefined });
-  t.mock.method(announcements, 'categories', service.categories.bind(service));
   const commands = require('../src/commands');
   assert(commands.some(c => c.data.toJSON().name === 'anuncios'));
   const { categoryPicker } = require('../src/handlers/announcementHandler');
-  const picker = categoryPicker('test');
+  const picker = categoryPicker('test', service);
   assert.equal(picker.components[0].toJSON().components[0].options.length, 4);
   assert.equal(picker.components[1].toJSON().components[0].label, 'Adicionar');
 });
 
 test('seleção abre ações e os modais usam IDs próprios de anúncios', async t => {
-  const { announcements } = require('../src/services/announcementService');
   const service = new AnnouncementService({ getCategories: () => undefined });
-  t.mock.method(announcements, 'categories', service.categories.bind(service));
-  const { handleAnnouncementInteraction } = require('../src/handlers/announcementHandler');
+  const { handleAnnouncementInteraction: handle } = require('../src/handlers/announcementHandler');
+  const handleAnnouncementInteraction = interaction => handle(interaction, service);
   let message;
   await handleAnnouncementInteraction({ customId: 'ann:choose', guildId: 'test', values: ['default-0'], update: async p => { message = p; } });
   assert.equal(message.components[0].toJSON().components[0].custom_id, 'ann:write:default-0');
@@ -121,12 +118,10 @@ test('custom IDs administrativos não permitem abrir nem salvar sem ManageGuild'
 });
 
 test('handler permite administrador adicionar categoria e editar padrão', async t => {
-  const { announcements } = require('../src/services/announcementService');
-  const { handleAnnouncementInteraction } = require('../src/handlers/announcementHandler');
+  const { handleAnnouncementInteraction: handle } = require('../src/handlers/announcementHandler');
   const dir = tempDirectory(t, 'announcements-');
   const service = new AnnouncementService(new JsonAnnouncementRepository(path.join(dir, 'data.json')));
-  t.mock.method(announcements, 'save', service.save.bind(service));
-  t.mock.method(announcements, 'categories', service.categories.bind(service));
+  const handleAnnouncementInteraction = interaction => handle(interaction, service);
   const fields = { name: 'Nova', title: 'Título', description: '', image: '' };
   const interaction = {
     guildId: 'test', memberPermissions: admin.permissions,
@@ -142,12 +137,11 @@ test('handler permite administrador adicionar categoria e editar padrão', async
 });
 
 test('usuário comum gera e revisa; envio valida permissões efetivas do canal', async t => {
-  const { announcements } = require('../src/services/announcementService');
-  const { handleAnnouncementInteraction } = require('../src/handlers/announcementHandler');
+  const { handleAnnouncementInteraction: handle } = require('../src/handlers/announcementHandler');
   const dir = tempDirectory(t, 'announcements-');
   const calls = [];
   const service = new AnnouncementService(new JsonAnnouncementRepository(path.join(dir, 'data.json')), { generate: async input => { calls.push(input); return { content: 'Texto' }; } });
-  for (const method of ['generate', 'send']) t.mock.method(announcements, method, service[method].bind(service));
+  const handleAnnouncementInteraction = interaction => handle(interaction, service);
   let preview;
   const base = {
     guildId: 'a', guild: { name: 'Servidor' }, user: { id: 'user' }, member: { id: 'user' },
@@ -193,10 +187,10 @@ test('usuário comum gera e revisa; envio valida permissões efetivas do canal',
 
 
 test('threads exigem SendMessagesInThreads e ausência de permissões bloqueia envio', async t => {
-  const { announcements } = require('../src/services/announcementService');
-  const { handleAnnouncementInteraction } = require('../src/handlers/announcementHandler');
+  const { handleAnnouncementInteraction: handle } = require('../src/handlers/announcementHandler');
   let sends = 0;
-  t.mock.method(announcements, 'send', async () => { sends++; });
+  const service = { send: async () => { sends++; } };
+  const handleAnnouncementInteraction = interaction => handle(interaction, service);
   const base = {
     customId: 'ann:send:draft', guildId: 'a', user: { id: 'user' }, member: { id: 'user' },
     deferUpdate: async () => {}, editReply: async () => {},

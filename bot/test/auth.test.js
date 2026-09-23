@@ -177,7 +177,8 @@ test('logout exige POST e origem confiável, remove sessão e expira cookie', as
   const codespacesCookie = sessionCookie(await login(auth));
   const codespacesRes = await request(auth, 'POST', '/api/auth/logout', codespacesCookie,
     'https://fictional-succotash-jm5d7dg-5173.app.github.dev');
-  assert.equal(codespacesRes.status, 204);
+  assert.equal(codespacesRes.status, 403);
+  assert.equal((await request(auth, 'GET', '/api/auth/me', codespacesCookie)).status, 200);
 });
 
 test('HTTPS ativa Secure e CORS mantém origem explícita com credentials', async t => {

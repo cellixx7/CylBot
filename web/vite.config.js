@@ -10,11 +10,6 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:3001',
-        configure: proxy => {
-          proxy.on('proxyReq', proxyRequest => {
-            proxyRequest.setHeader('origin', 'http://localhost:5173');
-          });
-        },
       },
     },
   },

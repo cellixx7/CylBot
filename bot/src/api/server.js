@@ -2,13 +2,6 @@ const { logger } = require('../lib/logger');
 const { getConfig } = require('../config/env');
 const http = require('node:http');
 const { randomUUID } = require('node:crypto');
-const { announcements } = require('../services/announcementService');
-const OpenRouterService = require('../services/openRouterService');
-const { TextaAIService } = require('../services/textaAIService');
-const { DiscordOAuthProvider } = require('../providers/discordOAuthProvider');
-const { AuthService } = require('../services/authService');
-const { AuthSessionManager } = require('../services/authSessionManager');
-const { DashboardService } = require('../services/dashboardService');
 const { sendJson } = require('./http/json');
 const { setCorsHeaders } = require('./http/cors');
 const { requireSession, requireTrustedOrigin, clearSession } = require('./http/auth');
@@ -24,16 +17,14 @@ const routes = [
   require('./routes/discordRoutes'),
 ];
 
-const openRouterService = new OpenRouterService(getConfig().openRouter);
-
 function createRequestHandler(context) {
   const limiter = context.rateLimiter || new RateLimiter();
+  const authConfig = context.services?.auth?.config || getConfig().auth;
   return async (request, response) => {
     const requestId = randomUUID();
     const routeContext = { ...context, requestId };
     response.setHeader('X-Request-Id', requestId);
-    const webOrigin = context.services?.auth?.config.webOrigin || getConfig().auth.webOrigin;
-    setCorsHeaders(response, webOrigin, request);
+    setCorsHeaders(response, authConfig, request);
     setSecurityHeaders(response);
 
     if (request.method === 'OPTIONS') {
@@ -49,7 +40,7 @@ function createRequestHandler(context) {
         routeContext.session = requireSession(request, context.services);
         response.setHeader('Cache-Control', 'no-store');
       }
-      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) requireTrustedOrigin(request, webOrigin);
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) requireTrustedOrigin(request, authConfig.allowedOrigins);
       if (sensitivePost) {
         const userId = routeContext.session.user.id;
         limiter.consume(`post:${userId}`, 30);
@@ -86,20 +77,8 @@ function createRequestHandler(context) {
   };
 }
 
-function startApiServer(client, { port } = getConfig().api) {
-  const authConfig = getConfig().auth;
-  const oauthProvider = new DiscordOAuthProvider(authConfig);
-  const context = {
-    client,
-    services: {
-      auth: new AuthService({ config: authConfig, provider: oauthProvider,
-        sessions: new AuthSessionManager({ ttlSeconds: authConfig.sessionTtlSeconds }) }),
-      dashboard: new DashboardService({ provider: oauthProvider, client }),
-      announcements,
-      openRouter: openRouterService,
-      textaAI: new TextaAIService({ ai: openRouterService }),
-    },
-  };
+function startApiServer(client, services, { port }) {
+  const context = { client, services };
   const server = http.createServer(createRequestHandler(context));
 
   server.listen(port, '127.0.0.1', () => {

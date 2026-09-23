@@ -5,20 +5,22 @@ const commands = require('./commands');
 const readyEvent = require('./events/ready');
 const interactionCreateEvent = require('./events/interactionCreate');
 const voiceStateUpdateEvent = require('./events/voiceStateUpdate');
-const PresenceManager = require('./services/presenceManager');
-const CallSenseManager = require('./services/callSenseManager');
+const { createServices } = require('./app/createServices');
 const { startApiServer } = require('./api/server');
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates,
+    ...(config.tickets.messageContentEnabled ? [GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] : []),
+  ],
 });
 
 client.commands = new Collection(
   commands.map((command) => [command.data.name, command]),
 );
-client.presenceManager = new PresenceManager(client);
-client.callSenseManager = new CallSenseManager(client);
-startApiServer(client, config.api);
+client.services = createServices(client, config);
+client.presenceManager = client.services.presence;
+client.callSenseManager = client.services.callSense;
+startApiServer(client, client.services, config.api);
 
 client.once(readyEvent.name, () => readyEvent.execute(client));
 client.on(interactionCreateEvent.name, (interaction) =>

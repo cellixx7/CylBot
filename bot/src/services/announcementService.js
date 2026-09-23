@@ -1,10 +1,7 @@
 const { clientError } = require('../api/http/errors');
 const { logger } = require('../lib/logger');
-const { getConfig } = require('../config/env');
-const { JsonAnnouncementRepository } = require('../repositories/jsonAnnouncementRepository');
 const crypto = require('node:crypto');
 const { EmbedBuilder } = require('discord.js');
-const OpenRouterService = require('./openRouterService');
 const { AnnouncementDraftManager } = require('./announcementDraftManager');
 const { assertCanManageAnnouncements } = require('./announcementPermissions');
 
@@ -21,7 +18,7 @@ function buildAnnouncementEmbed(category, description, guildName) {
 }
 
 class AnnouncementService {
-  constructor(repository, ai = new OpenRouterService(getConfig().openRouter), draftManager = new AnnouncementDraftManager()) {
+  constructor(repository, ai, draftManager = new AnnouncementDraftManager()) {
     this.repository = repository;
     this.ai = ai;
     this.draftManager = draftManager;
@@ -84,4 +81,4 @@ class AnnouncementService {
     } finally { this.draftManager.release(draft); }
   }
 }
-module.exports = { AnnouncementService, announcements: new AnnouncementService(new JsonAnnouncementRepository()) };
+module.exports = { AnnouncementService };

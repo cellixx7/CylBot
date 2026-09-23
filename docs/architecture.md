@@ -20,11 +20,11 @@ Repository e provider são colaboradores do service, não uma sequência obrigat
 | Repository | Ler e gravar persistência, inclusive arquivos JSON | `src/repositories/`, quando necessário |
 | Provider | Encapsular serviços externos como OpenRouter, Spotify ou Discord | `src/providers/`, quando necessário |
 
-`src/repositories/` contém a persistência JSON de anúncios. `src/providers/` continua sendo uma sugestão para quando houver necessidade concreta. Siga os nomes camelCase existentes, como `announcementHandler.js` e `announcementService.js`, usando sufixos `Repository` e `Provider` quando esses papéis justificarem módulos próprios.
+`src/repositories/` contém a persistência JSON de anúncios e `src/providers/` contém a integração OAuth Discord. Siga os nomes camelCase existentes, como `announcementHandler.js` e `announcementService.js`, usando sufixos `Repository` e `Provider` quando esses papéis justificarem módulos próprios.
 
 ## Regras práticas
 
-- `index.js` monta dependências, registra eventos e inicia serviços. Novas regras de negócio ficam na feature.
+- `index.js` chama `app/createServices.js` uma vez, registra eventos e inicia serviços. Novas regras de negócio ficam na feature.
 - `server.js` conecta HTTP às rotas. Novas rotas com lógica de aplicação devem delegar para handler/controller e service pequenos, sem reorganizar toda a API.
 - Handler/controller cuida da interface. Regras comuns ao Discord e HTTP ficam no service, que não depende do handler/controller. Prefira passar dados simples.
 - Handler e controller são nomes para o mesmo papel em interfaces diferentes; não precisam existir em sequência. Um comando trivial pode responder diretamente.
@@ -32,6 +32,73 @@ Repository e provider são colaboradores do service, não uma sequência obrigat
 - Funções, módulos e classes comuns bastam. Passe colaboradores por argumento ou construtor quando precisar substituí-los nos testes, sem contêiner de dependências ou classes-base.
 - No React, componentes cuidam de apresentação e estado visual. Conforme a feature crescer, extraia chamadas HTTP para um módulo da própria feature e coordenação da tela para um hook, se necessário. Regras compartilhadas ficam no backend; não replique todas as camadas no navegador.
 - Teste regras relevantes com `node:test`, substitutos locais para integrações e arquivos temporários. Não crie abstrações só para satisfazer o diagrama.
+
+## Padrão para novas features
+
+Comando trivial: `command → reply`, como `/ping`. Feature real: `command → handler → service → repository/provider`, usando apenas os colaboradores necessários. Tickets seguem esse fluxo: `/ticket → ticketHandler → TicketSetupService/TicketService → repositories/DiscordTicketAdapter`. Veja o [MVP de tickets](tickets.md).
+
+Service recebe dados simples, nunca uma `Interaction`:
+
+```js
+ticketService.create({ guildId, userId, channelId, categoryId, subject, description });
+```
+
+Handler traduz campos e identidade Discord; rota faz o equivalente HTTP. Ambos chamam as mesmas regras no service, incluindo autorização de domínio, sem confiar apenas nos controles visuais. `commands/index.js` permanece a fonte oficial dos slash commands, consumida pelo runtime e por `deploy-commands.js`.
+
+## Composição e estado temporário
+
+```text
+index.js → createServices(client, config) → services
+                                           ├→ client.services → Discord
+                                           └→ startApiServer(client, services, config.api)
+```
+
+O composition root cria uma instância de OpenRouter, compartilhada por Texta_AI e anúncios, e uma instância de TextaAIService compartilhada pelos dois adapters. Cria também o repository JSON, AnnouncementDraftManager e AnnouncementService compartilhados; o provider OAuth compartilhado por AuthService e DashboardService; e AuthSessionManager. PresenceManager e CallSenseManager são montados ali, mantendo os aliases `client.presenceManager` e `client.callSenseManager` usados pelos comandos/eventos existentes. Não há container de DI nem singleton de domínio criado na importação de handlers/services.
+
+As sessões temporárias de Texta_AI pertencem somente ao Discord: a instância compartilhada possui o manager, mas a API usa apenas `generate(input, options)` sem consultar sessões Discord. O formulário Web mantém seu estado no React. Prévias de anúncios permanecem no manager compartilhado, isoladas por owner e guild: o adapter Web usa `web:<userId>` e o Discord usa o ID do usuário. Sessões/states OAuth são separados desses drafts. Nada disso persiste após reiniciar o processo.
+
+`handlers/interactionHandlers.js` lista os adapters de anúncios e Texta_AI e entrega a dependência correspondente de `client.services`. `interactionCreate` percorre o registry na ordem existente e para no primeiro resultado verdadeiro; se nenhum consumir a interação, mantém o despacho de slash commands. Para acrescentar um handler, adicione uma entrada nesse array.
+
+O MVP acrescenta `ticketHandler` ao mesmo registry. `createServices` monta TicketService e TicketSetupService com o mesmo repository de configuração, adapter Discord e serviço de permissões; TicketService usa também repository de tickets e serviço/repository de transcripts. Não há services criados no handler. O bootstrap adiciona intents de mensagens somente quando `config.tickets.messageContentEnabled` é habilitado.
+
+Ticket é uma entidade persistida independente do channelId, com UUID, sequência por guild, estados OPEN/CLAIMED/CLOSED/REOPENED, eventos e arquivos de ciclos encerrados. Setup e operações remotas usam checkpoints JSON; um bloqueio em memória por guild evita corridas dentro do processo. Canais só podem ser removidos por staff após conferência de estado, transcript íntegro e log final. A reabertura consulta o repository e cria outro canal mantendo a identidade. Contratos, permissões, falhas e limites estão em [docs/tickets.md](tickets.md).
+
+Uma futura API Web poderá usar os mesmos services com DTOs e identidade autenticada. Uma implementação PostgreSQL deverá substituir repositories e acrescentar transações/locks, sem usar channelId como identidade. Entitlements de branding/IA/configuração e TicketAIService/AIPolicyService/AIActionService são extensões documentadas, ainda não implementadas.
+
+## Origens por ambiente
+
+Somente `config/env.js` detecta Codespaces e deriva `auth.webOrigin`, `allowedOrigins`, `secure` e `redirectUri`. Valores explícitos de WEB_ORIGIN/callback prevalecem; sem eles, Codespaces usa nome e domínio de forwarding do processo, e o ambiente local usa `http://localhost:5173`.
+
+| Ambiente | Origens permitidas para CORS e operações mutáveis |
+| --- | --- |
+| Desenvolvimento (padrão) | WEB_ORIGIN configurada/detectada, `http://localhost:5173`, `http://127.0.0.1:5173` e origem exata do Codespace atual detectado |
+| `NODE_ENV=production` | Somente WEB_ORIGIN configurada/detectada, sem acréscimos de DEV |
+
+Não há autorização por regex de domínio: a validação compara a Origin inteira com a allowlist. Origin ausente, `null`, outra porta ou outro Codespace é rejeitada em operações mutáveis. CORS responde com a origem permitida da requisição, credentials e `Vary: Origin`, sem wildcard. OPTIONS continua público; para origens não permitidas não são emitidos headers de autorização CORS. Requisições sem Origin mantêm o header CORS da origem principal, mas não passam pela proteção de operações mutáveis.
+
+O proxy Vite preserva o header Origin recebido, inclusive sua ausência. A Web só importa do bot as constantes de headers de segurança, sem configuração, services ou segredos. Cookies e callback continuam vinculados à origem principal; use o mesmo hostname durante todo o login. Ao acessar por `127.0.0.1`, configure WEB_ORIGIN/callback correspondentes se quiser fazer o login por esse hostname. Em Codespaces, o fluxo padrão é pelo endereço HTTPS detectado. Cadastre o callback correspondente no Discord Developer Portal. A allowlist não compartilha cookies entre hosts.
+
+Para produção, defina `NODE_ENV=production`, WEB_ORIGIN HTTPS explícita e o callback cadastrado. A detecção/fallback continua disponível, mas produção não inclui automaticamente localhost, loopback ou Codespaces como origens adicionais. Deploy/reverse proxy de produção não é implementado aqui.
+
+## Auditoria do saneamento
+
+Ocorrências remanescentes nas buscas do código, testes e documentação (excluídos dependências, build, metadados Git e `.env` privado):
+
+| Busca | Ocorrências e motivo |
+| --- | --- |
+| `new OpenRouterService` | Uma no runtime, em `app/createServices.js`. As demais estão em `api`, `env`, `logger`, `security` e `openRouterOutput.test.js`, construindo providers isolados, sem geração externa real. |
+| `new TextaAIService` | Uma no runtime, no composition root. As demais estão nos testes `api`, `textaAIHandler` e `textaAIService`, com IA simulada. |
+| `setHeader('origin'` | Nenhuma; o teste com Vite real verifica preservação do header, inclusive quando ausente. |
+| `requireTrustedOrigin` | Definição/exportação em `http/auth.js`, importação/chamada no dispatcher e no logout, e testes diretos em `origins.test.js`. Ambos os consumidores usam `auth.allowedOrigins`. A verificação local do logout foi preservada. |
+| `app.github.dev` | Default de domínio em `config/env.js` e `.env.example`; exemplos de callback no README raiz; fixtures nos testes `auth`, `env`, `origins` e `viteProxy`. Nenhuma autorização genérica por sufixo. |
+| `process.env` | Acesso executável somente em `config/env.js`. Demais referências em comentários do helper de isolamento e documentação explicam essa fronteira. |
+| `DISCORD_OAUTH_CLIENT_SECRET` | Leitura na config, campo vazio no exemplo, instruções/placeholder explícito nos READMEs e valores sintéticos nos testes `auth`, `env` e `logger`. O exemplo não contém credenciais preenchidas. |
+
+A inspeção dos imports locais de `bot/src` não identificou ciclos. IDs despachados usam `ann:` e `texta_ai:`; nomes curtos dos inputs de modais de anúncios continuam locais ao modal, sem participar do registry global. Não foram encontradas novas leituras de ambiente fora da config nem criação de services dentro dos handlers.
+
+Os comandos triviais continuam respondendo diretamente. Presence/CallSense preservam suas verificações de owner no adapter Discord e a configuração existente; antes de expor esses managers via Web, será necessário tornar essa autorização reutilizável. Anúncios mantêm a verificação de edição no service e as verificações efetivas de canal nos adapters. A importação Web → bot continua limitada às constantes de segurança do Vite. Esses limites não exigem reorganizar as features existentes neste saneamento.
+
+Validação: 133 testes passaram com Node.js 24, incluindo proxy Vite real em loopback, allowlist, composição e regressões OAuth/dashboard/anúncios/Texta_AI/rate limiting. Build Web e `git diff --check` passaram. Integrações externas foram simuladas; o login real no Discord e o túnel hospedado de Codespaces não foram exercitados. Os testes do proxy exigem também as dependências de `web/` e permissão para subprocessos/conexões locais.
 
 ## Aderência parcial atual
 
@@ -186,7 +253,7 @@ textaAIHandler ─┐
 aiRoutes ──────┘        └────────→ TextaAISessionManager (fluxo Discord)
 ```
 
-`TextaAIService` recebe `{ ai, sessions }` por construtor. O handler mantém sua instância com o manager existente; a API monta uma instância com o mesmo código de aplicação, sem criar sessões web. Não é necessário compartilhar a mesma instância para reutilizar a lógica.
+`TextaAIService` recebe `{ ai, sessions }` por construtor. O composition root monta uma instância compartilhada pelo handler e pela API; o manager atende somente ao fluxo Discord, sem criar sessões web.
 
 - `generate(input, options)` concentra preparação de campos, validação e geração inicial/revisão sem estado. A revisão usa `originalContext`, `currentText` e `additionalContext` na mesma chamada ao provider.
 - `create`, `beginRevision`, `claimRevision` e `generateSession` coordenam o manager e atualizam o texto gerado/reaproveitado. O texto de revisão de um embed Discord continua sendo título e descrição unidos por uma quebra de linha.
@@ -262,9 +329,9 @@ authRoutes → AuthService → DiscordOAuthProvider
 
 O provider recebe configuração e fetch por construtor: constrói a URL OAuth, troca code via POST form e busca `/users/@me` com Bearer. Usa timeout, não segue redirects externos e converte falhas em erros controlados, sem propagar body/headers ou mensagens externas. São solicitados `identify guilds`: perfil básico e listagem dos servidores para o dashboard. Não há repository porque esta fase não persiste sessões.
 
-AuthService coordena states em Map (cinco minutos), vínculo ao navegador, consumo antes da primeira operação assíncrona e criação/substituição de sessão. AuthSessionManager mantém sessões com TTL absoluto e tokens exclusivamente no backend. As rotas traduzem cookies, redirects, perfil público e logout. A configuração é montada no bootstrap da API; nenhum desses componentes acessa `process.env`.
+AuthService coordena states em Map (cinco minutos), vínculo ao navegador, consumo antes da primeira operação assíncrona e criação/substituição de sessão. AuthSessionManager mantém sessões com TTL absoluto e tokens exclusivamente no backend. As rotas traduzem cookies, redirects, perfil público e logout. A configuração vem de `config/env.js` e é injetada pelo composition root; nenhum desses componentes acessa `process.env`.
 
-Cookies temporários de state/vínculo e cookie opaco de sessão são HttpOnly/Lax, sem Domain. Secure é derivado da origem HTTPS validada. Login/callback/me não aceitam destino de redirect do usuário; o retorno é sempre WEB_ORIGIN configurado. Logout exige POST e Origin exata para proteção contra CSRF. CORS tem origem explícita e credentials. Site e callback compartilham origem externa por proxy; não há infraestrutura nova.
+Cookies temporários de state/vínculo e cookie opaco de sessão são HttpOnly/Lax, sem Domain. Secure é derivado da origem HTTPS validada. Login/callback/me não aceitam destino de redirect do usuário; o retorno é sempre WEB_ORIGIN configurado. Logout exige POST e Origin presente na allowlist para proteção contra CSRF. CORS usa a mesma lista explícita e credentials. Site e callback compartilham origem externa por proxy; não há infraestrutura nova.
 
 AuthGate controla loading, falha de conexão, LoginPage e conteúdo autenticado. A raiz autenticada mostra o dashboard com perfil, servidores e logout; os hashes das ferramentas permanecem disponíveis. authApi concentra fetch com credentials. Tokens nunca são enviados ao React e não há armazenamento browser de credenciais.
 
