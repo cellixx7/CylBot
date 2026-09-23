@@ -1,3 +1,4 @@
+require('./helpers/isolatedConfig');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -5,11 +6,12 @@ const { migrate } = require('drizzle-orm/node-postgres/migrator');
 const { createDatabase } = require('../src/database/client');
 const { PostgresTicketRepository } = require('../src/repositories/postgresTicketRepository');
 const { TICKET_EVENT: E, TICKET_STATUS: S } = require('../src/services/ticketConstants');
+const { TicketService } = require('../src/services/ticketService');
 
 const url = process.env.DATABASE_TEST_URL;
 const run = url ? test : test.skip;
 
-run('PostgreSQL mantém sequência, claim concorrente e ticket após novo repository', async () => {
+run('PostgreSQL mantém sequência, claim concorrente e primeiro fechamento com checkpoints', async () => {
   const database = createDatabase(url);
   const guildId = `test-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const repository = new PostgresTicketRepository(database);
@@ -32,6 +34,25 @@ run('PostgreSQL mantém sequência, claim concorrente e ticket após novo reposi
       freshRepository.claimTicket(persisted, { userId: 'staff-2', name: 'Staff 2', claimedAt: Date.now(), event: { type: E.CLAIMED, actorUserId: 'staff-2', createdAt: Date.now(), metadata: {} } }),
     ]);
     assert.equal(results.filter(Boolean).length, 1);
+
+    // Usa beginClose/save reais; somente Discord e geração do HTML são simulados.
+    const claimed = results.find(Boolean);
+    claimed.channelId = 'ticket-channel';
+    await freshRepository.save(claimed);
+    const transcript = { key: 'integration.html', sha256: 'test', lastMessageId: 'last', messageCount: 1 };
+    const service = new TicketService({ repository: freshRepository,
+      permissions: { requireClose: async () => ({ id: 'staff-1' }) },
+      adapter: { publishClosed: async () => 'closed-log', lockChannel: async () => {},
+        latestMessageId: async () => 'last', updateInitial: async () => {} },
+      transcripts: { generate: async () => transcript, read: () => Buffer.from('test transcript') } });
+    const closed = await service.close({ guildId, ticketId: claimed.id, userId: 'staff-1', channelId: claimed.channelId, reason: 'Resolvido' });
+    assert.equal(closed.status, S.CLOSED);
+    const saved = await new PostgresTicketRepository(database).get(guildId, claimed.id);
+    assert.equal(saved.closing.completed, true);
+    assert.equal(saved.closing.transcriptPersisted, true);
+    assert.equal(saved.closing.channelLocked, true);
+    assert.equal(saved.archives.length, 1);
+    assert.equal(saved.events.filter(event => event.type === E.CLOSED).length, 1);
   } finally {
     await database.pool.query('delete from tickets where guild_id = $1', [guildId]);
     await database.pool.query('delete from ticket_sequences where guild_id = $1', [guildId]);

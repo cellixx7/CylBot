@@ -3,11 +3,12 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { PermissionFlagsBits: P, MessageFlags } = require('discord.js');
 const { ticketFixture, ids } = require('./helpers/ticketFixture');
-const { handleTicketInteraction } = require('../src/handlers/ticketHandler');
+const { handleTicketInteraction, startTicketSetup } = require('../src/handlers/ticketHandler');
 const { setupView, panelPayload, initialPayload, closedPayload } = require('../src/lib/ticketComponents');
 const event = require('../src/events/interactionCreate');
 const commands = require('../src/commands');
 const { logger } = require('../src/lib/logger');
+const { setTicketContext } = require('../src/lib/ticketDiagnostics');
 
 function interaction(customId, { userId = ids.user, channelId = ids.panel, kind = 'button', fields = {}, values } = {}) {
   const result = {};
@@ -24,6 +25,139 @@ function interaction(customId, { userId = ids.user, channelId = ids.panel, kind 
   };
 }
 const services = f => ({ tickets: f.service, ticketSetup: f.setup });
+
+test('claim duplicado mantém 409, mensagem clara e log warn com contexto do ticket', async t => {
+  const f = ticketFixture(t); const ticket = await f.create();
+  await f.service.claim(f.action(ticket));
+  const logs = [];
+  t.mock.method(logger, 'warn', (event, data) => logs.push({ event, data }));
+  const i = interaction(`ticket:claim:${ticket.id}`, { userId: ids.staff, channelId: ticket.channelId });
+  await handleTicketInteraction(i, services(f));
+  assert.match(i.result.error.content, /já está sendo atendido/);
+  const log = logs.find(log => log.event === 'ticket.interaction_failed').data;
+  assert.equal(log.action, 'claim');
+  assert.equal(log.statusCode, 409);
+  assert.equal(log.errorName, 'TicketAlreadyClaimedError');
+  assert.equal(log.ticketId, ticket.id);
+  assert.equal(log.guildId, ids.guild);
+  assert.equal(log.channelId, ticket.channelId);
+  assert.equal(log.interactionChannelId, ticket.channelId);
+  assert.equal(log.customIdAction, 'ticket:claim');
+  assert.match(log.operationId, /^[a-f0-9-]{36}$/);
+});
+
+test('erro 500 registra classe/código/cause seguros sem conteúdo, SQL, segredo ou custom ID bruto', async t => {
+  const ticketId = '12345678-abcd-abcd-abcd-123456789abc';
+  const logs = [];
+  t.mock.method(logger, 'error', (event, data) => logs.push({ event, data }));
+  const secret = 'segredo-de-ticket-e-token';
+  const cause = Object.assign(new Error(secret), { code: '23505', detail: secret, query: secret });
+  const error = Object.assign(new TypeError(secret), { cause, token: secret, requestBody: { content: secret }, stack: secret });
+  const i = interaction(`ticket:finish:${ticketId}`, { kind: 'modal', fields: { 'ticket:reason': secret, 'ticket:summary': secret } });
+  await handleTicketInteraction(i, { tickets: { close: async () => { throw error; } } });
+  const log = logs[0].data;
+  assert.equal(log.action, 'close');
+  assert.equal(log.customIdAction, 'ticket:finish');
+  assert.equal(log.ticketId, ticketId);
+  assert.equal(log.statusCode, 500);
+  assert.equal(log.errorName, 'TypeError');
+  assert.equal(log.causeErrorCode, '23505');
+  assert(!JSON.stringify([logs, i.result]).includes(secret));
+  assert(!JSON.stringify(logs).includes(i.customId));
+  assert.equal(log.stack, undefined);
+});
+
+test('429 de reabertura identifica cooldown app; HTTP 429 do Discord tem origem e mensagem distintas', async t => {
+  const f = ticketFixture(t); const ticket = await f.close(await f.create());
+  // Faz o cooldown de fechamento ser o limitador, sem cooldown de abertura.
+  f.advance();
+  await f.repository.save({ ...ticket, closedAt: f.now() });
+  const logs = [];
+  t.mock.method(logger, 'warn', (event, data) => logs.push({ event, data }));
+  const options = { userId: ids.staff, channelId: ids.log };
+  const i = interaction(`ticket:reopen:${ticket.id}:0`, options);
+  await handleTicketInteraction(i, services(f));
+  assert.match(i.result.error.content, /60 segundos após/);
+  const app = logs.at(-1).data;
+  assert.equal(app.action, 'reopen');
+  assert.equal(app.statusCode, 429);
+  assert.equal(app.rateLimitSource, 'app');
+  assert.equal(app.errorCode, 'TICKET_REOPEN_COOLDOWN');
+  assert.equal(app.channelId, ticket.channelId);
+  assert.equal(app.interactionChannelId, ids.log);
+  f.adapter.verifyClosedLog = async () => { throw Object.assign(new Error('private payload'), { name: 'HTTPError', status: 429 }); };
+  const discord = interaction(`ticket:delete:${ticket.id}:0`, options);
+  await handleTicketInteraction(discord, services(f));
+  const upstream = logs.at(-1).data;
+  assert.equal(upstream.action, 'delete');
+  assert.equal(upstream.rateLimitSource, 'discord');
+  assert.equal(upstream.upstreamStatusCode, 429);
+  assert.equal(upstream.statusCode, 429);
+  assert.match(discord.result.error.content, /Discord limitou/);
+  assert(!JSON.stringify([logs, discord.result]).includes('private payload'));
+  assert(f.channels.has(ticket.channelId));
+});
+
+test('erro no fechamento preserva causa Discord e correlaciona log técnico com interação', async t => {
+  const f = ticketFixture(t); const ticket = await f.create();
+  const logs = [];
+  t.mock.method(logger, 'error', (event, data) => logs.push({ event, data }));
+  f.adapter.lockChannel = async () => {
+    throw Object.assign(new Error('payload privado'), { name: 'DiscordAPIError[50013]', code: 50013, status: 403 });
+  };
+  const i = interaction(`ticket:finish:${ticket.id}`, { userId: ids.staff, channelId: ticket.channelId,
+    kind: 'modal', fields: { 'ticket:reason': 'Resolvido' } });
+  await handleTicketInteraction(i, services(f));
+  const technical = logs.find(log => log.event === 'ticket.close.failed').data;
+  const failure = logs.find(log => log.event === 'ticket.interaction_failed').data;
+  assert.equal(technical.errorCode, 50013);
+  assert.equal(failure.causeErrorCode, 50013);
+  assert.equal(failure.stage, 'discord.lockChannel');
+  assert.equal(failure.statusCode, 503);
+  assert.equal(failure.operationId, technical.operationId);
+  assert(!JSON.stringify(logs).includes('payload privado'));
+  assert(f.channels.has(ticket.channelId));
+});
+
+test('operações simultâneas não misturam contexto e falha ao responder mantém diagnóstico seguro', async t => {
+  const logs = [];
+  t.mock.method(logger, 'error', (event, data) => logs.push({ event, data }));
+  t.mock.method(logger, 'warn', (event, data) => logs.push({ event, data }));
+  const idsToTest = ['12345678-abcd-abcd-abcd-123456789abc', '22345678-abcd-abcd-abcd-123456789abc'];
+  const interactions = idsToTest.map(id => interaction(`ticket:claim:${id}`));
+  interactions[0].followUp = async () => { throw Object.assign(new Error('token privado'), { name: 'DiscordAPIError[10062]', code: 10062 }); };
+  await Promise.all(interactions.map(i => handleTicketInteraction(i, { tickets: { claim: async input => {
+    setTicketContext({ id: input.ticketId, channelId: input.ticketId === idsToTest[0] ? ids.panel : ids.log });
+    await new Promise(resolve => setImmediate(resolve));
+    throw new Error('conteúdo privado');
+  } } })));
+  const failures = logs.filter(log => log.event === 'ticket.interaction_failed').map(log => log.data);
+  assert.equal(new Set(failures.map(log => log.operationId)).size, 2);
+  assert.equal(failures.find(log => log.ticketId === idsToTest[0]).channelId, ids.panel);
+  assert.equal(failures.find(log => log.ticketId === idsToTest[1]).channelId, ids.log);
+  const response = logs.find(log => log.event === 'ticket.interaction_response_failed').data;
+  assert.equal(response.errorCode, 10062);
+  assert.equal(response.operationId, failures.find(log => log.ticketId === idsToTest[0]).operationId);
+  assert(!JSON.stringify(logs).includes('privado'));
+});
+
+test('setup com interação já reconhecida não propaga erro SDK nem payload para o handler global', async t => {
+  const logs = [];
+  t.mock.method(logger, 'error', (event, data) => logs.push({ event, data }));
+  t.mock.method(logger, 'warn', (event, data) => logs.push({ event, data }));
+  const error = Object.assign(new Error('Interaction has already been acknowledged.'), {
+    name: 'DiscordAPIError[40060]', code: 40060, status: 400,
+    url: 'https://discord.com/api/interactions/id/SECRET/callback', requestBody: { content: 'PRIVATE' },
+  });
+  const i = interaction(undefined, { userId: ids.admin });
+  i.deferReply = i.reply = async () => { throw error; };
+  await assert.doesNotReject(startTicketSetup(i, {}));
+  assert.equal(logs[0].data.action, 'setup.begin');
+  assert.equal(logs[0].data.errorCode, 40060);
+  assert.equal(logs[1].event, 'ticket.interaction_response_failed');
+  assert.equal(logs[0].data.operationId, logs[1].data.operationId);
+  assert(!/SECRET|PRIVATE|callback|requestBody/.test(JSON.stringify(logs)));
+});
 
 test('/ticket é guild-only, exige ManageGuild no registro e revalida no service', async t => {
   const f = ticketFixture(t, { configured: false });

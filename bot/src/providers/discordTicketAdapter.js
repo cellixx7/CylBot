@@ -2,6 +2,8 @@ const { ChannelType, PermissionFlagsBits: P, OverwriteType, AttachmentBuilder } 
 const { createHash } = require('node:crypto');
 const { clientError } = require('../api/http/errors');
 const { ticketNumber } = require('../services/ticketConstants');
+const { logger } = require('../lib/logger');
+const { ticketLogContext } = require('../lib/ticketDiagnostics');
 const { panelPayload, initialPayload, openedPayload, closedPayload } = require('../lib/ticketComponents');
 const READ = [P.ViewChannel, P.ReadMessageHistory];
 const WRITE = [P.SendMessages, P.AttachFiles, P.EmbedLinks];
@@ -152,14 +154,21 @@ class DiscordTicketAdapter {
     if (message.author.id !== this.client.user.id || !message.attachments.some(attachment => attachment.name === `ticket-${ticketNumber(ticket)}-ciclo-${ticket.reopenCount}.html`)) throw clientError(409, 'Log final ou transcrição ausente. O canal foi preservado.');
   }
   async removeChannel(ticket) {
+    if (!ticket.channelId) throw clientError(409, 'O ticket não possui um canal para remover.');
     let channel;
     try { channel = await (await this.guild(ticket.guildId)).channels.fetch(ticket.channelId, { force: true }); }
-    catch (error) { if (error.code === 10003) return; throw error; }
-    if (!channel) return;
-    if (channel.guildId !== ticket.guildId || channel.type !== ChannelType.GuildText) throw clientError(403, 'Canal de ticket inválido.');
+    catch (error) { if (error.code === 10003) return false; throw error; }
+    if (!channel) return false;
+    if (channel.id !== ticket.channelId || channel.guildId !== ticket.guildId || channel.type !== ChannelType.GuildText
+      || channel.topic !== `cylbot-ticket:${ticket.id}:${ticket.reopenCount}` || channel.id === ticket.logChannelId) {
+      logger.warn('ticket.channel.inconsistent', { ...ticketLogContext(), guildId: ticket.guildId, ticketId: ticket.id,
+        channelId: ticket.channelId });
+      throw Object.assign(clientError(409, 'O canal não corresponde a este ticket e ciclo. Nenhum canal foi removido.'), { code: 'TICKET_CHANNEL_MISMATCH' });
+    }
     await this.lockChannel(ticket);
     if (await this.latestMessageId(ticket) !== ticket.closing.transcript.lastMessageId) throw clientError(409, 'Há mensagens posteriores à transcrição. O canal foi preservado para revisão manual.');
     await channel.delete(`Ticket #${ticketNumber(ticket)} encerrado e transcrito`);
+    return true;
   }
   async latestMessageId(ticket) {
     const messages = await (await this.channel(ticket.guildId, ticket.channelId)).messages.fetch({ limit: 1, cache: false });

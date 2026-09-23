@@ -1,9 +1,11 @@
 const { PermissionsBitField, PermissionFlagsBits: P } = require('discord.js');
 const { clientError } = require('../api/http/errors');
+const { setTicketStage } = require('../lib/ticketDiagnostics');
 const TICKET_PERMISSION = Object.freeze({ CONFIGURE: 'CONFIGURE', CLAIM: 'CLAIM', CLOSE: 'CLOSE', REOPEN: 'REOPEN', DELETE_CHANNEL: 'DELETE_CHANNEL' });
 class TicketPermissionService {
   constructor(adapter) { this.adapter = adapter; }
   async actor(guildId, userId) {
+    setTicketStage('permission.actor');
     if (!/^\d{17,20}$/.test(guildId || '') || !/^\d{17,20}$/.test(userId || '')) throw clientError(400, 'Use esta ação em um servidor válido.');
     const actor = await this.adapter.getActor(guildId, userId);
     if (!actor || actor.bot) throw clientError(403, 'Você não possui permissão para esta ação.');

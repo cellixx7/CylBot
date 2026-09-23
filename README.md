@@ -9,110 +9,14 @@ Monorepo simples para o ecossistema do CylBot.
 
 As aplicações possuem dependências e configurações próprias. Execute os comandos na pasta indicada; não há `package.json` na raiz.
 
-Tickets funcionam exclusivamente pelo Discord: `/ticket` configura o painel, atendimento privado, transcrição HTML e reabertura com o mesmo ID. Veja [ativação e operação do MVP](docs/tickets.md), incluindo Message Content Intent, permissões e backups locais.
+A interface atual do sistema de tickets funciona exclusivamente pelo Discord: `/ticket` configura o painel, atendimento privado, transcrição HTML e reabertura com o mesmo ID. O estado persistente dos tickets pode utilizar PostgreSQL. Veja [ativação e operação do MVP](docs/tickets.md), incluindo Message Content Intent, permissões e backups locais.
 
-## Instalação e configuração
+## Guias de uso
 
-Para executar bot e frontend juntos, use Node.js 22.12 ou superior e npm, atendendo ao requisito do Vite instalado. Você também precisa de uma aplicação e um bot no Discord, com token e ID da aplicação.
+- [Inicialização](README-INICIALIZACAO.md): preparação inicial, comandos do dia a dia, PostgreSQL, login e configuração de produção.
+- [Verificação e diagnóstico](README-VERIFICACAO.md): ambiente, banco, migrations, testes, build e problemas comuns.
 
-### 1. Preparar o bot
-
-Partindo da raiz do repositório:
-
-```bash
-cd bot
-npm install
-cp .env.example .env
-```
-
-Copie o arquivo somente na primeira configuração. Edite `bot/.env` e preencha `DISCORD_TOKEN` e `DISCORD_CLIENT_ID`. Para geração de textos e anúncios por IA, configure também `OPENROUTER_API_KEY`. A configuração do Spotify está em [bot/README.md](bot/README.md).
-
-### PostgreSQL local
-
-Tickets podem usar PostgreSQL sem alterar os services. Suba somente o banco de desenvolvimento na raiz do repositório:
-
-```bash
-docker compose up -d
-```
-
-Em `bot/.env`, use a URL local do exemplo:
-
-```env
-DATABASE_URL=postgresql://cylbot:cylbot_dev@localhost:5432/cylbot
-```
-
-Execute as migrations antes de iniciar o bot:
-
-```bash
-cd bot
-npm run db:migrate
-```
-
-Para parar o banco, use `docker compose down`. O volume `cylbot-postgres-data` preserva os dados locais. Em Codespaces, o backend e o PostgreSQL executados no mesmo Codespace usam `localhost`; produção deve apenas trocar `DATABASE_URL` pela URL do provedor PostgreSQL e executar `npm run db:migrate`.
-
-Convide o bot para o servidor com os escopos `bot` e `applications.commands`. Depois, ainda na pasta `bot/`, registre os comandos:
-
-```bash
-npm run commands:register
-```
-
-Repita o registro quando adicionar ou alterar as definições dos comandos slash. Não é necessário registrar a cada início do bot.
-
-### 2. Preparar o frontend
-
-Em outro terminal, partindo da raiz do repositório:
-
-```bash
-cd web
-npm install
-```
-
-## Iniciar em desenvolvimento
-
-### Terminal 1 — bot e API
-
-Partindo da raiz:
-
-```bash
-cd bot
-npm start
-```
-
-Mantenha esse terminal em execução. O bot inicia também a API local em `http://127.0.0.1:3001` por padrão.
-
-### Terminal 2 — frontend
-
-Partindo da raiz:
-
-```bash
-cd web
-npm run dev
-```
-
-Abra a URL pública da porta 5173 mostrada pelo Codespaces. O backend detecta automaticamente Codespaces por `CODESPACES` e `CODESPACE_NAME`, usando a URL pública; fora dele usa `http://localhost:5173`. `WEB_ORIGIN` e `DISCORD_OAUTH_REDIRECT_URI` podem ser definidos manualmente para sobrescrever essa detecção. Se a porta estiver ocupada, use `npm run dev -- --port 5173 --strictPort` para evitar troca silenciosa de porta. O proxy encaminha `/api` para `http://127.0.0.1:3001`; se alterar `API_PORT`, ajuste também o destino em `web/vite.config.js`.
-
-Nas próximas execuções, basta iniciar os dois terminais; a instalação e a cópia do `.env` são etapas de preparação.
-
-## Login com Discord
-
-Na mesma aplicação do bot, abra **OAuth2** no [Discord Developer Portal](https://discord.com/developers/applications), obtenha o Client Secret e cadastre os callbacks de desenvolvimento:
-
-```text
-https://SEU-CODESPACE-5173.app.github.dev/api/auth/discord/callback
-http://localhost:5173/api/auth/discord/callback
-```
-
-Em `bot/.env`, mantendo `DISCORD_CLIENT_ID` da mesma aplicação:
-
-```env
-DISCORD_OAUTH_CLIENT_SECRET=preencha_localmente_com_o_client_secret
-# Deixe ausentes para detecção automática, ou defina os dois com a mesma origem.
-SESSION_TTL_SECONDS=28800
-```
-
-Reinicie o bot. Acesse a URL correspondente ao ambiente, clique **Entrar com Discord**, autorize o perfil básico e a lista de servidores (`identify guilds`) e confira o dashboard na volta. Recarregue para confirmar a sessão; **Sair** remove a sessão e volta ao login. Sessões anteriores sem o scope `guilds` exigem novo login ao abrir o dashboard. `GET /api/auth/me` responde 200 com perfil após login e 204 quando não há sessão.
-
-O callback passa pelo proxy do Vite para a API: em Codespaces, substitua `SEU-CODESPACE-5173.app.github.dev` pelo domínio público exibido para a porta 5173. Não use `localhost` no Discord quando estiver acessando a URL pública, nem use a porta 3001 no callback. Em HTTPS, site e `/api` também devem compartilhar a mesma origem. Detalhes e limitações em [autenticação Web](bot/README.md#autenticação-web-com-discord).
+Para um ambiente já configurado, vá direto para [uso diário](README-INICIALIZACAO.md#uso-diário--ambiente-já-configurado). As verificações ficam separadas da rotina de inicialização.
 
 ## Funcionalidades e configuração detalhada
 
@@ -144,24 +48,12 @@ Execute os comandos na pasta indicada; a raiz não possui `package.json`.
 | `bot/` | `npm run spotify:auth` | Auxiliar de autorização Spotify |
 | `bot/` | `npm run db:generate` | Gerar migration Drizzle |
 | `bot/` | `npm run db:migrate` | Aplicar migrations no PostgreSQL configurado |
-| `bot/` | `npm run db:status` | Validar o schema Drizzle |
+| `bot/` | `npm run db:status` | Verificar a consistência da configuração/migrations do Drizzle |
 | `web/` | `npm run dev` | Iniciar frontend em desenvolvimento |
 | `web/` | `npm run build` | Gerar build do frontend |
 | `web/` | `npm run preview` | Conferir localmente o build já gerado |
 
 Para novos auxiliares, use `<domínio>:<ação>` e mantenha os arquivos em `bot/scripts/`. Prefira `commands:register` ao nome legado `deploy`. Os scripts do frontend permanecem iguais; não há suíte de testes web configurada.
-
-### Validação
-
-Com dependências instaladas, execute a partir da raiz:
-
-```bash
-npm --prefix bot test
-npm --prefix web run build
-git diff --check
-```
-
-Dentro de `bot/`, basta `npm test`. Novos testes devem seguir `test/<feature>.test.js`, usando `node:test` e `node:assert/strict`. A suíte atual de anúncios substitui a geração por IA e não exige iniciar o bot nem registrar comandos.
 
 ## Arquitetura para novas features
 

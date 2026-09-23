@@ -5,6 +5,94 @@ const fs = require('node:fs');
 const { ticketFixture, ids } = require('./helpers/ticketFixture');
 const { TICKET_STATUS: S, TICKET_EVENT: E } = require('../src/services/ticketConstants');
 
+test('primeiro fechamento com beginClose assíncrono usa o checkpoint retornado sem exigir retry', async t => {
+  const f = ticketFixture(t); const ticket = await f.create();
+  let reservations = 0;
+  f.repository.beginClose = async (current, closing) => {
+    reservations++;
+    await f.repository.save({ ...current, closing });
+    return f.repository.get(current.guildId, current.id);
+  };
+  const closed = await f.close(ticket);
+  assert.equal(reservations, 1);
+  assert.equal(closed.status, S.CLOSED);
+  assert.equal(closed.closing.completed, true);
+  assert.equal(closed.archives.length, 1);
+  assert.equal(closed.events.filter(event => event.type === E.CLOSED).length, 1);
+  assert.equal(f.repository.get(ids.guild, ticket.id).closing.completed, true);
+});
+
+test('beginClose nulo relê checkpoint persistido; retry após falha não duplica arquivo/evento de fechamento', async t => {
+  const f = ticketFixture(t); const ticket = await f.create();
+  let reservations = 0;
+  f.repository.beginClose = async (current, closing) => {
+    reservations++;
+    await f.repository.save({ ...current, closing });
+    return null;
+  };
+  const publish = f.adapter.publishClosed;
+  f.adapter.publishClosed = async () => { throw new Error('Falha transitória'); };
+  await assert.rejects(f.close(ticket), { statusCode: 503 });
+  const checkpoint = f.repository.get(ids.guild, ticket.id).closing;
+  assert(checkpoint.transcriptPersisted);
+  f.adapter.publishClosed = publish;
+  const closed = await f.makeService().close({ ...f.action(ticket), reason: 'Retry' });
+  assert.equal(reservations, 1);
+  assert.equal(closed.closing.transcript.key, checkpoint.transcript.key);
+  assert.equal(closed.closing.reason, 'Resolvido');
+  assert.equal(closed.closing.completed, true);
+  assert.equal(closed.archives.length, 1);
+  assert.equal(closed.events.filter(event => event.type === E.CLOSED).length, 1);
+});
+
+test('delete usa canal persistido e log diferencia alvo de canal da interação', async t => {
+  const { logger } = require('../src/lib/logger');
+  const logs = [];
+  t.mock.method(logger, 'info', (event, data) => logs.push({ event, data }));
+  const f = ticketFixture(t); const ticket = await f.close(await f.create());
+  assert.notEqual(ticket.channelId, ids.log);
+  const remove = t.mock.method(f.adapter, 'removeChannel', async current => {
+    assert.equal(current.channelId, ticket.channelId);
+    f.channels.delete(current.channelId);
+    return true;
+  });
+  await f.service.removeChannel(f.logAction(ticket));
+  assert.equal(remove.mock.callCount(), 1);
+  assert.equal(f.repository.get(ids.guild, ticket.id).channelId, null);
+  const log = logs.find(log => log.event === 'ticket.channel.deleted').data;
+  assert.equal(log.deletedChannelId, ticket.channelId);
+  assert.equal(log.channelId, ticket.channelId);
+  assert.equal(log.interactionChannelId, ids.log);
+  assert.equal(log.ticketId, ticket.id);
+  assert.equal(log.guildId, ids.guild);
+  assert.equal(log.alreadyAbsent, false);
+  await f.service.removeChannel(f.logAction(ticket));
+  assert.equal(remove.mock.callCount(), 1);
+});
+
+test('delete bloqueia divergência persistida, outra guild e canal de interação inválido', async t => {
+  const f = ticketFixture(t); const ticket = await f.close(await f.create());
+  await assert.rejects(f.service.removeChannel({ ...f.logAction(ticket), guildId: ids.otherGuild }), { statusCode: 404 });
+  await assert.rejects(f.service.removeChannel({ ...f.logAction(ticket), channelId: ids.panel }), { statusCode: 403 });
+  await f.repository.save({ ...ticket, channelId: ids.panel });
+  await assert.rejects(f.service.removeChannel(f.logAction(ticket)), { code: 'TICKET_CHANNEL_MISMATCH' });
+  assert(!f.calls.includes('delete'));
+  assert(f.channels.has(ticket.channelId));
+});
+
+test('retry de delete após canal já ausente limpa referência sem alegar nova exclusão', async t => {
+  const { logger } = require('../src/lib/logger');
+  const logs = [];
+  t.mock.method(logger, 'info', (event, data) => logs.push({ event, data }));
+  const f = ticketFixture(t); const ticket = await f.close(await f.create());
+  f.adapter.removeChannel = async () => false;
+  await f.service.removeChannel(f.logAction(ticket));
+  const log = logs.find(log => log.event === 'ticket.channel.deleted').data;
+  assert.equal(log.deletedChannelId, null);
+  assert.equal(log.alreadyAbsent, true);
+  assert.equal(f.repository.get(ids.guild, ticket.id).channelId, null);
+});
+
 test('abertura persiste identidade independente, sequência, canal e evento; JSON sobrevive a nova instância', async t => {
   const f = ticketFixture(t);
   const ticket = await f.create();

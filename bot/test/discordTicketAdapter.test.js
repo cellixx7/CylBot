@@ -106,16 +106,51 @@ test('canal privado permite somente criador/suporte/bot, bloqueio remove escrita
 });
 
 test('remoção não apaga canal com mensagens posteriores à captura e aceita canal já ausente', async () => {
-  const f = setup(); const channel = f.channels.get(ids.panel);
-  const ticket = { id: 'id', sequence: 1, guildId: ids.guild, supportRoleIds: [ids.role], creatorUserId: ids.user, channelId: ids.panel,
+  const f = setup();
+  const ticket = { id: 'id', sequence: 1, guildId: ids.guild, supportRoleIds: [ids.role], creatorUserId: ids.user, reopenCount: 0,
     closing: { transcript: { lastMessageId: '1' } } };
+  ticket.channelId = await f.adapter.createTicketChannel(ticket, f.config);
+  const channel = f.channels.get(ticket.channelId);
   channel.messages = { fetch: async () => new Collection([['2', { id: '2' }]]) };
   await assert.rejects(f.adapter.removeChannel(ticket), /posteriores/);
   assert.equal(channel.deleted, undefined);
   channel.messages.fetch = async () => new Collection([['1', { id: '1' }]]);
-  await f.adapter.removeChannel(ticket);
+  assert.equal(await f.adapter.removeChannel(ticket), true);
   assert.equal(channel.deleted, true);
-  await f.adapter.removeChannel(ticket);
+  assert.equal(await f.adapter.removeChannel(ticket), false);
+});
+
+test('delete valida guild, ID, tipo e topic com ticket/ciclo antes de alterar ou apagar canal', async t => {
+  const { logger } = require('../src/lib/logger');
+  const logs = [];
+  t.mock.method(logger, 'warn', (event, data) => logs.push({ event, data }));
+  for (const mutation of [{ guildId: ids.otherGuild }, { id: ids.panel }, { type: ChannelType.GuildCategory },
+    { topic: null }, { topic: 'cylbot-ticket:outro-ticket:0' }, { topic: 'cylbot-ticket:id:1' }]) {
+    const f = setup();
+    const ticket = { id: 'id', sequence: 1, guildId: ids.guild, supportRoleIds: [ids.role], creatorUserId: ids.user,
+      reopenCount: 0, closing: { transcript: { lastMessageId: '1' } } };
+    ticket.channelId = await f.adapter.createTicketChannel(ticket, f.config);
+    const channel = f.channels.get(ticket.channelId);
+    const overwrites = channel.rawOverwrites;
+    Object.assign(channel, mutation);
+    await assert.rejects(f.adapter.removeChannel(ticket), { statusCode: 409, code: 'TICKET_CHANNEL_MISMATCH' });
+    assert.equal(channel.deleted, undefined);
+    assert.equal(channel.rawOverwrites, overwrites);
+    assert(f.channels.has(ids.panel));
+    assert(f.channels.has(ids.log));
+  }
+  assert.equal(logs.length, 6);
+  assert(logs.every(log => log.event === 'ticket.channel.inconsistent'));
+});
+
+test('delete rejeita ID ausente e propaga falha Discord sem fingir canal inexistente', async () => {
+  const f = setup();
+  await assert.rejects(f.adapter.removeChannel({ guildId: ids.guild }), { statusCode: 409 });
+  const ticket = { guildId: ids.guild, channelId: 'missing' };
+  f.guild.channels.fetch = async () => { throw Object.assign(new Error('Unknown Channel'), { code: 10003 }); };
+  assert.equal(await f.adapter.removeChannel(ticket), false);
+  f.guild.channels.fetch = async () => { throw Object.assign(new Error('Missing Permissions'), { code: 50013 }); };
+  await assert.rejects(f.adapter.removeChannel(ticket), { code: 50013 });
 });
 
 test('adapter coleta só campos de transcript e usa paginação REST sem tokens/objetos internos', async () => {
