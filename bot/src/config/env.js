@@ -71,6 +71,7 @@ function loadEnv(source, { requireDiscord = true, requireSpotifyAuth = false } =
   if (!['debug', 'info', 'warn', 'error'].includes(logLevel)) {
     throw new Error('LOG_LEVEL deve ser debug, info, warn ou error.');
   }
+  const databaseUrl = optional(source, 'DATABASE_URL');
   const config = {
     auth: {
       enabled: Boolean(oauthSecret), clientId: oauthClientId, clientSecret: oauthSecret,
@@ -84,6 +85,7 @@ function loadEnv(source, { requireDiscord = true, requireSpotifyAuth = false } =
       clientId: oauthClientId,
     },
     api: { port: integer(source, 'API_PORT', 3001, 65535) },
+    database: { url: databaseUrl },
     tickets: { messageContentEnabled: optional(source, 'TICKETS_MESSAGE_CONTENT_ENABLED') === 'true' },
     openRouter: {
       apiKey: optional(source, 'OPENROUTER_API_KEY'),

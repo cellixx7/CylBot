@@ -27,6 +27,29 @@ cp .env.example .env
 
 Copie o arquivo somente na primeira configuração. Edite `bot/.env` e preencha `DISCORD_TOKEN` e `DISCORD_CLIENT_ID`. Para geração de textos e anúncios por IA, configure também `OPENROUTER_API_KEY`. A configuração do Spotify está em [bot/README.md](bot/README.md).
 
+### PostgreSQL local
+
+Tickets podem usar PostgreSQL sem alterar os services. Suba somente o banco de desenvolvimento na raiz do repositório:
+
+```bash
+docker compose up -d
+```
+
+Em `bot/.env`, use a URL local do exemplo:
+
+```env
+DATABASE_URL=postgresql://cylbot:cylbot_dev@localhost:5432/cylbot
+```
+
+Execute as migrations antes de iniciar o bot:
+
+```bash
+cd bot
+npm run db:migrate
+```
+
+Para parar o banco, use `docker compose down`. O volume `cylbot-postgres-data` preserva os dados locais. Em Codespaces, o backend e o PostgreSQL executados no mesmo Codespace usam `localhost`; produção deve apenas trocar `DATABASE_URL` pela URL do provedor PostgreSQL e executar `npm run db:migrate`.
+
 Convide o bot para o servidor com os escopos `bot` e `applications.commands`. Depois, ainda na pasta `bot/`, registre os comandos:
 
 ```bash
@@ -119,6 +142,9 @@ Execute os comandos na pasta indicada; a raiz não possui `package.json`.
 | `bot/` | `npm run deploy` | Nome legado preservado para o mesmo registro |
 | `bot/` | `npm test` | Executar testes com `node --test` |
 | `bot/` | `npm run spotify:auth` | Auxiliar de autorização Spotify |
+| `bot/` | `npm run db:generate` | Gerar migration Drizzle |
+| `bot/` | `npm run db:migrate` | Aplicar migrations no PostgreSQL configurado |
+| `bot/` | `npm run db:status` | Validar o schema Drizzle |
 | `web/` | `npm run dev` | Iniciar frontend em desenvolvimento |
 | `web/` | `npm run build` | Gerar build do frontend |
 | `web/` | `npm run preview` | Conferir localmente o build já gerado |

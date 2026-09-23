@@ -1,8 +1,17 @@
 const { sendJson } = require('../http/json');
 
-async function handle(request, response) {
+async function handle(request, response, { services } = {}) {
   if (request.method !== 'GET' || request.url !== '/api/health') return false;
-  sendJson(response, 200, { ok: true });
+  if (!services?.database) {
+    sendJson(response, 200, { ok: true });
+    return true;
+  }
+  try {
+    await services.database.ping();
+    sendJson(response, 200, { ok: true, database: 'ok' });
+  } catch {
+    sendJson(response, 503, { ok: false, database: 'unavailable' });
+  }
   return true;
 }
 

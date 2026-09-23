@@ -18,28 +18,37 @@ const { TicketPermissionService } = require('../services/ticketPermissionService
 const { TicketTranscriptService } = require('../services/ticketTranscriptService');
 const { TicketSetupService } = require('../services/ticketSetupService');
 const { TicketService } = require('../services/ticketService');
+const { createDatabase } = require('../database/client');
+const { PostgresUserRepository } = require('../repositories/postgresUserRepository');
+const { PostgresTicketRepository } = require('../repositories/postgresTicketRepository');
+const { PostgresTicketConfigRepository } = require('../repositories/postgresTicketConfigRepository');
 
 function createServices(client, config) {
+  const database = config.database?.url ? createDatabase(config.database.url) : null;
+  const userRepository = database ? new PostgresUserRepository(database) : null;
+  const ticketRepository = database ? new PostgresTicketRepository(database) : new TicketRepository();
+  const ticketConfigs = database ? new PostgresTicketConfigRepository(database) : new TicketConfigRepository();
   const openRouter = new OpenRouterService(config.openRouter);
   const oauthProvider = new DiscordOAuthProvider(config.auth);
   const announcementRepository = new JsonAnnouncementRepository();
-  const ticketConfigs = new TicketConfigRepository();
   const ticketAdapter = new DiscordTicketAdapter(client, config.tickets);
   const ticketPermissions = new TicketPermissionService(ticketAdapter);
   const ticketTranscripts = new TicketTranscriptService({ adapter: ticketAdapter, repository: new TicketTranscriptRepository() });
 
   return {
     openRouter,
+    database,
+    users: userRepository,
     // Somente o adapter Discord usa sessões; a Web chama generate com dados do formulário.
     textaAI: new TextaAIService({ ai: openRouter, sessions: new TextaAISessionManager() }),
     announcements: new AnnouncementService(announcementRepository, openRouter, new AnnouncementDraftManager()),
-    auth: new AuthService({ config: config.auth, provider: oauthProvider,
+    auth: new AuthService({ config: config.auth, provider: oauthProvider, users: userRepository,
       sessions: new AuthSessionManager({ ttlSeconds: config.auth.sessionTtlSeconds }) }),
     dashboard: new DashboardService({ provider: oauthProvider, client }),
     presence: new PresenceManager(client),
     callSense: new CallSenseManager(client),
     ticketSetup: new TicketSetupService({ repository: ticketConfigs, permissions: ticketPermissions, adapter: ticketAdapter }),
-    tickets: new TicketService({ repository: new TicketRepository(), configs: ticketConfigs,
+    tickets: new TicketService({ repository: ticketRepository, configs: ticketConfigs,
       permissions: ticketPermissions, adapter: ticketAdapter, transcripts: ticketTranscripts }),
   };
 }

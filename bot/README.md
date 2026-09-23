@@ -11,7 +11,7 @@ Base modular para um bot do Discord usando Node.js e discord.js.
 - `src/index.js`: ponto de entrada e montagem do cliente.
 - `scripts/`: tarefas operacionais, como o registro dos comandos.
 
-Essa divisão permite adicionar `voiceStateUpdate` em `src/events/`, sem misturar o monitoramento com os comandos atuais. Anúncios e tickets usam repositories JSON locais; dependências são criadas em `src/app/createServices.js`.
+Essa divisão permite adicionar `voiceStateUpdate` em `src/events/`, sem misturar o monitoramento com os comandos atuais. Anúncios continuam em JSON local; tickets, configurações e usuários podem usar PostgreSQL via repositories criados em `src/app/createServices.js`.
 
 ## Requisitos
 
@@ -50,6 +50,22 @@ Execute os comandos abaixo dentro de `bot/` (`cd bot` a partir da raiz). Copie o
 	```
 
 Para iniciar novamente, execute `npm start` dentro de `bot/`. Repita `npm run commands:register` quando adicionar ou alterar definições dos comandos slash. O nome legado `npm run deploy` continua disponível para compatibilidade.
+
+## PostgreSQL
+
+Com `DATABASE_URL` ausente, o fallback JSON mantém o desenvolvimento e os testes locais compatíveis. Com `DATABASE_URL` definida, o composition root cria um único pool `pg`, usa Drizzle ORM e exige uma conexão válida no startup principal.
+
+Na raiz do projeto, o ambiente local é:
+
+```bash
+docker compose up -d
+cd bot
+npm run db:migrate
+```
+
+O schema cria `users`, `ticket_configs`, `ticket_categories`, `tickets`, `ticket_events` e `ticket_sequences`. A sequência por guild é incrementada dentro da transação de criação, e `(guild_id, public_number)` possui constraint única. `channel_id` continua anulável porque ticket e canal Discord são entidades diferentes. Sessões OAuth e sessões temporárias do Texta_AI continuam em memória; reiniciar o backend exige novo login.
+
+Em Codespaces, mantenha o Postgres no mesmo ambiente Docker e use `localhost` na `DATABASE_URL`. Em hospedagem futura, substitua somente a URL por uma conexão PostgreSQL fornecida pelo provedor e rode `npm run db:migrate` antes de `npm start`. Não são persistidos access tokens ou refresh tokens do Discord.
 
 Para executar o frontend junto do bot, siga [o guia da raiz](../README.md#iniciar-em-desenvolvimento).
 

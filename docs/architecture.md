@@ -63,7 +63,7 @@ O MVP acrescenta `ticketHandler` ao mesmo registry. `createServices` monta Ticke
 
 Ticket é uma entidade persistida independente do channelId, com UUID, sequência por guild, estados OPEN/CLAIMED/CLOSED/REOPENED, eventos e arquivos de ciclos encerrados. Setup e operações remotas usam checkpoints JSON; um bloqueio em memória por guild evita corridas dentro do processo. Canais só podem ser removidos por staff após conferência de estado, transcript íntegro e log final. A reabertura consulta o repository e cria outro canal mantendo a identidade. Contratos, permissões, falhas e limites estão em [docs/tickets.md](tickets.md).
 
-Uma futura API Web poderá usar os mesmos services com DTOs e identidade autenticada. Uma implementação PostgreSQL deverá substituir repositories e acrescentar transações/locks, sem usar channelId como identidade. Entitlements de branding/IA/configuração e TicketAIService/AIPolicyService/AIActionService são extensões documentadas, ainda não implementadas.
+Uma futura API Web poderá usar os mesmos services com DTOs e identidade autenticada. Os repositories PostgreSQL atuais substituem os repositories JSON quando `DATABASE_URL` está definida, acrescentando transações e contador por guild sem usar `channelId` como identidade. Entitlements de branding/IA/configuração e TicketAIService/AIPolicyService/AIActionService são extensões documentadas, ainda não implementadas.
 
 ## Origens por ambiente
 

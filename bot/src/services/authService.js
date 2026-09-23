@@ -3,8 +3,8 @@ const { clientError } = require('../api/http/errors');
 
 const STATE_TTL_SECONDS = 300;
 class AuthService {
-  constructor({ config, provider, sessions, now = Date.now }) {
-    Object.assign(this, { config, provider, sessions, now });
+  constructor({ config, provider, sessions, users, now = Date.now }) {
+    Object.assign(this, { config, provider, sessions, users, now });
     this.states = new Map();
   }
   assertEnabled() {
@@ -35,6 +35,7 @@ class AuthService {
     }
     const token = await this.provider.exchangeCode(code);
     const user = await this.provider.getUser(token.access_token);
+    if (this.users) await this.users.upsertDiscordUser(user);
     const session = this.sessions.create(user, token);
     this.sessions.remove(previousSessionId);
     return session;

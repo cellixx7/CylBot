@@ -11,7 +11,7 @@ class TicketSetupService {
   }
   async begin({ guildId, userId }) {
     await this.permissions.requireAdmin(guildId, userId);
-    const existing = this.repository.get(guildId);
+    const existing = await this.repository.get(guildId);
     if (existing?.ready) throw clientError(409, 'Tickets já configurados neste servidor. O painel existente continua ativo.');
     for (const [id, session] of this.sessions) if (session.expiresAt <= this.now() || (session.guildId === guildId && session.userId === userId)) this.sessions.delete(id);
     if (this.sessions.size >= 1000) throw clientError(429, 'Muitas configurações em andamento. Tente novamente mais tarde.');
@@ -21,18 +21,18 @@ class TicketSetupService {
     logger.info('ticket.setup_started', { guildId, userId });
     return structuredClone(session);
   }
-  async session({ guildId, userId, sessionId }) {
+  async session({ guildId, userId, sessionId }, internal = false) {
     await this.permissions.requireAdmin(guildId, userId);
     const session = this.sessions.get(sessionId);
     if (!session || session.guildId !== guildId || session.userId !== userId || session.expiresAt <= this.now()) throw clientError(400, 'Configuração expirada ou de outro usuário. Execute /ticket novamente.');
-    if (this.busy.has(guildId)) throw clientError(409, 'A configuração está sendo publicada. Aguarde.');
+    if (!internal && this.busy.has(guildId)) throw clientError(409, 'A configuração está sendo publicada. Aguarde.');
     return session;
   }
   async change(input) {
     const session = await this.session(input);
     const { action, values = [] } = input;
     if (action === 'cancel') { this.sessions.delete(session.id); return null; }
-    if (this.repository.get(input.guildId)) throw clientError(409, 'Existe uma publicação pendente. Confirme para retomar a configuração salva.');
+    if (await this.repository.get(input.guildId)) throw clientError(409, 'Existe uma publicação pendente. Confirme para retomar a configuração salva.');
     const next = structuredClone(session);
     if (action === 'start' && session.step === 'start') next.step = 'role';
     else if (action === 'role' && session.step === 'role') {
@@ -60,13 +60,13 @@ class TicketSetupService {
     return structuredClone(next);
   }
   async confirm(input) {
-    const session = await this.session(input);
     if (this.busy.has(input.guildId)) throw clientError(409, 'A configuração está sendo publicada. Aguarde.');
-    if (session.step !== 'confirm') throw clientError(400, 'Conclua as etapas da configuração.');
-    if (this.repository.get(input.guildId)?.ready) throw clientError(409, 'Tickets já configurados neste servidor.');
     this.busy.add(input.guildId);
     try {
-      let config = this.repository.get(input.guildId) || {
+      const session = await this.session(input, true);
+      if (session.step !== 'confirm') throw clientError(400, 'Conclua as etapas da configuração.');
+      if ((await this.repository.get(input.guildId))?.ready) throw clientError(409, 'Tickets já configurados neste servidor.');
+      let config = await this.repository.get(input.guildId) || {
         guildId: session.guildId, setupId: session.id, mode: session.mode,
         supportRoleIds: session.supportRoleIds, categories: session.categories,
         panelChannelId: session.panelChannelId || null, logChannelId: session.logChannelId || null,
@@ -74,17 +74,17 @@ class TicketSetupService {
         panelMessageId: null, ready: false, createdBy: input.userId, createdAt: this.now(),
       };
       await this.adapter.validateSetup(config);
-      this.repository.save(config);
+      await this.repository.save(config);
       config = await this.adapter.ensureStructure(config, updated => this.repository.save(updated));
       // Revalida a autoridade após as operações assíncronas de provisionamento.
       await this.permissions.requireAdmin(input.guildId, input.userId);
       await this.adapter.validateStructure(config);
       if (!config.panelMessageId) {
         config.panelMessageId = await this.adapter.publishPanel(config);
-        this.repository.save(config);
+        await this.repository.save(config);
       }
       config.ready = true;
-      this.repository.save(config);
+      await this.repository.save(config);
       this.sessions.delete(session.id);
       logger.info('ticket.setup_completed', { guildId: input.guildId, userId: input.userId });
       return config;
