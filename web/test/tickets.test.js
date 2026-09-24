@@ -1,13 +1,104 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startPolling } from '../src/tickets/polling.js';
-import { getMessages, getTicket, getTickets } from '../src/tickets/ticketsApi.js';
+import {
+  getMessages,
+  getTicket,
+  getTickets,
+  postTicketMessage,
+} from '../src/tickets/ticketsApi.js';
 
 const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
 class Visibility extends EventTarget {
   hidden = false;
   change(hidden) { this.hidden = hidden; this.dispatchEvent(new Event('visibilitychange')); }
 }
+
+test('POST de mensagem envia somente o contrato permitido e usa sessão autenticada', async t => {
+  const calls = [];
+
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    calls.push({ url, options });
+
+    return new Response(JSON.stringify({
+      message: {
+        id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        content: 'Olá pelo painel',
+        origin: 'WEB',
+        authorType: 'USER',
+        deliveryStatus: 'SENT',
+      },
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  });
+
+  const result = await postTicketMessage(
+    '111111111111111111',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    {
+      clientMessageId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+      content: 'Olá pelo painel',
+    },
+  );
+
+  assert.equal(calls.length, 1);
+
+  assert.equal(
+    calls[0].url,
+    '/api/tickets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/messages',
+  );
+
+  assert.equal(calls[0].options.method, 'POST');
+  assert.equal(calls[0].options.credentials, 'include');
+  assert.equal(calls[0].options.cache, 'no-store');
+  assert.equal(
+    calls[0].options.headers['Content-Type'],
+    'application/json',
+  );
+
+  assert.deepEqual(
+    JSON.parse(calls[0].options.body),
+    {
+      guildId: '111111111111111111',
+      clientMessageId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+      content: 'Olá pelo painel',
+    },
+  );
+
+  assert.equal(result.message.origin, 'WEB');
+  assert.equal(result.message.deliveryStatus, 'SENT');
+});
+
+test('POST de mensagem não reflete erro privado do backend', async t => {
+  t.mock.method(globalThis, 'fetch', async () =>
+    new Response(
+      JSON.stringify({
+        error: 'database password secret',
+      }),
+      {
+        status: 503,
+      },
+    ),
+  );
+
+  await assert.rejects(
+    postTicketMessage(
+      '111111111111111111',
+      'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      {
+        clientMessageId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+        content: 'Teste',
+      },
+    ),
+    error =>
+      error.status === 503 &&
+      !error.message.includes('database password secret'),
+  );
+});
 
 test('polling serializa ciclos, pausa em aba oculta, aborta ao sair e ignora resposta antiga', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1000 });

@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { getMessages, getTicket, getTickets } from './ticketsApi.js';
+import { useTicketComposer } from './useTicketComposer.js';
 import { useTicketPolling } from './useTicketPolling.js';
-import './tickets.css';
 
 const statuses = { OPEN: 'Aberto', CLAIMED: 'Em atendimento', CLOSED: 'Fechado', REOPENED: 'Reaberto' };
 const authors = { USER: 'Usuário', STAFF: 'Equipe', AI: 'IA', SYSTEM: 'Sistema' };
@@ -34,6 +34,11 @@ function Pagination({ cursors, setCursors, nextBefore, history = false }) {
 
 function TicketList({ guildId, requireRelogin }) {
   const [cursors, setCursors] = useState([null]);
+  const composer = useTicketComposer({
+  guildId,
+  ticketId,
+  requireRelogin,
+});
   const before = cursors.at(-1);
   const load = useCallback(signal => getTickets(guildId, before, signal), [guildId, before]);
   const state = useTicketPolling(load, requireRelogin);
