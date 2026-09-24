@@ -1,4 +1,4 @@
-const { Client, Collection, GatewayIntentBits } = require('discord.js');
+const { Client, Collection, GatewayIntentBits, Partials } = require('discord.js');
 const { getConfig } = require('./config/env');
 const config = getConfig({ requireDiscord: true });
 const commands = require('./commands/index');
@@ -6,6 +6,7 @@ const readyEvent = require('./events/ready');
 const interactionCreateEvent = require('./events/interactionCreate');
 const voiceStateUpdateEvent = require('./events/voiceStateUpdate');
 const messageCreateEvent = require('./events/messageCreate');
+const messageUpdateEvent = require('./events/messageUpdate');
 const { createServices } = require('./app/createServices');
 const { startApiServer } = require('./api/server');
 const { logger } = require('./lib/logger');
@@ -14,6 +15,7 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates,
     ...(config.tickets.messageContentEnabled ? [GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] : []),
   ],
+  partials: config.tickets.messageContentEnabled ? [Partials.Message] : [],
 });
 
 client.commands = new Collection(
@@ -57,6 +59,8 @@ async function start() {
     voiceStateUpdateEvent.execute(oldState, newState, client),
   );
   client.on(messageCreateEvent.name, message => messageCreateEvent.execute(message, client));
+  client.on(messageUpdateEvent.name, (oldMessage, newMessage) =>
+    messageUpdateEvent.execute(oldMessage, newMessage, client));
 
   await client.login(config.discord.token);
 }

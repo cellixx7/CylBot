@@ -32,6 +32,10 @@
 .ticket-chat-message header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
 .ticket-chat-message header span, .ticket-chat-message time, .ticket-chat-message footer { color: var(--muted); font-size: .75rem; }
 .ticket-chat-message time { margin-left: auto; }
+.ticket-message-action { padding: 2px 5px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font: inherit; font-size: .9rem; line-height: 1; cursor: pointer; }
+.ticket-message-action:hover:not(:disabled) { background: var(--surface-raised); color: inherit; }
+.ticket-message-action:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.ticket-message-action:disabled { cursor: default; opacity: .45; }
 .ticket-edited { margin: 8px 0 0; color: var(--muted); font-size: .75rem; }
 .ticket-revisions { margin-top: 16px; }
 .ticket-revision-list { margin-top: 12px; padding: 14px; border-left: 2px solid var(--line); background: var(--surface-raised); }

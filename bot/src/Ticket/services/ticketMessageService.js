@@ -193,6 +193,24 @@ class TicketMessageService {
     return updated;
   }
 
+  async updateDiscordMessage({ guildId, channelId, messageId, userId, content: text }) {
+    this.requireStorage();
+    if (!/^[0-9]{17,20}$/.test(messageId || '')) return null;
+    const message = await this.repository.findByDiscordMessageId(guildId, messageId);
+    if (!message || message.discordChannelId !== channelId) return null;
+    text = content(text, WEB_CONTENT_LIMIT);
+    if (message.content === text) return message;
+    const updated = await this.repository.editContent({
+      guildId,
+      ticketId: message.ticketId,
+      messageId: message.id,
+      editorDiscordId: userId,
+      content: text,
+    });
+    if (updated) logger.info('ticket.message.discord_edited', this.log({ id: message.ticketId, guildId }, updated));
+    return updated;
+  }
+
   async reserveAIMessage({ ticket, config, proposal, runId, internal = false, db }) {
     this.requireStorage();
     const result = await this.repository.create({ ticketId: ticket.id, guildId: ticket.guildId,

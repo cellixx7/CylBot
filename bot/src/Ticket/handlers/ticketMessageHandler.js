@@ -15,6 +15,19 @@ class TicketMessageHandler {
       logger.warn('ticket.message.ingest_failed', { guildId: input.guildId, channelId: input.channelId, ...errorDetails(error) });
     }
   }
+
+  async handleUpdate(input) {
+    if (!this.messages?.repository) return;
+    try {
+      return await this.messages.updateDiscordMessage(input);
+    } catch (error) {
+      logger.warn('ticket.message.discord_update_failed', {
+        guildId: input.guildId,
+        channelId: input.channelId,
+        ...errorDetails(error),
+      });
+    }
+  }
 }
 
 module.exports = { TicketMessageHandler };

@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { TicketAIMessageHandler } = require('../src/Ticket/handlers/ticketAIMessageHandler');
 const { handleTicketAIInteraction, startTicketAIConfig } = require('../src/Ticket/handlers/ticketAIHandler');
 const messageEvent = require('../src/events/messageCreate');
+const messageUpdateEvent = require('../src/events/messageUpdate');
 const { ticketAIFixture, ids } = require('./helpers/ticketAIFixture');
 
 test('messageCreate ignora bots, DMs, webhooks e mensagens de sistema', () => {
@@ -11,6 +12,17 @@ test('messageCreate ignora bots, DMs, webhooks e mensagens de sistema', () => {
   const message = { guildId: ids.guild, channelId: ids.panel, author: { id: ids.user, bot: false }, content: 'hi', id: 'm' };
   for (const override of [{ guildId: null }, { author: { bot: true } }, { webhookId: 'hook' }, { system: true }]) messageEvent.execute({ ...message, ...override }, client);
   assert.equal(seen.length, 0); messageEvent.execute(message, client); assert.equal(seen.length, 1);
+});
+
+test('messageUpdate encaminha somente campos seguros e resolve partial', async () => {
+  const seen = [];
+  const client = { services: { ticketMessageInbound: { handleUpdate: value => seen.push(value) } } };
+  const message = { guildId: ids.guild, channelId: ids.panel, id: '100000000000000001', author: { id: ids.user, bot: false },
+    content: 'Atualizada', editedTimestamp: 10, system: false };
+  await messageUpdateEvent.execute({}, message, client);
+  assert.deepEqual(seen, [{ guildId: ids.guild, channelId: ids.panel, messageId: message.id, userId: ids.user, content: 'Atualizada', editedAt: 10 }]);
+  await messageUpdateEvent.execute({}, { partial: true, async fetch() { return { ...message, guildId: null }; } }, client);
+  assert.equal(seen.length, 1);
 });
 
 test('debounce combina sequência em uma geração e pedido de humano é imediato', async t => {

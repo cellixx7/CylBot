@@ -779,6 +779,28 @@ async function toggleRevisions(message) {
                         >
                           {closed ? date(message.createdAt) : shortTime(message.createdAt)}
                         </time>
+
+                        {!closed && message.origin === 'WEB' &&
+                          message.isOwn &&
+                          message.authorType !== 'AI' &&
+                          message.authorType !== 'SYSTEM' &&
+                          editingMessageId !== message.id && (
+                            <button
+                              type="button"
+                              className="ticket-message-action"
+                              aria-label="Editar mensagem"
+                              title="Editar mensagem"
+                              disabled={
+                                savingEdit ||
+                                editingMessageId !== null
+                              }
+                              onClick={() =>
+                                startEditing(message)
+                              }
+                            >
+                              ✎
+                            </button>
+                          )}
                       </header>
 
                       {message.visibility !==
@@ -851,26 +873,6 @@ async function toggleRevisions(message) {
                           {closed ? 'Mensagem editada.' : 'Editado'}
                         </p>
                       )}
-
-                      {!closed && message.origin === 'WEB' &&
-                        message.isOwn &&
-                        message.authorType !== 'AI' &&
-                        message.authorType !== 'SYSTEM' &&
-                        editingMessageId !== message.id && (
-                          <button
-                            type="button"
-                            className="button button-outline"
-                            disabled={
-                              savingEdit ||
-                              editingMessageId !== null
-                            }
-                            onClick={() =>
-                              startEditing(message)
-                            }
-                          >
-                            Editar
-                          </button>
-                        )}
 
                       {closed && message.editedAt && (
                         <div className="ticket-revisions">

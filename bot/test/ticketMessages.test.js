@@ -6,6 +6,7 @@ const { ticketAIFixture, ids } = require('./helpers/ticketAIFixture');
 const { TicketMessageHandler } = require('../src/Ticket/handlers/ticketMessageHandler');
 const { TicketAIContextService } = require('../src/Ticket/services/ticketAIContextService');
 const { TicketTranscriptService } = require('../src/Ticket/services/ticketTranscriptService');
+const { logger } = require('../src/lib/logger');
 
 const discordInput = f => ({ guildId: ids.guild, channelId: f.ticket.channelId, messageId: '100000000000000099',
   userId: ids.user, content: 'Mensagem Discord', createdAt: new Date() });
@@ -132,6 +133,51 @@ test('edição Web chama Discord antes da revisão persistida e não cria revis�
   await f.messageService.editWebMessage({ guildId: ids.guild, ticketId: f.ticket.id, messageId: created.message.id,
     userId: ids.user, content: 'Depois' });
   assert.deepEqual(order, []);
+});
+
+test('edição no Discord atualiza a mensagem canônica sem criar mensagem ou disparar IA', async t => {
+  const f = await ticketAIFixture(t);
+  const message = f.messages[0];
+  message.discordMessageId = '100000000000000198';
+  message.discordChannelId = f.ticket.channelId;
+  const originalId = message.id;
+  const discordMessageId = message.discordMessageId;
+  const revisions = [];
+  f.messageRepository.editContent = async input => {
+    revisions.push({ messageId: input.messageId, previousContent: message.content, editorDiscordId: input.editorDiscordId });
+    Object.assign(message, { content: input.content, editedAt: Date.now(), updatedAt: Date.now() });
+    return message;
+  };
+  let aiCalls = 0;
+  const handler = new TicketMessageHandler({ messages: f.messageService, ai: { enqueue() { aiCalls++; } } });
+  await handler.handleUpdate({ guildId: ids.guild, channelId: f.ticket.channelId, messageId: discordMessageId,
+    userId: ids.user, content: 'Conteúdo corrigido' });
+  assert.equal(f.messages.length, 1);
+  assert.equal(message.id, originalId);
+  assert.equal(message.discordMessageId, discordMessageId);
+  assert.equal(message.content, 'Conteúdo corrigido');
+  assert.ok(message.editedAt);
+  assert.deepEqual(revisions, [{ messageId: originalId, previousContent: 'Preciso de ajuda', editorDiscordId: ids.user }]);
+  assert.equal(aiCalls, 0);
+  await handler.handleUpdate({ guildId: ids.guild, channelId: f.ticket.channelId, messageId: discordMessageId,
+    userId: ids.user, content: 'Conteúdo corrigido' });
+  assert.equal(revisions.length, 1);
+});
+
+test('edição Discord desconhecida é ignorada e falha é registrada sem derrubar o handler', async t => {
+  const f = await ticketAIFixture(t);
+  assert.equal(await f.messageService.updateDiscordMessage({ guildId: ids.guild, channelId: f.ticket.channelId,
+    messageId: '100000000000000199', userId: ids.user, content: 'Desconhecida' }), null);
+  const logs = [];
+  t.mock.method(logger, 'warn', (event, data) => logs.push({ event, data }));
+  f.messageService.updateDiscordMessage = async () => { throw new Error('conteúdo secreto'); };
+  const handler = new TicketMessageHandler({ messages: f.messageService, ai: { enqueue() { assert.fail('não deve chamar IA'); } } });
+  await handler.handleUpdate({ guildId: ids.guild, channelId: f.ticket.channelId, messageId: '100000000000000001',
+    userId: ids.user, content: 'Teste' });
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0].event, 'ticket.message.discord_update_failed');
+  assert.equal(logs[0].data.errorName, 'Error');
+  assert.equal(Object.hasOwn(logs[0].data, 'content'), false);
 });
 
 test('revision history requires VIEW, checks its ticket, and omits the editor', async t => {
