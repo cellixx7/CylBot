@@ -1,5 +1,6 @@
 ﻿import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { startPolling } from '../src/tickets/polling.js';
 import {
   getMessages,
@@ -18,6 +19,7 @@ import {
 } from '../src/tickets/ticketsApi.js';
 import { ticketConversationMode } from '../src/tickets/messageReconciliation.js';
 import { insertMention, messageSegments, shouldSubmitOnEnter } from '../src/tickets/messagePresentation.js';
+import { isGroupedWithPrevious } from '../src/tickets/conversationPresentation.js';
 
 const flush = async () => {
   for (let i = 0; i < 8; i++) {
@@ -36,7 +38,7 @@ class Visibility extends EventTarget {
   }
 }
 
-test('POST de mensagem envia somente o contrato permitido e usa sessÃ£o autenticada', async t => {
+test('POST de mensagem envia somente o contrato permitido e usa sessão autenticada', async t => {
   const calls = [];
 
   t.mock.method(
@@ -52,7 +54,7 @@ test('POST de mensagem envia somente o contrato permitido e usa sessÃ£o autent
         JSON.stringify({
           message: {
             id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-            content: 'OlÃ¡ pelo painel',
+            content: 'Olá pelo painel',
             origin: 'WEB',
             authorType: 'USER',
             deliveryStatus: 'SENT',
@@ -76,7 +78,7 @@ test('POST de mensagem envia somente o contrato permitido e usa sessÃ£o autent
         clientMessageId:
           'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
         content:
-          'OlÃ¡ pelo painel',
+          'Olá pelo painel',
       },
     );
 
@@ -122,7 +124,7 @@ test('POST de mensagem envia somente o contrato permitido e usa sessÃ£o autent
       clientMessageId:
         'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
       content:
-        'OlÃ¡ pelo painel',
+        'Olá pelo painel',
     },
   );
 
@@ -137,7 +139,7 @@ test('POST de mensagem envia somente o contrato permitido e usa sessÃ£o autent
   );
 });
 
-test('POST de mensagem nÃ£o reflete erro privado do backend', async t => {
+test('POST de mensagem não reflete erro privado do backend', async t => {
   t.mock.method(
     globalThis,
     'fetch',
@@ -378,7 +380,7 @@ test('polling serializa ciclos, pausa em aba oculta, aborta ao sair e ignora res
   );
 });
 
-test('401/403/404 encerram polling; erros temporÃ¡rios retomam respeitando Retry-After', async t => {
+test('401/403/404 encerram polling; erros temporários retomam respeitando Retry-After', async t => {
   t.mock.timers.enable({
     apis: ['setTimeout', 'Date'],
     now: 1000,
@@ -533,7 +535,7 @@ test('401/403/404 encerram polling; erros temporÃ¡rios retomam respeitando Ret
   stop();
 });
 
-test('API usa somente GET autenticado, parÃ¢metros de pÃ¡gina e AbortSignal', async t => {
+test('API usa somente GET autenticado, parâmetros de página e AbortSignal', async t => {
   const calls = [];
 
   const signal =
@@ -649,7 +651,26 @@ test('composer sends only plain Enter outside IME and inserts the selected menti
   assert.equal(insertMention('Oi @Mar', { id: '123456789012345678', name: 'Marcelo' }), 'Oi <@123456789012345678>');
 });
 
-test('API distingue autorizaÃ§Ã£o, indisponibilidade e limite sem refletir erro privado do servidor', async t => {
+test('conversation groups only adjacent messages from the same author within five minutes', () => {
+  const first = { authorType: 'USER', authorName: 'Marcelo', isOwn: true, createdAt: '2026-01-01T10:00:00.000Z' };
+  assert.equal(isGroupedWithPrevious({ ...first, createdAt: '2026-01-01T10:04:59.000Z' }, first), true);
+  assert.equal(isGroupedWithPrevious({ ...first, createdAt: '2026-01-01T10:05:01.000Z' }, first), false);
+  assert.equal(isGroupedWithPrevious({ ...first, authorName: 'Ana', createdAt: '2026-01-01T10:01:00.000Z' }, first), false);
+});
+
+test('ticket interface source keeps Portuguese accents in important labels', () => {
+  const source = readFileSync(new URL('../src/tickets/TicketsPage.jsx', import.meta.url), 'utf8');
+  for (const text of ['Você', 'Usuário', 'Página']) assert.equal(source.includes(text), true);
+  assert.equal(source.includes(String.fromCodePoint(86, 111, 99, 195, 170)), false);
+});
+
+test('AI settings keep compact groups and friendly capability labels', () => {
+  const source = readFileSync(new URL('../src/tickets/TicketAISettings.jsx', import.meta.url), 'utf8');
+  for (const text of ['Configuração', 'Geral', 'Comportamento', 'Contexto', 'Segurança', 'Responder', 'Pedir esclarecimentos', 'Salvar configuração', 'Cancelar']) assert.equal(source.includes(text), true);
+  assert.equal(source.includes('ticket-ai-check'), true);
+});
+
+test('API distingue autorização, indisponibilidade e limite sem refletir erro privado do servidor', async t => {
   for (
     const status of [
       401,

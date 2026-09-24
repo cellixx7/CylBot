@@ -26,6 +26,7 @@ import {
 import { useTicketComposer } from './useTicketComposer.js';
 import { useTicketPolling } from './useTicketPolling.js';
 import { insertMention, mentionQuery, shouldSubmitOnEnter } from './messagePresentation.js';
+import { isGroupedWithPrevious } from './conversationPresentation.js';
 import './tickets.css';
 
 const statuses = {
@@ -79,50 +80,11 @@ function Status({ value }) {
 }
 
 function PollStatus({ state }) {
-  return (
-    <div className="ticket-poll-status">
-      {state.loading && (
-        <p role="status">
-          Carregando tickets...
-        </p>
-      )}
-
-      {state.error && (
-        <div role="alert">
-          <p>{state.error}</p>
-
-          <button
-            className="button button-outline"
-            disabled={
-              state.refreshing ||
-              state.retryAt > Date.now()
-            }
-            onClick={state.retry}
-          >
-            Tentar novamente
-          </button>
-        </div>
-      )}
-
-      {state.retryAt && (
-        <p>
-          Próxima tentativa a partir de {date(state.retryAt)}, com a aba visível.
-        </p>
-      )}
-
-      {state.updatedAt && (
-        <p>
-          {state.error
-            ? 'Dados da última consulta: '
-            : 'Atualizado em '}
-          {date(state.updatedAt)}.
-
-          {!state.error &&
-            ' Atualização automática a cada 15 segundos com a aba visível.'}
-        </p>
-      )}
-    </div>
-  );
+  if (!state.loading && !state.error) return null;
+  return <div className="ticket-poll-status">
+    {state.loading && <p role="status">Carregando tickets...</p>}
+    {state.error && <div role="alert"><p>{state.error}</p><button className="button button-outline" disabled={state.refreshing || state.retryAt > Date.now()} onClick={state.retry}>Tentar novamente</button></div>}
+  </div>;
 }
 
 function Pagination({
@@ -318,9 +280,12 @@ function TicketDetail({
   const [aiOverride, setAiOverride] = useState(null);
   const [aiState, setAiState] = useState({ busy: '', error: '', result: null });
   const [aiConfig, setAiConfig] = useState(null);
+  const [aiConfigOpen, setAiConfigOpen] = useState(false);
   const [aiConfigState, setAiConfigState] = useState({ saving: false, error: '' });
 
   const messageAttemptRef = useRef(null);
+  const conversationEndRef = useRef(null);
+  const stayNearConversationEndRef = useRef(true);
 
   const composer = useTicketComposer({
     guildId,
@@ -385,6 +350,7 @@ function TicketDetail({
     setAiOverride(null);
     setAiState({ busy: '', error: '', result: null });
     setAiConfig(null);
+    setAiConfigOpen(false);
     setAiConfigState({ saving: false, error: '' });
     messageAttemptRef.current = null;
   }, [guildId, ticketId]);
@@ -470,6 +436,19 @@ function TicketDetail({
     .slice(0, 5);
 
   useEffect(() => {
+    const updatePosition = () => {
+      stayNearConversationEndRef.current = document.documentElement.scrollHeight - (window.scrollY + window.innerHeight) < 180;
+    };
+    updatePosition();
+    window.addEventListener('scroll', updatePosition, { passive: true });
+    return () => window.removeEventListener('scroll', updatePosition);
+  }, []);
+
+  useEffect(() => {
+    if (!before && !closed && stayNearConversationEndRef.current) conversationEndRef.current?.scrollIntoView({ block: 'end' });
+  }, [before, closed, displayedMessages.length]);
+
+  useEffect(() => {
     const serverStatus = state.data?.aiStatus;
     if (!aiOverride || !serverStatus) return;
     if (serverStatus.paused === aiOverride.paused && serverStatus.escalatedAt === aiOverride.escalatedAt) setAiOverride(null);
@@ -497,10 +476,15 @@ function TicketDetail({
 
   async function openAIConfig() {
     if (aiState.busy) return;
+    if (aiConfig) {
+      setAiConfigOpen(true);
+      return;
+    }
     setAiState(previous => ({ ...previous, busy: 'config', error: '' }));
     try {
       const result = await getTicketAIConfig(guildId);
       setAiConfig(result.config);
+      setAiConfigOpen(true);
       setAiState(previous => ({ ...previous, busy: '', error: '' }));
     } catch (error) {
       if (error.reloginRequired) requireRelogin();
@@ -514,6 +498,7 @@ function TicketDetail({
     try {
       const result = await updateTicketAIConfig(guildId, aiConfig);
       setAiConfig(result.config); setAiConfigState({ saving: false, error: '' });
+      setAiConfigOpen(false);
       setAiOverride(previous => previous ? { ...previous, enabled: result.config.enabled, autonomyLevel: result.config.autonomyLevel, assistantName: result.config.assistantName } : previous);
     } catch (error) {
       if (error.reloginRequired) requireRelogin();
@@ -574,6 +559,7 @@ function TicketDetail({
       }
 
       upsertLocalMessage({ ...message, isOwn: true });
+      stayNearConversationEndRef.current = true;
 
       if (before) {
         setCursors([null]);
@@ -713,7 +699,7 @@ async function toggleRevisions(message) {
       {ticket && (
         <>
           <section
-            className="ticket-detail"
+            className="ticket-detail ticket-detail-compact"
             aria-label="Informações do ticket"
           >
             <div className="ticket-card-heading">
@@ -822,6 +808,7 @@ async function toggleRevisions(message) {
 
             <TicketAIControls
               status={aiStatus}
+              config={aiConfig}
               active={!closed}
               busy={aiState.busy}
               result={aiState.result}
@@ -832,14 +819,17 @@ async function toggleRevisions(message) {
               onConfigure={openAIConfig}
             />
 
-            <TicketAISettings
+            {aiConfig && aiConfigOpen && <section className="ticket-ai-details">
+              <h3>Configurações da IA</h3>
+              <TicketAISettings
               config={aiConfig}
               saving={aiConfigState.saving}
               error={aiConfigState.error}
               onChange={(key, value) => setAiConfig(previous => ({ ...previous, [key]: value }))}
               onSave={saveAIConfig}
-              onCancel={() => setAiConfig(null)}
-            />
+              onCancel={() => setAiConfigOpen(false)}
+              />
+            </section>}
 
             <div className="ticket-actions">
               {ticket.actions?.canClaim && <button className="button" disabled={Boolean(actionState.name)} onClick={() => runAction('claim')}>{actionState.name === 'claim' ? 'Assumindo...' : 'Assumir ticket'}</button>}
@@ -886,12 +876,14 @@ async function toggleRevisions(message) {
                 aria-label="Mensagens em ordem cronológica"
               >
                 {displayedMessages.map(
-                  message => (
+                  (message, index) => {
+                    const grouped = !closed && isGroupedWithPrevious(message, displayedMessages[index - 1]);
+                    return (
                     <li
-                      className={`${closed ? 'ticket-message' : 'ticket-chat-message'} ticket-message-${message.authorType.toLowerCase()} ${!closed && message.isOwn && !['AI', 'SYSTEM'].includes(message.authorType) ? 'ticket-chat-own' : ''}`}
+                      className={`${closed ? 'ticket-message' : 'ticket-chat-message'} ticket-message-${message.authorType.toLowerCase()} ${!closed && message.isOwn && !['AI', 'SYSTEM'].includes(message.authorType) ? 'ticket-chat-own' : ''} ${grouped ? 'ticket-message-grouped' : ''}`}
                       key={message.id}
                     >
-                      <header>
+                      {!grouped && <header>
                         <MessageAvatar message={message} />
                         <strong>
                           {!closed && message.isOwn
@@ -947,7 +939,7 @@ async function toggleRevisions(message) {
                               ✎
                             </button>
                           )}
-                      </header>
+                      </header>}
 
                       {message.visibility !==
                         'PUBLIC' && (
@@ -1022,7 +1014,7 @@ async function toggleRevisions(message) {
                         <div className="ticket-revisions">
                           <button
                             type="button"
-                            className="button button-outline"
+                            className="ticket-revision-toggle"
                             onClick={() => toggleRevisions(message)}
                           >
                             {revisions[message.id]?.visible ? 'Ocultar histórico de edição' : 'Ver histórico de edição'}
@@ -1047,15 +1039,17 @@ async function toggleRevisions(message) {
                         </div>
                       )}
                     </li>
-                  ),
+                    );
+                  },
                 )}
+                {!closed && <li ref={conversationEndRef} aria-hidden="true" />}
               </ol>
             ) : (
               <p
                 className="dashboard-notice"
                 role="status"
               >
-                Ainda não há mensagens disponíveis nesta conversa. Tickets antigos podem ter histórico ainda não sincronizado.
+                Ainda não há mensagens neste atendimento.
               </p>
             )}
 
@@ -1114,7 +1108,10 @@ async function toggleRevisions(message) {
                 )}
 
                 <div className="ticket-composer-footer">
-                  <span>
+                  <span className="ticket-composer-hint">
+                    Enter para enviar - Shift+Enter para nova linha
+                  </span>
+                  <span className="ticket-composer-count">
                     {
                       composer.draft
                         .length
