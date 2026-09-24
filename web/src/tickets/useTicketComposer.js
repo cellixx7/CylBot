@@ -6,6 +6,7 @@ const initialState = {
   sending: false,
   error: '',
   lastMessage: null,
+  retryPending: false,
 };
 
 export function useTicketComposer({
@@ -42,8 +43,19 @@ export function useTicketComposer({
     }));
   }, []);
 
+  const clearAttempt = useCallback(() => {
+    setState(previous => ({
+      ...previous,
+      error: '',
+      lastMessage: null,
+      retryPending: false,
+    }));
+  }, []);
+
   const send = useCallback(async ({ clientMessageId, content }) => {
-    if (controllerRef.current) return null;
+    if (controllerRef.current) {
+      return null;
+    }
 
     const controller = new AbortController();
     controllerRef.current = controller;
@@ -65,31 +77,53 @@ export function useTicketComposer({
         controller.signal,
       );
 
-      if (controller.signal.aborted) return null;
-
-      setState(previous => ({
-        ...previous,
-        sending: false,
-        error: '',
-        lastMessage: result.message,
-      }));
-
-      return result.message;
-    } catch (error) {
-      if (controller.signal.aborted) return null;
-
-      if (error.reloginRequired) {
-        requireRelogin();
+      if (controller.signal.aborted) {
+        return null;
       }
 
+        const delivered = ['SENT', 'NOT_REQUIRED'].includes(
+            message.deliveryStatus,
+        );
+
+        if (!delivered) {
+            return;
+        }
+
+        composer.setDraft('');
+        composer.clearAttempt();
+        messageAttemptRef.current = null;
+
       setState(previous => ({
         ...previous,
         sending: false,
-        error: error.message,
+        retryPending: false,
+        error: '',
+        lastMessage: message,
       }));
 
-      throw error;
-    } finally {
+      return message;
+    } catch (error) {
+  if (controller.signal.aborted) {
+    return null;
+  }
+
+  if (error.reloginRequired) {
+    requireRelogin();
+  }
+
+  const retryable =
+    error.status == null ||
+    [429, 502, 503, 504].includes(error.status);
+
+  setState(previous => ({
+    ...previous,
+    sending: false,
+    retryPending: retryable,
+    error: error.message,
+  }));
+
+  throw error;
+} finally {
       if (controllerRef.current === controller) {
         controllerRef.current = null;
       }
@@ -100,6 +134,7 @@ export function useTicketComposer({
     ...state,
     setDraft,
     clearError,
+    clearAttempt,
     send,
   };
 }
