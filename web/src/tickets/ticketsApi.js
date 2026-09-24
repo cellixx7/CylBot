@@ -43,6 +43,36 @@ export const getMessages = (guildId, ticketId, before, signal) =>
 export const getMessageRevisions = (guildId, ticketId, messageId, signal) =>
   get(`/${ticketId}/messages/${messageId}/revisions`, { guildId }, signal);
 
+export const getTicketAIStatus = (guildId, ticketId, signal) =>
+  get(`/${ticketId}/ai/status`, { guildId }, signal);
+
+export const getTicketAIConfig = (guildId, signal) =>
+  get(`/ai/config/${guildId}`, {}, signal);
+
+async function ticketAIRequest(path, method, body) {
+  const response = await fetch(path, {
+    method, credentials: 'include', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  if (!response.ok) throw Object.assign(new Error(ticketMessages[response.status] || ticketMessages.default), {
+    status: response.status, reloginRequired: response.status === 401,
+    requestId: response.headers.get('X-Request-Id') || undefined,
+  });
+  return response.json();
+}
+
+export const runTicketAISuggestion = (guildId, ticketId) =>
+  ticketAIRequest(`/api/tickets/${ticketId}/ai/suggest`, 'POST', { guildId });
+
+export const pauseTicketAI = (guildId, ticketId) =>
+  ticketAIRequest(`/api/tickets/${ticketId}/ai/pause`, 'POST', { guildId });
+
+export const resumeTicketAI = (guildId, ticketId) =>
+  ticketAIRequest(`/api/tickets/${ticketId}/ai/resume`, 'POST', { guildId });
+
+export const updateTicketAIConfig = (guildId, config) =>
+  ticketAIRequest(`/api/tickets/ai/config/${guildId}`, 'PUT', config);
+
 export async function ticketAction(guildId, ticketId, action, values = {}) {
   const response = await fetch(`/api/tickets/${ticketId}/actions/${action}`, {
     method: 'POST', credentials: 'include', cache: 'no-store', headers: { 'Content-Type': 'application/json' },

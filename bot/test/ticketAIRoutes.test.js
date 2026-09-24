@@ -9,12 +9,12 @@ const { AuthSessionManager } = require('../src/services/authSessionManager');
 const { DashboardService } = require('../src/services/dashboardService');
 const { createRequestHandler } = require('../src/api/server');
 
-async function setup(t) {
+async function setup(t, userId = ids.admin, permissions = '32') {
   const f = await ticketAIFixture(t);
   const config = loadEnv({}, { requireDiscord: false }).auth;
   const sessions = new AuthSessionManager();
-  const session = sessions.create({ id: ids.admin }, { access_token: 'synthetic', expires_in: 3600, scope: 'identify guilds' });
-  const memberships = [{ id: ids.guild, name: 'Guild', permissions: '32', owner: false }];
+  const session = sessions.create({ id: userId }, { access_token: 'synthetic', expires_in: 3600, scope: 'identify guilds' });
+  const memberships = [{ id: ids.guild, name: 'Guild', permissions, owner: false }];
   const provider = { getCurrentUserGuilds: async () => memberships };
   const client = { isReady: () => true, guilds: { cache: new Map([[ids.guild, {}], [ids.otherGuild, {}]]) } };
   const auth = new AuthService({ config, sessions, provider });
@@ -28,7 +28,7 @@ async function setup(t) {
       end(value) { this.body = value ? JSON.parse(value) : null; } };
     await handler(req, res); return res;
   };
-  return { ...f, request, memberships, provider, sessions, session, path: `/api/tickets/${f.ticket.id}/ai/analyze`, configPath: `/api/tickets/ai/config/${ids.guild}` };
+  return { ...f, request, memberships, provider, sessions, session, path: `/api/tickets/${f.ticket.id}/ai/analyze`, statusPath: `/api/tickets/${f.ticket.id}/ai/status?guildId=${ids.guild}`, configPath: `/api/tickets/ai/config/${ids.guild}` };
 }
 
 test('rotas IA exigem sessão, Origin confiável e membership; config mantém ManageGuild', async t => {
@@ -83,4 +83,36 @@ test('rotas IA aplicam limite próprio por usuário inclusive em GET config', as
   for (let i = 0; i < 30; i++) assert.equal((await f.request(f.configPath, { method: 'GET' })).status, 200);
   const result = await f.request(f.configPath, { method: 'GET' });
   assert.equal(result.status, 429); assert(result.headers['Retry-After']);
+});
+
+test('AI status requires session membership and staff without exposing leases', async t => {
+  const f = await setup(t);
+  assert.equal((await f.request(f.statusPath, { method: 'GET', authenticated: false })).status, 401);
+  f.memberships.length = 0;
+  assert.equal((await f.request(f.statusPath, { method: 'GET' })).status, 403);
+  f.memberships.push({ id: ids.guild, name: 'Guild', permissions: '32', owner: false });
+  const response = await f.request(f.statusPath, { method: 'GET' });
+  assert.equal(response.status, 200);
+  assert.equal(response.body.status.available, true);
+  assert.equal(response.body.status.canConfigure, true);
+  assert.equal(Object.hasOwn(response.body.status, 'leaseId'), false);
+  assert.equal(Object.hasOwn(response.body.status, 'leaseExpiresAt'), false);
+  const user = await setup(t, ids.user, '0');
+  assert.equal((await user.request(user.statusPath, { method: 'GET' })).status, 403);
+});
+
+test('AI status reflects handoff global feature and resume clears escalation', async t => {
+  const f = await setup(t);
+  f.states.set(f.ticket.id, { paused: true, escalatedAt: new Date('2026-01-01T00:00:00.000Z') });
+  let status = await f.request(f.statusPath, { method: 'GET' });
+  assert.equal(status.body.status.escalated, true);
+  assert.equal(status.body.status.paused, true);
+  assert.equal(status.body.status.canResume, true);
+  const resume = await f.request(`/api/tickets/${f.ticket.id}/ai/resume`);
+  assert.equal(resume.status, 200);
+  status = await f.request(f.statusPath, { method: 'GET' });
+  assert.equal(status.body.status.escalated, false);
+  f.settings.enabled = false;
+  status = await f.request(f.statusPath, { method: 'GET' });
+  assert.equal(status.body.status.available, false);
 });

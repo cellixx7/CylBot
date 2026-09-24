@@ -4,10 +4,18 @@ import {
   getMessages,
   getMessageRevisions,
   getTicket,
+  getTicketAIConfig,
+  getTicketAIStatus,
   getTickets,
+  pauseTicketAI,
   retryTicketMessage,
+  resumeTicketAI,
+  runTicketAISuggestion,
   ticketAction,
+  updateTicketAIConfig,
 } from './ticketsApi.js';
+import TicketAIControls from './TicketAIControls.jsx';
+import TicketAISettings from './TicketAISettings.jsx';
 import {
   isLocalMessageConfirmed,
   mergeTicketMessages,
@@ -304,6 +312,10 @@ function TicketDetail({
   const [closeForm, setCloseForm] = useState(false);
   const [closeReason, setCloseReason] = useState('');
   const [closeSummary, setCloseSummary] = useState('');
+  const [aiOverride, setAiOverride] = useState(null);
+  const [aiState, setAiState] = useState({ busy: '', error: '', result: null });
+  const [aiConfig, setAiConfig] = useState(null);
+  const [aiConfigState, setAiConfigState] = useState({ saving: false, error: '' });
 
   const messageAttemptRef = useRef(null);
 
@@ -317,7 +329,7 @@ function TicketDetail({
 
   const load = useCallback(
     async signal => {
-      const [detail, page] =
+      const [detail, page, aiStatus] =
         await Promise.all([
           getTicket(
             guildId,
@@ -330,11 +342,16 @@ function TicketDetail({
             before,
             signal,
           ),
+          getTicketAIStatus(guildId, ticketId, signal).catch(error => {
+            if ([403, 404].includes(error.status)) return null;
+            throw error;
+          }),
         ]);
 
       return {
         ...detail,
         ...page,
+        aiStatus: aiStatus?.status || null,
       };
     },
     [
@@ -362,6 +379,10 @@ function TicketDetail({
     setTicketOverride(null);
     setActionState({ name: '', error: '' });
     setCloseForm(false);
+    setAiOverride(null);
+    setAiState({ busy: '', error: '', result: null });
+    setAiConfig(null);
+    setAiConfigState({ saving: false, error: '' });
     messageAttemptRef.current = null;
   }, [guildId, ticketId]);
 
@@ -430,15 +451,68 @@ function TicketDetail({
     });
   }, [state.data?.messages]);
 
-  const displayedMessages = before
+  const displayedMessages = (before
     ? state.data?.messages ?? []
     : mergeTicketMessages(
         state.data?.messages ?? [],
         localMessages,
-      );
+      )).filter(message => message.authorType !== 'SYSTEM' && message.origin !== 'SYSTEM' && message.visibility !== 'SYSTEM');
 
   const canRespond = ticket?.actions?.canRespond === true;
   const closed = ticketConversationMode(ticket?.status) === 'history';
+  const aiStatus = aiOverride || state.data?.aiStatus;
+
+  useEffect(() => {
+    const serverStatus = state.data?.aiStatus;
+    if (!aiOverride || !serverStatus) return;
+    if (serverStatus.paused === aiOverride.paused && serverStatus.escalatedAt === aiOverride.escalatedAt) setAiOverride(null);
+  }, [state.data?.aiStatus, aiOverride]);
+
+  async function runAI(action) {
+    if (aiState.busy) return;
+    setAiState({ busy: action, error: '', result: action === 'suggest' ? aiState.result : null });
+    try {
+      const result = action === 'suggest' ? await runTicketAISuggestion(guildId, ticketId)
+        : action === 'pause' ? await pauseTicketAI(guildId, ticketId) : await resumeTicketAI(guildId, ticketId);
+      if (action !== 'suggest') setAiOverride(previous => {
+        const current = previous || state.data?.aiStatus;
+        return { ...current, paused: result.paused,
+          escalated: action === 'resume' ? false : current?.escalated, escalatedAt: action === 'resume' ? null : current?.escalatedAt,
+          canGenerateSuggestion: action === 'resume' ? Boolean(current?.enabled && current?.available) : false,
+          canPause: action === 'resume', canResume: action === 'pause' };
+      });
+      setAiState({ busy: '', error: '', result: action === 'suggest' ? result : aiState.result });
+    } catch (error) {
+      if (error.reloginRequired) requireRelogin();
+      setAiState({ busy: '', error: error.message || 'Não foi possível concluir a ação da IA.', result: aiState.result });
+    }
+  }
+
+  async function openAIConfig() {
+    if (aiState.busy) return;
+    setAiState(previous => ({ ...previous, busy: 'config', error: '' }));
+    try {
+      const result = await getTicketAIConfig(guildId);
+      setAiConfig(result.config);
+      setAiState(previous => ({ ...previous, busy: '', error: '' }));
+    } catch (error) {
+      if (error.reloginRequired) requireRelogin();
+      setAiState(previous => ({ ...previous, busy: '', error: error.message || 'Não foi possível carregar a configuração.' }));
+    }
+  }
+
+  async function saveAIConfig() {
+    if (!aiConfig || aiConfigState.saving) return;
+    setAiConfigState({ saving: true, error: '' });
+    try {
+      const result = await updateTicketAIConfig(guildId, aiConfig);
+      setAiConfig(result.config); setAiConfigState({ saving: false, error: '' });
+      setAiOverride(previous => previous ? { ...previous, enabled: result.config.enabled, autonomyLevel: result.config.autonomyLevel, assistantName: result.config.assistantName } : previous);
+    } catch (error) {
+      if (error.reloginRequired) requireRelogin();
+      setAiConfigState({ saving: false, error: error.message || 'Não foi possível salvar a configuração.' });
+    }
+  }
 
   async function runAction(action, values) {
     if (actionState.name) return;
@@ -738,6 +812,27 @@ async function toggleRevisions(message) {
                 </div>
               )}
             </dl>
+
+            <TicketAIControls
+              status={aiStatus}
+              active={!closed}
+              busy={aiState.busy}
+              result={aiState.result}
+              error={aiState.error}
+              onSuggest={() => runAI('suggest')}
+              onPause={() => runAI('pause')}
+              onResume={() => runAI('resume')}
+              onConfigure={openAIConfig}
+            />
+
+            <TicketAISettings
+              config={aiConfig}
+              saving={aiConfigState.saving}
+              error={aiConfigState.error}
+              onChange={(key, value) => setAiConfig(previous => ({ ...previous, [key]: value }))}
+              onSave={saveAIConfig}
+              onCancel={() => setAiConfig(null)}
+            />
 
             <div className="ticket-actions">
               {ticket.actions?.canClaim && <button className="button" disabled={Boolean(actionState.name)} onClick={() => runAction('claim')}>{actionState.name === 'claim' ? 'Assumindo...' : 'Assumir ticket'}</button>}

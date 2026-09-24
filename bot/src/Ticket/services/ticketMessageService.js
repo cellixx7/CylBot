@@ -316,7 +316,7 @@ class TicketMessageService {
     this.requireStorage();
     const ticket = await this.tickets.ticket(guildId, ticketId);
     const actor = await this.permissions.requireAction(TICKET_PERMISSION.VIEW, guildId, userId, ticket, ticket);
-    const visibilities = this.permissions.staff(actor, ticket) ? [V.PUBLIC, V.INTERNAL, V.SYSTEM] : [V.PUBLIC];
+    const visibilities = this.permissions.staff(actor, ticket) ? [V.PUBLIC, V.INTERNAL] : [V.PUBLIC];
     const page = await this.repository.listPage(ticket.id, { limit, before, visibilities });
     return { ...page, messages: page.messages.map(message => this.dto(message, userId)) };
   }

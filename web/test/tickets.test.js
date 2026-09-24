@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+﻿import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startPolling } from '../src/tickets/polling.js';
 import {
@@ -6,9 +6,15 @@ import {
   getMessageRevisions,
   getTicket,
   getTickets,
+  getTicketAIConfig,
+  getTicketAIStatus,
+  pauseTicketAI,
   postTicketMessage,
+  resumeTicketAI,
   retryTicketMessage,
+  runTicketAISuggestion,
   ticketAction,
+  updateTicketAIConfig,
 } from '../src/tickets/ticketsApi.js';
 import { ticketConversationMode } from '../src/tickets/messageReconciliation.js';
 
@@ -29,7 +35,7 @@ class Visibility extends EventTarget {
   }
 }
 
-test('POST de mensagem envia somente o contrato permitido e usa sessão autenticada', async t => {
+test('POST de mensagem envia somente o contrato permitido e usa sessÃ£o autenticada', async t => {
   const calls = [];
 
   t.mock.method(
@@ -45,7 +51,7 @@ test('POST de mensagem envia somente o contrato permitido e usa sessão autentic
         JSON.stringify({
           message: {
             id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-            content: 'Olá pelo painel',
+            content: 'OlÃ¡ pelo painel',
             origin: 'WEB',
             authorType: 'USER',
             deliveryStatus: 'SENT',
@@ -69,7 +75,7 @@ test('POST de mensagem envia somente o contrato permitido e usa sessão autentic
         clientMessageId:
           'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
         content:
-          'Olá pelo painel',
+          'OlÃ¡ pelo painel',
       },
     );
 
@@ -115,7 +121,7 @@ test('POST de mensagem envia somente o contrato permitido e usa sessão autentic
       clientMessageId:
         'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
       content:
-        'Olá pelo painel',
+        'OlÃ¡ pelo painel',
     },
   );
 
@@ -130,7 +136,7 @@ test('POST de mensagem envia somente o contrato permitido e usa sessão autentic
   );
 });
 
-test('POST de mensagem não reflete erro privado do backend', async t => {
+test('POST de mensagem nÃ£o reflete erro privado do backend', async t => {
   t.mock.method(
     globalThis,
     'fetch',
@@ -371,7 +377,7 @@ test('polling serializa ciclos, pausa em aba oculta, aborta ao sair e ignora res
   );
 });
 
-test('401/403/404 encerram polling; erros temporários retomam respeitando Retry-After', async t => {
+test('401/403/404 encerram polling; erros temporÃ¡rios retomam respeitando Retry-After', async t => {
   t.mock.timers.enable({
     apis: ['setTimeout', 'Date'],
     now: 1000,
@@ -526,7 +532,7 @@ test('401/403/404 encerram polling; erros temporários retomam respeitando Retry
   stop();
 });
 
-test('API usa somente GET autenticado, parâmetros de página e AbortSignal', async t => {
+test('API usa somente GET autenticado, parÃ¢metros de pÃ¡gina e AbortSignal', async t => {
   const calls = [];
 
   const signal =
@@ -627,7 +633,7 @@ test('conversation mode separates active tickets from closed history', () => {
   assert.equal(ticketConversationMode('CLOSED'), 'history');
 });
 
-test('API distingue autorização, indisponibilidade e limite sem refletir erro privado do servidor', async t => {
+test('API distingue autorizaÃ§Ã£o, indisponibilidade e limite sem refletir erro privado do servidor', async t => {
   for (
     const status of [
       401,
@@ -699,4 +705,42 @@ test('ticket action posts only the action contract', async t => {
     guildId: '111111111111111111', reason: 'Resolved', summary: 'Guidance sent',
   });
   assert.equal(result.ticket.status, 'CLOSED');
+});
+
+test('ticket AI API preserves status config and action contracts', async t => {
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    calls.push({ url, options });
+    return new Response(JSON.stringify({ status: { paused: false }, config: { enabled: true } }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+  });
+  await getTicketAIStatus('111111111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  await runTicketAISuggestion('111111111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  await pauseTicketAI('111111111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  await resumeTicketAI('111111111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  await getTicketAIConfig('111111111111111111');
+  await updateTicketAIConfig('111111111111111111', { enabled: true });
+  assert.equal(calls[0].url, '/api/tickets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/ai/status?guildId=111111111111111111');
+  assert.deepEqual(JSON.parse(calls[1].options.body), { guildId: '111111111111111111' });
+  assert.match(calls[1].url, /\/ai\/suggest$/);
+  assert.match(calls[2].url, /\/ai\/pause$/);
+  assert.match(calls[3].url, /\/ai\/resume$/);
+  assert.equal(calls[4].url, '/api/tickets/ai/config/111111111111111111?');
+  assert.deepEqual(JSON.parse(calls[5].options.body), { enabled: true });
+  for (const call of calls) {
+    assert.equal(call.options.credentials, 'include');
+    assert.equal(call.options.cache, 'no-store');
+  }
+});
+
+import { ticketAIControlsEnabled, ticketAIStatusText } from '../src/tickets/ticketAIView.js';
+
+test('ticket AI view distinguishes active paused handoff unavailable and closed tickets', () => {
+  assert.match(ticketAIStatusText({ available: true, enabled: true, autonomyLevel: 1, paused: false, escalated: false }), /^Ativa/);
+  assert.match(ticketAIStatusText({ available: true, enabled: true, paused: true, escalated: false }), /^Pausada/);
+  assert.match(ticketAIStatusText({ available: true, enabled: true, paused: true, escalated: true }), /^Atendimento humano/);
+  assert.match(ticketAIStatusText({ available: false }), /^IA de tickets indispon/);
+  assert.equal(ticketAIControlsEnabled({ available: true }, false), false);
+  assert.equal(ticketAIControlsEnabled({ available: true }, true), true);
 });

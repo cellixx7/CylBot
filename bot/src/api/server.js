@@ -10,6 +10,7 @@ const { setSecurityHeaders } = require('./http/securityHeaders');
 const { isClientError } = require('./http/errors');
 const routes = [
   require('../Ticket/api/ticketReadRoutes'),
+  require('../Ticket/api/ticketActionRoutes'),
   require('../Ticket/api/ticketMessageRoutes'),
   require('../Ticket/api/ticketAIRoutes'),
   require('./routes/authRoutes'),

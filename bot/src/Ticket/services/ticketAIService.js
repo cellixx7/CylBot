@@ -19,6 +19,24 @@ class TicketAIService {
     this.limiter.consume(`config:${userId}`, 10);
     return this.repository.saveConfig(guildId, validateConfig(config));
   }
+  async getStatus({ guildId, ticketId, userId }) {
+    this.requireStorage();
+    const ticket = await this.tickets.ticket(guildId, ticketId);
+    const actor = await this.tickets.permissions.requireStaff(guildId, userId, ticket);
+    const [config, state] = await Promise.all([
+      this.repository.getConfig(guildId), this.repository.getState(guildId, ticketId),
+    ]);
+    const active = this.policy.active(ticket);
+    return {
+      available: this.policy.hasAccess(guildId), enabled: config.enabled,
+      autonomyLevel: config.autonomyLevel, assistantName: config.assistantName,
+      paused: Boolean(state.paused), escalated: Boolean(state.escalatedAt),
+      escalatedAt: state.escalatedAt || null,
+      canGenerateSuggestion: this.policy.canGenerate({ ticket, config, state, automatic: false }),
+      canPause: active && !state.paused, canResume: active && Boolean(state.paused),
+      canConfigure: this.tickets.permissions.admin(actor),
+    };
+  }
   async pause({ guildId, ticketId, userId, paused }) {
     this.requireStorage();
     if (typeof paused !== 'boolean') throw clientError(400, 'Informe paused booleano.');

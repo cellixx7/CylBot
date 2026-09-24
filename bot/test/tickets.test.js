@@ -154,6 +154,7 @@ test('claim revalida staff, rejeita owner comum, segunda atribuição, outra gui
   assert.equal(claimed.status, S.CLAIMED);
   assert.equal(claimed.assignedUserId, ids.staff);
   assert.equal(claimed.claimedAt, f.now());
+  assert.equal(f.calls.includes('updateInitial'), true);
   await assert.rejects(f.service.claim(f.action(ticket)), /já está sendo atendido/);
 });
 
@@ -173,6 +174,7 @@ test('fechamento salva transcript e motivo, publica log, bloqueia e só permite 
   assert.equal(f.channels.get(ticket.channelId).locked, true);
   assert.equal(f.calls.includes('delete'), false);
   assert.equal(closed.events.at(-1).type, E.CLOSED);
+  assert.equal(f.calls.includes('updateInitial'), true);
   assert.equal(closed.archives.length, 1);
   const html = f.transcripts.read(closed.closing.transcript).toString();
   assert(html.includes('&lt;script&gt;'));

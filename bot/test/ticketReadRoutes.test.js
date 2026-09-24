@@ -121,7 +121,9 @@ test('histórico canônico filtra mensagens internas, reflete novas mensagens e 
   assert.equal((await f.request(f.detail)).body.ticket.status, 'CLOSED');
   assert.equal((await f.request(path)).status, 200);
   f.core.actors.get(ids.user).roleIds = [ids.role];
-  assert.equal((await f.request(path)).body.messages.length, 4);
+  const staffMessages = (await f.request(path)).body.messages;
+  assert.equal(staffMessages.length, 3);
+  assert.equal(staffMessages.some(message => message.visibility === 'SYSTEM'), false);
   f.core.actors.get(ids.user).roleIds = [];
   assert.equal((await f.request(path)).body.messages.length, 2);
 });

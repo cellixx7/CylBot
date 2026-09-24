@@ -25,6 +25,16 @@
 .ticket-close-form { display: grid; gap: 12px; margin-top: 18px; }
 .ticket-close-form label { display: grid; gap: 6px; font-size: .85rem; }
 .ticket-close-form textarea { min-height: 76px; }
+.ticket-ai, .ticket-ai-settings { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.ticket-ai h3, .ticket-ai-settings h3 { margin: 0 0 8px; font-size: 1rem; }
+.ticket-ai p, .ticket-ai-settings .description { color: var(--muted); font-size: .85rem; }
+.ticket-ai-configure { margin-top: 12px; padding: 0; border: 0; background: transparent; color: var(--link); font: inherit; cursor: pointer; }
+.ticket-ai-suggestion { margin-top: 16px; padding: 14px; border-left: 2px solid #8dafa0; background: var(--surface-raised); }
+.ticket-ai-suggestion p { margin: 8px 0 0; }
+.ticket-ai-settings form, .ticket-ai-settings fieldset { display: grid; gap: 12px; }
+.ticket-ai-settings label { display: grid; gap: 6px; font-size: .85rem; }
+.ticket-ai-settings label:has(input[type="checkbox"]) { display: flex; align-items: center; gap: 8px; }
+.ticket-ai-settings textarea { min-height: 76px; }
 .ticket-history { margin-top: 40px; }
 .ticket-history > h2 { font-size: 2rem; }
 .ticket-chat { max-width: 920px; margin: 40px auto 0; }

@@ -8,6 +8,17 @@ async function handle(request, response, { services }) {
   if (!path.startsWith('/api/tickets/')) return false;
   const session = requireSession(request, services);
   response.setHeader('Cache-Control', 'no-store');
+  const status = path.match(new RegExp(`^/api/tickets/(${UUID})/ai/status$`));
+  if (status) {
+    if (request.method !== 'GET') throw clientError(405, 'MÃ©todo nÃ£o permitido.');
+    const guildId = new URL(request.url, 'http://localhost').searchParams.get('guildId');
+    if (!/^\d{17,20}$/.test(guildId || '')) throw clientError(400, 'Informe guildId vÃ¡lido.');
+    const guild = await services.dashboard.requireGuildMembership(session, guildId);
+    requireSession(request, services);
+    const result = await services.ticketAI.getStatus({ guildId, ticketId: status[1], userId: session.user.id });
+    sendJson(response, 200, { status: { ...result, canConfigure: result.canConfigure && guild.canManage } });
+    return true;
+  }
   const match = path.match(new RegExp(`^/api/tickets/ai/config/(\\d{17,20})$`));
   if (match) {
     if (!['GET', 'PUT'].includes(request.method)) throw clientError(405, 'Método não permitido.');
