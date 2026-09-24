@@ -9,6 +9,7 @@ import Header from './components/Header.jsx';
 import Dashboard from './dashboard/Dashboard.jsx';
 import Home from './home/Home.jsx';
 import ProfilePage from './profile/ProfilePage.jsx';
+import TicketsPage from './tickets/TicketsPage.jsx';
 
 function useHashRoute() {
   const [hash, setHash] = useState(window.location.hash || '#/');
@@ -37,9 +38,8 @@ const TITLES = {
 export default function App() {
   const auth = useAuth();
   const route = useHashRoute();
-  const selectedGuildId = route.path.startsWith('/dashboard/')
-    ? route.path.slice('/dashboard/'.length)
-    : null;
+  const ticketRoute = route.path.match(/^\/dashboard\/(\d{17,20})\/tickets(?:\/([a-f0-9-]{36}))?$/);
+  const selectedGuildId = ticketRoute?.[1] || route.path.match(/^\/dashboard\/(\d{17,20})$/)?.[1] || null;
   const baseRoute = selectedGuildId ? '/dashboard' : route.path;
 
   useEffect(() => {
@@ -62,7 +62,8 @@ export default function App() {
     page = (
       <AuthGate auth={auth}>
         {route.path === '/profile' && <ProfilePage user={auth.user} />}
-        {(route.path === '/dashboard' || selectedGuildId) && (
+        {ticketRoute ? <TicketsPage key={`${selectedGuildId}/${ticketRoute[2] || ''}`} guildId={selectedGuildId}
+          ticketId={ticketRoute[2]} requireRelogin={auth.requireRelogin} /> : (route.path === '/dashboard' || selectedGuildId) && (
           <Dashboard user={auth.user} selectedGuildId={selectedGuildId} requireRelogin={auth.requireRelogin} />
         )}
         {route.path === '/anuncios' && <Anuncios />}

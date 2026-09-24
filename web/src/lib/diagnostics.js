@@ -1,4 +1,4 @@
-const enabled = import.meta.env.DEV;
+const enabled = import.meta.env?.DEV;
 
 export function logApi(event, details, level = 'info') {
   if (!enabled) return;

@@ -9,6 +9,7 @@ const { RateLimiter } = require('./http/rateLimit');
 const { setSecurityHeaders } = require('./http/securityHeaders');
 const { isClientError } = require('./http/errors');
 const routes = [
+  require('../Ticket/api/ticketReadRoutes'),
   require('../Ticket/api/ticketMessageRoutes'),
   require('../Ticket/api/ticketAIRoutes'),
   require('./routes/authRoutes'),
@@ -36,7 +37,8 @@ function createRequestHandler(context) {
 
     try {
       const path = new URL(request.url, 'http://localhost').pathname;
-      if (path.startsWith('/api/tickets/')) {
+      if (path === '/api/tickets' || path.startsWith('/api/tickets/')) {
+        response.setHeader('Cache-Control', 'no-store');
         const session = requireSession(request, context.services);
         limiter.consume(`ticket-api:${session.user.id}`, 30);
       }

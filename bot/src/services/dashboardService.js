@@ -14,6 +14,7 @@ function canManageGuild(guild) {
 class DashboardService {
   constructor({ provider, client, now = Date.now }) {
     Object.assign(this, { provider, client, now });
+    this.pendingGuilds = new WeakMap();
   }
 
   async guilds(session) {
@@ -22,7 +23,16 @@ class DashboardService {
       throw clientError(401, 'AUTH_RELOGIN_REQUIRED');
     }
     if (!this.client.isReady()) throw clientError(503, 'O CylBot está conectando. Tente novamente em instantes.');
-    const guilds = await this.provider.getCurrentUserGuilds(session.discordAccessToken);
+    // Share only an unfinished read for this exact session/token, never a stale grant.
+    let pending = this.pendingGuilds.get(session);
+    if (!pending || pending.accessToken !== session.discordAccessToken) {
+      pending = { accessToken: session.discordAccessToken };
+      pending.promise = Promise.resolve().then(() => this.provider.getCurrentUserGuilds(pending.accessToken))
+        .finally(() => { if (this.pendingGuilds.get(session) === pending) this.pendingGuilds.delete(session); });
+      this.pendingGuilds.set(session, pending);
+    }
+    const guilds = await pending.promise;
+    if (session.discordTokenExpiresAt <= this.now()) throw clientError(401, 'AUTH_RELOGIN_REQUIRED');
     if (!this.client.isReady()) throw clientError(503, 'O CylBot está conectando. Tente novamente em instantes.');
     const result = guilds.map(guild => ({
       id: guild.id, name: guild.name,

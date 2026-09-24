@@ -67,7 +67,7 @@ O schema cria `users`, tabelas do Core de tickets, `ticket_ai_configs`, `ticket_
 
 Em Codespaces, mantenha o Postgres no mesmo ambiente Docker e use `localhost` na `DATABASE_URL`. Em hospedagem futura, substitua somente a URL por uma conexão PostgreSQL fornecida pelo provedor e rode `npm run db:migrate` antes de `npm start`. Não são persistidos access tokens ou refresh tokens do Discord.
 
-Para executar o frontend junto do bot, siga [o guia da raiz](../README.md#iniciar-em-desenvolvimento).
+Para executar o frontend junto do bot, siga o [guia de instalação e ativação da raiz](../README.md#ativacao).
 
 ## Tickets via Discord
 

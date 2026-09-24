@@ -32,6 +32,7 @@ const { TicketAIMessageHandler } = require('../Ticket/handlers/ticketAIMessageHa
 const { PostgresTicketMessageRepository } = require('../Ticket/repositories/postgresTicketMessageRepository');
 const { TicketMessageService } = require('../Ticket/services/ticketMessageService');
 const { TicketMessageHandler } = require('../Ticket/handlers/ticketMessageHandler');
+const { TicketReadService } = require('../Ticket/services/ticketReadService');
 
 function createServices(client, config) {
   const database = config.database?.url ? createDatabase(config.database.url) : null;
@@ -74,6 +75,7 @@ function createServices(client, config) {
     ticketSetup: new TicketSetupService({ repository: ticketConfigs, permissions: ticketPermissions, adapter: ticketAdapter }),
     tickets,
     ticketMessages,
+    ticketRead: new TicketReadService({ tickets, permissions: ticketPermissions, messages: ticketMessages }),
     ticketAI,
     ticketAIMessages,
     ticketMessageInbound: new TicketMessageHandler({ messages: ticketMessages, ai: ticketAIMessages }),

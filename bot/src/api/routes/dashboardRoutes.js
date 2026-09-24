@@ -38,8 +38,11 @@ async function handle(request, response, { services, requestId }) {
       relogin(reason);
     }
     else {
-      const statusCode = error.statusCode === 503 ? 503 : 502;
-      logger.warn('dashboard.guilds_failed', { module: 'dashboard', requestId, userId: session.user.id, statusCode });
+      const statusCode = Number.isInteger(error.statusCode) && error.statusCode >= 400 && error.statusCode <= 599
+        ? error.statusCode : 500;
+      if (Number.isFinite(error.retryAfter) && error.retryAfter > 0) response.setHeader('Retry-After', String(Math.ceil(error.retryAfter)));
+      logger[statusCode >= 500 ? 'error' : 'warn']('dashboard.guilds_failed', { module: 'dashboard', requestId, userId: session.user.id, statusCode,
+        code: error.code, retryAfter: error.retryAfter });
       sendJson(response, statusCode, { error: statusCode === 503
         ? 'O CylBot está conectando. Tente novamente em instantes.'
         : 'Não foi possível carregar seus servidores. Tente novamente.' });

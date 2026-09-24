@@ -1,0 +1,18 @@
+import { readJson } from '../lib/readApi.js';
+
+async function get(path, params, signal) {
+  const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value != null));
+  return readJson(`/api/tickets${path}?${query}`, { signal, messages: {
+      401: 'Sua sessão expirou. Entre novamente com Discord.',
+      403: 'Você não tem acesso a estes tickets ou deixou de participar do servidor.',
+      404: 'Ticket não encontrado neste servidor.',
+      429: 'Muitas consultas. A atualização será retomada em instantes.',
+      502: 'O Discord está temporariamente indisponível. A conversa será atualizada novamente em instantes.',
+      503: 'A consulta de tickets está indisponível. Tente novamente em instantes.',
+      default: 'Não foi possível consultar os tickets. Tente novamente.',
+    } });
+}
+
+export const getTickets = (guildId, before, signal) => get('', { guildId, before, limit: 25 }, signal);
+export const getTicket = (guildId, ticketId, signal) => get(`/${ticketId}`, { guildId }, signal);
+export const getMessages = (guildId, ticketId, before, signal) => get(`/${ticketId}/messages`, { guildId, before, limit: 50 }, signal);

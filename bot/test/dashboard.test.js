@@ -7,6 +7,7 @@ const { AuthSessionManager } = require('../src/services/authSessionManager');
 const { DashboardService, canManageGuild } = require('../src/services/dashboardService');
 const { DiscordOAuthProvider } = require('../src/providers/discordOAuthProvider');
 const { createRequestHandler } = require('../src/api/server');
+const { clientError } = require('../src/api/http/errors');
 const { logger } = require('../src/lib/logger');
 
 const user = { id: '123456789012345678', username: 'tester', displayName: 'Tester', avatarUrl: null };
@@ -126,14 +127,22 @@ test('token rejeitado ou escopo insuficiente no Discord invalida sessão sem exp
 
 test('falha transitória gera erro controlado, preserva sessão e permite nova tentativa', async t => {
   const f = fixture(t);
-  f.provider.getCurrentUserGuilds = async () => { throw new Error(`Discord raw ${token.access_token} ${token.refresh_token}`); };
+  f.provider.getCurrentUserGuilds = async () => { throw clientError(502, 'Falha transitória do Discord.'); };
   const response = await request(f.context, f.session.id);
   assert.equal(response.status, 502);
   assert.deepEqual(response.body, { error: 'Não foi possível carregar seus servidores. Tente novamente.' });
   assert(f.sessions.get(f.session.id));
-  assert.equal(JSON.stringify({ response, logs: f.logs }).includes('private-dashboard'), false);
   f.provider.getCurrentUserGuilds = async () => [];
   assert.deepEqual((await request(f.context, f.session.id)).body, { guilds: [] });
+});
+
+test('exceção interna não é mascarada como falha do gateway', async t => {
+  const f = fixture(t);
+  f.provider.getCurrentUserGuilds = async () => { throw new Error('falha interna'); };
+  const response = await request(f.context, f.session.id);
+  assert.equal(response.status, 500);
+  assert.deepEqual(response.body, { error: 'Não foi possível carregar seus servidores. Tente novamente.' });
+  assert(f.sessions.get(f.session.id));
 });
 
 test('cache do bot só é usado com cliente pronto; desconexão não marca guilds como ausentes', async t => {
@@ -191,10 +200,10 @@ test('provider usa token backend, normaliza somente campos necessários e não c
   assert.equal(result[1].canManage, undefined);
 });
 
-test('provider trata 401/403 como relogin, mas 429/500/rede/JSON como falha temporária sem body bruto', async () => {
+test('provider trata 401/403 como relogin, preserva 429 e oculta erros upstream/rede/JSON', async () => {
   for (const status of [401, 403, 429, 500]) {
     const provider = new DiscordOAuthProvider({}, async () => ({ ok: false, status, json: () => assert.fail('Não ler resposta bruta de erro') }));
-    await assert.rejects(provider.getCurrentUserGuilds('fake'), error => error.statusCode === ([401, 403].includes(status) ? 401 : 502));
+    await assert.rejects(provider.getCurrentUserGuilds('fake'), error => error.statusCode === ([401, 403].includes(status) ? 401 : status === 429 ? 429 : 502));
   }
   for (const fetchImpl of [
     async () => { throw new Error(token.access_token); },
@@ -203,6 +212,34 @@ test('provider trata 401/403 como relogin, mas 429/500/rede/JSON como falha temp
     const provider = new DiscordOAuthProvider({}, fetchImpl);
     await assert.rejects(provider.getCurrentUserGuilds('fake'), error => error.statusCode === 502 && !error.message.includes('private-dashboard'));
   }
+});
+
+test('consultas simultâneas compartilham apenas a leitura pendente da mesma sessão', async t => {
+  const f = fixture(t); let resolve; let calls = 0;
+  f.provider.getCurrentUserGuilds = async () => { calls++; return new Promise(done => { resolve = done; }); };
+  const first = f.dashboard.guilds(f.session);
+  const second = f.dashboard.requireGuildMembership(f.session, id(1));
+  const third = f.dashboard.requireManageableGuild(f.session, id(1));
+  await Promise.resolve(); assert.equal(calls, 1);
+  resolve([guild(1, { permissions: '32' })]);
+  await Promise.all([first, second, third]);
+  f.provider.getCurrentUserGuilds = async () => { calls++; return []; };
+  await assert.rejects(f.dashboard.requireGuildMembership(f.session, id(1)), error => error.statusCode === 403);
+  assert.equal(calls, 2, 'nenhuma autorização é mantida entre consultas concluídas');
+  const other = f.sessions.create(user, token);
+  await Promise.all([f.dashboard.guilds(f.session), f.dashboard.guilds(other)]);
+  assert.equal(calls, 4, 'sessões distintas não compartilham autorização');
+});
+
+test('falha compartilhada é descartada; Retry-After chega ao dashboard e guild ausente não recebe acesso', async t => {
+  const f = fixture(t); let calls = 0;
+  f.provider.getCurrentUserGuilds = async () => { calls++; throw Object.assign(clientError(429, 'Rate limited'), { retryAfter: 42 }); };
+  const responses = await Promise.all([request(f.context, f.session.id), request(f.context, f.session.id)]);
+  assert.equal(calls, 1);
+  for (const response of responses) { assert.equal(response.status, 429); assert.equal(response.headers['Retry-After'], '42'); }
+  f.provider.getCurrentUserGuilds = async () => [guild(4, { permissions: '32' })];
+  assert.equal((await f.dashboard.guilds(f.session))[0].botInstalled, false);
+  await assert.rejects(f.dashboard.requireManageableGuild(f.session, id(4)), error => error.statusCode === 403);
 });
 
 test('provider rejeita payload inválido em vez de exibir lista vazia enganosa', async () => {

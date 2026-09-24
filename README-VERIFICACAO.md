@@ -1,8 +1,8 @@
 # CylBot — Verificação e diagnóstico
 
-[README principal](README.md) · [Inicialização](README-INICIALIZACAO.md)
+[Instalação e ativação](README.md)
 
-Use este guia para conferir a configuração, validar alterações ou investigar falhas. Estas verificações não precisam ser repetidas a cada inicialização. A preparação e os comandos do dia a dia estão no [guia de inicialização](README-INICIALIZACAO.md).
+Use este guia para conferir a configuração, validar alterações ou investigar falhas. Estas verificações não precisam ser repetidas a cada inicialização. A preparação e os comandos do dia a dia estão no [guia de instalação e ativação](README.md).
 
 Todos os comandos abaixo partem da **raiz do repositório**, salvo quando indicado. Instale as dependências antes de executar testes ou builds.
 
@@ -110,7 +110,7 @@ Com bot/API e frontend em execução e OAuth configurado:
 
 Na mesma sessão do navegador, `GET /api/auth/me` responde 200 com o perfil após o login e 204 quando não há sessão. Use a mesma origem do site para essa verificação.
 
-Se o callback falhar, confira a URL cadastrada no Discord: porta 5173 no desenvolvimento local ou domínio público da porta 5173 no Codespaces. Veja [Login com Discord](README-INICIALIZACAO.md#login-com-discord-se-utilizar-o-site).
+Se o callback falhar, confira a URL cadastrada no Discord: porta 5173 no desenvolvimento local ou domínio público da porta 5173 no Codespaces. Veja [Login web com Discord](README.md#login-web-com-discord-opcional).
 
 ## Problemas comuns
 

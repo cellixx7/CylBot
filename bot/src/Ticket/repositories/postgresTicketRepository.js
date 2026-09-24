@@ -1,4 +1,4 @@
-const { and, desc, eq, inArray, isNotNull, isNull, or, sql } = require('drizzle-orm');
+const { and, arrayOverlaps, desc, eq, inArray, isNotNull, isNull, lt, or, sql } = require('drizzle-orm');
 const { ticketEvents, ticketSequences, tickets } = require('../../database/schema');
 const { TicketLimitError } = require('../domain/ticketErrors');
 
@@ -100,6 +100,19 @@ class PostgresTicketRepository {
   async list(guildId) {
     const rows = await this.db.select().from(tickets).where(eq(tickets.guildId, guildId)).orderBy(desc(tickets.createdAt));
     return Promise.all(rows.map(async row => mapTicket(row, await this.readEvents(row.id))));
+  }
+
+  // Apply VIEW before pagination, using the support roles saved on each ticket.
+  // This read path deliberately avoids loading lifecycle events and transcripts.
+  async listVisiblePage(guildId, { userId, roleIds, admin, limit, before }) {
+    const conditions = [eq(tickets.guildId, guildId)];
+    if (!admin) conditions.push(or(eq(tickets.creatorUserId, userId),
+      roleIds.length ? arrayOverlaps(tickets.supportRoleIds, roleIds) : undefined));
+    if (before) conditions.push(lt(tickets.publicNumber, before));
+    const rows = await this.db.select().from(tickets).where(and(...conditions))
+      .orderBy(desc(tickets.publicNumber)).limit(limit + 1);
+    const page = rows.slice(0, limit).map(row => mapTicket(row, []));
+    return { tickets: page, nextBefore: rows.length > limit ? page.at(-1).publicNumber : null };
   }
 
   async findByUser(guildId, userId) {

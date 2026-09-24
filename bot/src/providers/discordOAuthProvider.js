@@ -1,9 +1,13 @@
 const { clientError } = require('../api/http/errors');
+const { logger } = require('../lib/logger');
+const { isTransientConnection, readError, retryAfterSeconds } = require('./discordReadErrors');
 
 class DiscordOAuthProvider {
-  constructor(config, fetchImpl = fetch) {
+  constructor(config, fetchImpl = fetch, { sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), random = Math.random } = {}) {
     this.config = config;
     this.fetch = fetchImpl;
+    this.sleep = sleep;
+    this.random = random;
   }
 
   authorizationUrl(state) {
@@ -33,9 +37,7 @@ class DiscordOAuthProvider {
 
   async getCurrentUserGuilds(accessToken) {
     // Discord retorna até 200 guilds, limite atual de participação por usuário.
-    const guilds = await this.request('https://discord.com/api/v10/users/@me/guilds?limit=200', {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    }, { reloginOnAuthFailure: true });
+    const guilds = await this.requestGuilds(accessToken);
     if (!Array.isArray(guilds) || guilds.length > 200 || guilds.some(guild =>
       !guild || typeof guild.id !== 'string' || !/^\d{17,20}$/.test(guild.id) || typeof guild.name !== 'string')) {
       throw clientError(502, 'Resposta de servidores inválida do Discord.');
@@ -46,6 +48,55 @@ class DiscordOAuthProvider {
       owner: guild.owner === true,
       permissions: typeof guild.permissions === 'string' ? guild.permissions : null,
     }));
+  }
+
+  async requestGuilds(accessToken) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      let response;
+      let failure;
+      let retryable = false;
+      try {
+        response = await this.fetch('https://discord.com/api/v10/users/@me/guilds?limit=200', {
+          method: 'GET', headers: { Authorization: `Bearer ${accessToken}`,
+            'User-Agent': 'DiscordBot (https://github.com/cellixx7/CylBot, 1.0.0)' },
+          redirect: 'error', signal: AbortSignal.timeout(10000),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (attempt > 1) logger.info('discord.guilds_response_recovered', { module: 'dashboard', attempt });
+          return data;
+        }
+        if (response.body) await response.body.cancel().catch(() => {});
+      } catch (error) {
+        retryable = isTransientConnection(error);
+        failure = readError(502, retryable ? 'DISCORD_CONNECTION_FAILED' : 'DISCORD_INVALID_RESPONSE',
+          'Não foi possível consultar os servidores no Discord. Tente novamente.');
+      }
+      if (!failure) {
+        const status = response.status;
+        if ([401, 403].includes(status)) throw clientError(401, 'AUTH_RELOGIN_REQUIRED');
+        const retryAfter = retryAfterSeconds(response.headers?.get('Retry-After'));
+        if (status === 429) {
+          // Let the next UI cycle respect the upstream delay; never sleep in a retry loop.
+          failure = readError(429, 'DISCORD_RATE_LIMIT', 'Aguarde antes de consultar o Discord novamente.', retryAfter || 15);
+        } else {
+          retryable = [502, 503, 504].includes(status);
+          failure = readError(status >= 400 && status < 500 ? status : 502, 'DISCORD_UPSTREAM_FAILED',
+            'Não foi possível consultar os servidores no Discord. Tente novamente.', retryAfter);
+        }
+      }
+      // A server-requested pause is delegated to the caller instead of retried early.
+      if (attempt === 1 && retryable && !failure.retryAfter) {
+        const delayMs = 200 + Math.floor(this.random() * 200);
+        logger.warn('discord.guilds_retry', { module: 'dashboard', attempt, nextAttempt: 2,
+          code: failure.code, upstreamStatus: response?.status, delayMs });
+        await this.sleep(delayMs);
+      } else {
+        logger.warn('discord.guilds_failed', { module: 'dashboard', attempt, code: failure.code,
+          upstreamStatus: response?.status, retryAfter: failure.retryAfter });
+        throw failure;
+      }
+    }
   }
 
   async exchangeCode(code) {

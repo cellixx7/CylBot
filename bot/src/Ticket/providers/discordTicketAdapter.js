@@ -1,6 +1,7 @@
 const { ChannelType, PermissionFlagsBits: P, OverwriteType, AttachmentBuilder } = require('discord.js');
 const { createHash } = require('node:crypto');
 const { clientError } = require('../../api/http/errors');
+const { memberReadError } = require('../../providers/discordReadErrors');
 const { ticketNumber } = require('../services/ticketConstants');
 const { logger } = require('../../lib/logger');
 const { ticketLogContext } = require('../lib/ticketDiagnostics');
@@ -15,7 +16,7 @@ const BOT_CHANNEL_ALLOW = BOT_PERMISSIONS.filter(permission => permission !== P.
 const nonce = key => createHash('sha256').update(key).digest('hex').slice(0, 24);
 
 class DiscordTicketAdapter {
-  constructor(client, config) { this.client = client; this.config = config; }
+  constructor(client, config) { this.client = client; this.config = config; this.pendingActors = new Map(); }
   async guild(guildId) {
     const guild = await this.client.guilds.fetch(guildId);
     if (!guild) throw clientError(404, 'Servidor indisponível.');
@@ -23,11 +24,26 @@ class DiscordTicketAdapter {
   }
   async guildName(guildId) { return (await this.guild(guildId)).name; }
   async getActor(guildId, userId) {
-    const guild = await this.guild(guildId);
-    let member;
-    try { member = await guild.members.fetch({ user: userId, force: true }); }
-    catch (error) { if (error.code === 10007) throw clientError(403, 'O usuário não participa mais deste servidor.'); throw error; }
-    return { id: member.id, name: member.displayName, bot: member.user.bot, permissions: member.permissions.bitfield.toString(), roleIds: [...member.roles.cache.keys()] };
+    const requireReady = () => {
+      if (this.client.isReady && !this.client.isReady()) throw clientError(503, 'O CylBot está conectando. Tente novamente em instantes.');
+    };
+    requireReady();
+    const key = `${guildId}:${userId}`;
+    let pending = this.pendingActors.get(key);
+    if (!pending) {
+      pending = (async () => {
+        try {
+          const guild = await this.guild(guildId);
+          const member = await guild.members.fetch({ user: userId, force: true });
+          return { id: member.id, name: member.displayName, bot: member.user.bot,
+            permissions: member.permissions.bitfield.toString(), roleIds: [...member.roles.cache.keys()] };
+        } catch (error) { throw memberReadError(error); }
+      })().finally(() => this.pendingActors.delete(key));
+      this.pendingActors.set(key, pending);
+    }
+    const actor = await pending;
+    requireReady();
+    return { ...actor, roleIds: [...actor.roleIds] };
   }
   async channel(guildId, channelId, type = ChannelType.GuildText) {
     const channel = await (await this.guild(guildId)).channels.fetch(channelId, { force: true });

@@ -45,6 +45,41 @@ function setup() {
   return { adapter, client, guild, bot, role, channels, created, config, makeChannel };
 }
 
+test('leitura concorrente do ator compartilha fetch live; próximo ciclo detecta perda de cargo', async () => {
+  const f = setup(); let calls = 0; let resolve;
+  const fetch = f.guild.members.fetch;
+  f.guild.members.fetch = async options => { calls++; assert.equal(options.force, true); return new Promise(done => { resolve = () => done(fetch(options)); }); };
+  const first = f.adapter.getActor(ids.guild, ids.user);
+  const second = f.adapter.getActor(ids.guild, ids.user);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(calls, 1); resolve();
+  const [left, right] = await Promise.all([first, second]);
+  left.roleIds.length = 0; assert.deepEqual(right.roleIds, [ids.role]);
+  f.guild.members.fetch = async options => { calls++; const member = await fetch(options); member.roles.cache.clear(); return member; };
+  assert.deepEqual((await f.adapter.getActor(ids.guild, ids.user)).roleIds, []);
+  assert.equal(calls, 2); assert.equal(f.adapter.pendingActors.size, 0);
+});
+
+test('leitura do ator distingue membership, rate limit, timeout, upstream e erro interno sem retry extra', async () => {
+  const f = setup(); let calls = 0;
+  for (const [error, status, code] of [
+    [{ code: 10007 }, 403, 'DISCORD_MEMBER_MISSING'], [{ code: 10004 }, 403, 'DISCORD_ACCESS_DENIED'],
+    [{ status: 503 }, 502, 'DISCORD_UPSTREAM_FAILED'], [{ name: 'TimeoutError' }, 502, 'DISCORD_CONNECTION_FAILED'],
+    [{ name: 'RateLimitError', retryAfter: 32000 }, 429, 'DISCORD_RATE_LIMIT'],
+  ]) {
+    f.guild.members.fetch = async () => { calls++; throw error; };
+    await assert.rejects(f.adapter.getActor(ids.guild, ids.user), result => result.statusCode === status && result.code === code &&
+      (status !== 429 || result.retryAfter === 32));
+    assert.equal(f.adapter.pendingActors.size, 0);
+  }
+  assert.equal(calls, 5);
+  const internal = new TypeError('programming error');
+  f.guild.members.fetch = async () => { throw internal; };
+  await assert.rejects(f.adapter.getActor(ids.guild, ids.user), error => error === internal);
+  f.client.isReady = () => false;
+  await assert.rejects(f.adapter.getActor(ids.guild, ids.user), error => error.statusCode === 503);
+});
+
 test('adapter valida intent, cargos, permissões efetivas, tipo e privacidade do log', async () => {
   const f = setup(); await f.adapter.validateSetup(f.config);
   f.adapter.config.messageContentEnabled = false;
