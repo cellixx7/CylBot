@@ -7,6 +7,9 @@ const { MESSAGE_ORIGIN: O, MESSAGE_AUTHOR_TYPE: A, MESSAGE_VISIBILITY: V, DELIVE
   WEB_CONTENT_LIMIT, content, clientMessageId } = require('./ticketMessageContract');
 
 const safeErrorCode = error => typeof error?.code === 'string' && /^[A-Z0-9_]{1,40}$/.test(error.code) ? error.code : 'DISCORD_ERROR';
+const MENTION_TOKEN = /<@!?(\d{17,20})>/g;
+const mentionIds = text => [...new Set([...String(text || '').matchAll(MENTION_TOKEN)].map(match => match[1]))];
+const safeAvatarUrl = value => typeof value === 'string' && /^https:\/\//.test(value) ? value : null;
 
 class TicketMessageService {
   constructor({ repository, tickets, permissions, adapter }) { Object.assign(this, { repository, tickets, permissions, adapter }); }
@@ -17,6 +20,26 @@ class TicketMessageService {
     }
   }
   authorType(actor, ticket) { return actor.id === ticket.creatorUserId ? A.USER : this.permissions.staff(actor, ticket) ? A.STAFF : null; }
+  participantIds(ticket, messages = []) {
+    return new Set([ticket.creatorUserId, ticket.assignedUserId,
+      ...messages.map(message => message.authorDiscordId)].filter(id => /^[0-9]{17,20}$/.test(id || '')));
+  }
+  validateWebMentions(ticket, text) {
+    const allowed = this.participantIds(ticket);
+    if (mentionIds(text).some(id => !allowed.has(id))) throw clientError(400, 'Mencione somente participantes deste ticket.');
+  }
+  participants(ticket, messages = []) {
+    const people = new Map();
+    for (const message of messages) {
+      if (message.authorDiscordId && (message.authorType === A.USER || message.authorType === A.STAFF)) {
+        people.set(message.authorDiscordId, { id: message.authorDiscordId, name: message.authorName, avatarUrl: safeAvatarUrl(message.authorAvatarUrl) });
+      }
+    }
+    for (const id of [ticket.creatorUserId, ticket.assignedUserId].filter(Boolean)) {
+      if (!people.has(id)) people.set(id, { id, name: id === ticket.creatorUserId ? 'Criador do ticket' : 'Responsavel pelo ticket', avatarUrl: null });
+    }
+    return [...people.values()];
+  }
 
   async syncDiscordHistory(ticket, { excludeDiscordMessageId } = {}) {
     this.requireStorage();
@@ -39,7 +62,7 @@ class TicketMessageService {
       if (!text) continue;
       const authorType = item.authorId === ticket.creatorUserId ? A.USER : item.authorBot ? A.SYSTEM : A.STAFF;
       imports.push({ ticketId: ticket.id, guildId: ticket.guildId,
-        authorDiscordId: item.authorId, authorName: item.authorName || authorType, authorType,
+        authorDiscordId: item.authorId, authorName: item.authorName || authorType, authorAvatarUrl: safeAvatarUrl(item.authorAvatarUrl), authorType,
         origin: O.DISCORD, visibility: V.PUBLIC, content: text, discordMessageId: item.id,
         discordChannelId: ticket.channelId, deliveryStatus: D.SENT, deliveryAttempts: 0, createdAt: new Date(item.createdAt) });
     }
@@ -59,7 +82,7 @@ class TicketMessageService {
     await this.syncDiscordHistory(ticket, { excludeDiscordMessageId: input.messageId });
     const authorType = this.authorType(actor, ticket);
     const result = await this.repository.create({ ticketId: ticket.id, guildId: ticket.guildId,
-      authorDiscordId: actor.id, authorName: actor.name, authorType, origin: O.DISCORD, visibility: V.PUBLIC,
+      authorDiscordId: actor.id, authorName: actor.name, authorAvatarUrl: safeAvatarUrl(input.authorAvatarUrl) || safeAvatarUrl(actor.avatarUrl), authorType, origin: O.DISCORD, visibility: V.PUBLIC,
       content: text, discordMessageId: input.messageId, discordChannelId: input.channelId,
       deliveryStatus: D.SENT, deliveryAttempts: 0, createdAt: input.createdAt ? new Date(input.createdAt) : new Date() });
     logger.info(result.duplicate ? 'ticket.message.duplicate' : 'ticket.message.ingested', this.log(ticket, result.message));
@@ -73,6 +96,7 @@ class TicketMessageService {
     const ticket = await this.tickets.ticket(guildId, ticketId);
     this.active(ticket);
     const actor = await this.permissions.requireAction(TICKET_PERMISSION.RESPOND, guildId, userId, ticket, ticket);
+    this.validateWebMentions(ticket, text);
     await this.syncDiscordHistory(ticket);
     const existing = await this.repository.findByClientMessageId(ticket.id, clientId);
     if (existing) {
@@ -82,7 +106,7 @@ class TicketMessageService {
     }
     const result = await this.repository.create({
       ticketId: ticket.id, guildId, authorDiscordId: actor.id,
-      authorName: actor.name, authorType: this.authorType(actor, ticket), origin: O.WEB, visibility: V.PUBLIC,
+      authorName: actor.name, authorAvatarUrl: safeAvatarUrl(actor.avatarUrl), authorType: this.authorType(actor, ticket), origin: O.WEB, visibility: V.PUBLIC,
       content: text, clientMessageId: clientId, deliveryStatus: D.PENDING
     });
     if (result.duplicate) {
@@ -123,6 +147,8 @@ class TicketMessageService {
         ticket,
         ticket,
       );
+
+    this.validateWebMentions(ticket, text);
 
     const message =
       await this.repository.findById(
@@ -318,7 +344,8 @@ class TicketMessageService {
     const actor = await this.permissions.requireAction(TICKET_PERMISSION.VIEW, guildId, userId, ticket, ticket);
     const visibilities = this.permissions.staff(actor, ticket) ? [V.PUBLIC, V.INTERNAL] : [V.PUBLIC];
     const page = await this.repository.listPage(ticket.id, { limit, before, visibilities });
-    return { ...page, messages: page.messages.map(message => this.dto(message, userId)) };
+    const participants = this.participants(ticket, page.messages);
+    return { ...page, participants, messages: page.messages.map(message => this.dto(message, userId, participants)) };
   }
 
   async listRevisions({ guildId, ticketId, messageId, userId }) {
@@ -340,8 +367,9 @@ class TicketMessageService {
 
   async recentForAI(ticket, limit = 12) { this.requireStorage(); return this.repository.listRecent(ticket.id, { limit, visibilities: [V.PUBLIC] }); }
   async forTranscript(ticket, limit = 5000) { this.requireStorage(); return this.repository.listForTranscript(ticket.id, { limit }); }
-  dto(message, viewerId) { return { id: message.id, authorName: message.authorName, authorType: message.authorType, origin: message.origin,
+  dto(message, viewerId, participants = []) { return { id: message.id, authorName: message.authorName, authorAvatarUrl: safeAvatarUrl(message.authorAvatarUrl), authorType: message.authorType, origin: message.origin,
     visibility: message.visibility, content: message.content, deliveryStatus: message.deliveryStatus, createdAt: message.createdAt, editedAt: message.editedAt,
+    mentions: mentionIds(message.content).map(id => participants.find(person => person.id === id)).filter(Boolean),
     ...(viewerId ? { isOwn: message.authorDiscordId === viewerId } : {}) }; }
   log(ticket, message) { return { ticketId: ticket.id, guildId: ticket.guildId, messageId: message.id,
     origin: message.origin, deliveryStatus: message.deliveryStatus }; }

@@ -219,3 +219,13 @@ test('adapter publica Message Core como transporte, identifica Web/IA e mantém 
   assert.match(f.channels.get(ids.log).sent.content, /Sugestão de IA/);
   assert.match(f.channels.get(ids.log).sent.content, /Revisão humana necessária/);
 });
+
+test('adapter allows only validated ticket participants as Discord mentions', async () => {
+  const f = setup();
+  const ticket = { id: '12345678-abcd-abcd-abcd-123456789abd', sequence: 124, guildId: ids.guild,
+    supportRoleIds: [ids.role], creatorUserId: ids.user, assignedUserId: ids.staff, reopenCount: 0, logChannelId: ids.log };
+  ticket.channelId = await f.adapter.createTicketChannel(ticket, f.config);
+  await f.adapter.publishTicketMessage(ticket, { id: 'mention-safe', authorName: 'Member', authorType: 'USER', visibility: 'PUBLIC',
+    content: `Oi <@${ids.user}> <@${ids.staff}> <@666666666666666666> @everyone @here <@&${ids.role}>` });
+  assert.deepEqual(f.channels.get(ticket.channelId).sent.allowedMentions, { parse: [], users: [ids.user, ids.staff] });
+});

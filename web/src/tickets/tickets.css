@@ -44,6 +44,9 @@
 .ticket-chat-message { width: min(82%, 680px); padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px 14px 14px 4px; background: var(--surface); }
 .ticket-chat-message.ticket-chat-own { margin-left: auto; border-radius: 14px 14px 4px; background: var(--surface-raised); }
 .ticket-chat-message header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.ticket-message-avatar { width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%; object-fit: cover; background: var(--surface-raised); }
+.ticket-message-avatar-fallback { display: inline-grid; place-items: center; color: var(--muted); font-size: .75rem; font-weight: 700; }
+.ticket-mention { display: inline-block; padding: 0 4px; border-radius: 4px; background: #263c32; color: #c4f1d9; font-weight: 600; }
 .ticket-chat-message header span, .ticket-chat-message time, .ticket-chat-message footer { color: var(--muted); font-size: .75rem; }
 .ticket-chat-message time { margin-left: auto; }
 .ticket-message-action { padding: 2px 5px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font: inherit; font-size: .9rem; line-height: 1; cursor: pointer; }
@@ -59,6 +62,10 @@
 .ticket-message-staff, .ticket-message-ai { border-left: 3px solid #8dafa0; }
 .ticket-message-system { background: var(--surface-raised); }
 .ticket-message header { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; overflow-wrap: anywhere; }
+.ticket-composer { position: relative; }
+.ticket-mention-options { display: grid; max-width: 300px; margin-top: 6px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--surface-raised); }
+.ticket-mention-options button { padding: 8px 10px; border: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.ticket-mention-options button:hover, .ticket-mention-options button:focus-visible { background: var(--surface); }
 .ticket-message header span, .ticket-message time, .ticket-message footer { color: var(--muted); font-size: .75rem; }
 .ticket-message time { margin-left: auto; }
 .ticket-visibility { color: #f6dfb6; font-size: .75rem; }

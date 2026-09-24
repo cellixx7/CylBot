@@ -310,3 +310,38 @@ test('transcript novo usa conversa canônica multicanal, exclui INTERNAL e legad
   assert.equal(legacy.source, 'DISCORD_LEGACY');
   assert.match(transcripts.read(legacy).toString(), /Fallback legado/);
 });
+
+test('mention tokens and avatars are persisted and safely exposed in DTO', async t => {
+  const f = await ticketAIFixture(t); f.messages.length = 0;
+  f.core.actors.get(ids.user).avatarUrl = 'https://cdn.discordapp.com/avatars/user.png';
+  const web = await f.messageService.createWebMessage({ guildId: ids.guild, ticketId: f.ticket.id, userId: ids.user,
+    clientMessageId: 'mention-avatar-web', content: `Oi <@${ids.user}>` });
+  assert.equal(web.content, `Oi <@${ids.user}>`);
+  assert.equal(f.messages[0].authorAvatarUrl, 'https://cdn.discordapp.com/avatars/user.png');
+  const page = await f.messageService.list({ guildId: ids.guild, ticketId: f.ticket.id, userId: ids.user });
+  assert.deepEqual(page.messages[0].mentions, [{ id: ids.user, name: 'Criador', avatarUrl: 'https://cdn.discordapp.com/avatars/user.png' }]);
+  assert.equal(Object.hasOwn(page.messages[0], 'authorDiscordId'), false);
+  await assert.rejects(f.messageService.createWebMessage({ guildId: ids.guild, ticketId: f.ticket.id, userId: ids.user,
+    clientMessageId: 'mention-avatar-denied', content: 'Oi <@666666666666666666>' }), { statusCode: 400 });
+  await f.messageService.ingestDiscordMessage({ ...discordInput(f), messageId: '100000000000000088', content: `Oi <@${ids.user}>`, authorAvatarUrl: 'https://cdn.discordapp.com/avatars/discord.png' });
+  assert.equal(f.messages.at(-1).authorAvatarUrl, 'https://cdn.discordapp.com/avatars/discord.png');
+});
+
+test('Discord message update keeps canonical mention and revision behavior', async t => {
+  const f = await ticketAIFixture(t);
+  const message = f.messages[0];
+  message.discordMessageId = '100000000000000177';
+  message.discordChannelId = f.ticket.channelId;
+  const revisions = [];
+  f.messageRepository.editContent = async input => {
+    revisions.push({ previousContent: message.content, content: input.content });
+    Object.assign(message, { content: input.content, editedAt: Date.now() });
+    return message;
+  };
+  await f.messageService.updateDiscordMessage({ guildId: ids.guild, channelId: f.ticket.channelId, messageId: message.discordMessageId,
+    userId: ids.user, content: `Oi <@${ids.user}>` });
+  const page = await f.messageService.list({ guildId: ids.guild, ticketId: f.ticket.id, userId: ids.user });
+  assert.equal(page.messages[0].content, `Oi <@${ids.user}>`);
+  assert.equal(page.messages[0].mentions[0].name, 'Criador');
+  assert.equal(revisions.length, 1);
+});

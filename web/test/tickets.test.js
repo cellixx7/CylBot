@@ -17,6 +17,7 @@ import {
   updateTicketAIConfig,
 } from '../src/tickets/ticketsApi.js';
 import { ticketConversationMode } from '../src/tickets/messageReconciliation.js';
+import { insertMention, messageSegments, shouldSubmitOnEnter } from '../src/tickets/messagePresentation.js';
 
 const flush = async () => {
   for (let i = 0; i < 8; i++) {
@@ -631,6 +632,21 @@ test('conversation mode separates active tickets from closed history', () => {
     assert.equal(ticketConversationMode(status), 'chat');
   }
   assert.equal(ticketConversationMode('CLOSED'), 'history');
+});
+
+test('message presentation renders known mention metadata and preserves surrounding text', () => {
+  assert.deepEqual(messageSegments('Oi <@123456789012345678> agora', [{ id: '123456789012345678', name: 'Marcelo' }]), [
+    { type: 'text', value: 'Oi ' }, { type: 'mention', id: '123456789012345678', name: 'Marcelo' }, { type: 'text', value: ' agora' },
+  ]);
+  assert.deepEqual(messageSegments('Oi <@123456789012345678>', []), [{ type: 'text', value: 'Oi ' }, { type: 'text', value: '<@123456789012345678>' }]);
+});
+
+test('composer sends only plain Enter outside IME and inserts the selected mention token', () => {
+  assert.equal(shouldSubmitOnEnter({ key: 'Enter', shiftKey: false, isComposing: false, sending: false, retryPending: false, draft: 'Oi' }), true);
+  assert.equal(shouldSubmitOnEnter({ key: 'Enter', shiftKey: true, isComposing: false, sending: false, retryPending: false, draft: 'Oi' }), false);
+  assert.equal(shouldSubmitOnEnter({ key: 'Enter', shiftKey: false, isComposing: true, sending: false, retryPending: false, draft: 'Oi' }), false);
+  assert.equal(shouldSubmitOnEnter({ key: 'Enter', shiftKey: false, isComposing: false, sending: true, retryPending: false, draft: 'Oi' }), false);
+  assert.equal(insertMention('Oi @Mar', { id: '123456789012345678', name: 'Marcelo' }), 'Oi <@123456789012345678>');
 });
 
 test('API distingue autorizaÃ§Ã£o, indisponibilidade e limite sem refletir erro privado do servidor', async t => {

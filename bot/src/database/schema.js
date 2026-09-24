@@ -110,6 +110,7 @@ const ticketMessages = pgTable('ticket_messages', {
   guildId: text('guild_id').notNull(),
   authorDiscordId: text('author_discord_id'),
   authorName: text('author_name').notNull(),
+  authorAvatarUrl: text('author_avatar_url'),
   authorType: ticketMessageAuthorType('author_type').notNull(),
   origin: ticketMessageOrigin('origin').notNull(),
   visibility: ticketMessageVisibility('visibility').notNull().default('PUBLIC'),

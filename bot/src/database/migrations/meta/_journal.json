@@ -50,6 +50,13 @@
       "when": 1790263928504,
       "tag": "0006_serious_dark_phoenix",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790271599651,
+      "tag": "0007_low_scorpion",
+      "breakpoints": true
     }
   ]
 }

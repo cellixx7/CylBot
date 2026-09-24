@@ -37,7 +37,8 @@ class DiscordTicketAdapter {
           const member = await guild.members.fetch({ user: userId, force: true });
           return {
             id: member.id, name: member.displayName, bot: member.user.bot,
-            permissions: member.permissions.bitfield.toString(), roleIds: [...member.roles.cache.keys()]
+            permissions: member.permissions.bitfield.toString(), roleIds: [...member.roles.cache.keys()],
+            avatarUrl: member.displayAvatarURL?.({ extension: 'png', size: 64 }) || member.user.displayAvatarURL?.({ extension: 'png', size: 64 }) || null
           };
         } catch (error) { throw memberReadError(error); }
       })().finally(() => this.pendingActors.delete(key));
@@ -126,7 +127,7 @@ class DiscordTicketAdapter {
     }
     return config;
   }
-  async send(channel, payload, key) { return channel.send({ ...payload, nonce: nonce(key), enforceNonce: true, allowedMentions: { parse: [] } }); }
+  async send(channel, payload, key, users = []) { return channel.send({ ...payload, nonce: nonce(key), enforceNonce: true, allowedMentions: { parse: [], ...(users.length ? { users } : {}) } }); }
   async publishPanel(config) { return (await this.send(await this.channel(config.guildId, config.panelChannelId), panelPayload(), `panel:${config.setupId}`)).id; }
   async createTicketChannel(ticket, config) {
     const guild = await this.guild(ticket.guildId);
@@ -207,6 +208,7 @@ class DiscordTicketAdapter {
     const messages = await channel.messages.fetch({ ...options, cache: false });
     return [...messages.values()].map(message => ({
       id: message.id, authorId: message.author.id, authorName: message.author.username,
+      authorAvatarUrl: message.member?.displayAvatarURL?.({ extension: 'png', size: 64 }) || message.author.displayAvatarURL?.({ extension: 'png', size: 64 }) || null,
       authorBot: message.author.bot === true,
       createdAt: message.createdAt.toISOString(), content: message.content,
       embeds: message.embeds.map(embed => [embed.title, embed.description, ...(embed.fields || []).map(field => `${field.name}: ${field.value}`)].filter(Boolean).join('\n')),
@@ -231,7 +233,9 @@ class DiscordTicketAdapter {
       : '**CylBot · Assistente IA**';
     if (message.authorType === 'SYSTEM') heading = '**CylBot · Sistema de atendimento**';
     const suffix = internal ? '\n\nRevisão humana necessária; nenhuma alteração administrativa foi executada.' : '';
-    const sent = await this.send(channel, { content: `${heading}\n${message.content}${suffix}` }, `ticket-message:${message.id}`);
+    const allowed = new Set([ticket.creatorUserId, ticket.assignedUserId].filter(Boolean));
+    const users = [...new Set([...String(message.content).matchAll(/<@!?(\d{17,20})>/g)].map(match => match[1]).filter(id => allowed.has(id)))];
+    const sent = await this.send(channel, { content: `${heading}\n${message.content}${suffix}` }, `ticket-message:${message.id}`, users);
     return { id: sent.id, channelId: channel.id };
   }
 

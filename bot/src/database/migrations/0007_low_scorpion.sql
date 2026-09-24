@@ -1,0 +1,1 @@
+ALTER TABLE "ticket_messages" ADD COLUMN "author_avatar_url" text;

@@ -16,6 +16,8 @@ import {
 } from './ticketsApi.js';
 import TicketAIControls from './TicketAIControls.jsx';
 import TicketAISettings from './TicketAISettings.jsx';
+import MessageAvatar from './MessageAvatar.jsx';
+import MessageContent from './MessageContent.jsx';
 import {
   isLocalMessageConfirmed,
   mergeTicketMessages,
@@ -23,6 +25,7 @@ import {
 } from './messageReconciliation.js';
 import { useTicketComposer } from './useTicketComposer.js';
 import { useTicketPolling } from './useTicketPolling.js';
+import { insertMention, mentionQuery, shouldSubmitOnEnter } from './messagePresentation.js';
 import './tickets.css';
 
 const statuses = {
@@ -461,6 +464,10 @@ function TicketDetail({
   const canRespond = ticket?.actions?.canRespond === true;
   const closed = ticketConversationMode(ticket?.status) === 'history';
   const aiStatus = aiOverride || state.data?.aiStatus;
+  const activeMentionQuery = mentionQuery(composer.draft);
+  const mentionOptions = activeMentionQuery === null ? [] : (state.data?.participants ?? [])
+    .filter(person => person.name.toLocaleLowerCase('pt-BR').includes(activeMentionQuery.toLocaleLowerCase('pt-BR')))
+    .slice(0, 5);
 
   useEffect(() => {
     const serverStatus = state.data?.aiStatus;
@@ -885,6 +892,7 @@ async function toggleRevisions(message) {
                       key={message.id}
                     >
                       <header>
+                        <MessageAvatar message={message} />
                         <strong>
                           {!closed && message.isOwn
                             ? 'Você'
@@ -1001,9 +1009,7 @@ async function toggleRevisions(message) {
                           </div>
                         </div>
                       ) : (
-                        <p className="ticket-content">
-                          {message.content}
-                        </p>
+                        <MessageContent content={message.content} mentions={message.mentions} />
                       )}
 
                       {message.editedAt && (
@@ -1072,6 +1078,19 @@ async function toggleRevisions(message) {
                       event.target.value,
                     )
                   }
+                  onKeyDown={event => {
+                    if (shouldSubmitOnEnter({
+                      key: event.key,
+                      shiftKey: event.shiftKey,
+                      isComposing: event.nativeEvent?.isComposing,
+                      sending: composer.sending,
+                      retryPending: composer.retryPending,
+                      draft: composer.draft,
+                    })) {
+                      event.preventDefault();
+                      void handleSubmit(event);
+                    }
+                  }}
                   placeholder="Escreva sua mensagem..."
                   maxLength={1800}
                   rows={4}
@@ -1080,6 +1099,19 @@ async function toggleRevisions(message) {
                     composer.retryPending
                   }
                 />
+
+                {mentionOptions.length > 0 && (
+                  <div className="ticket-mention-options" role="listbox" aria-label="Participantes para mencionar">
+                    {mentionOptions.map(person => (
+                      <button type="button" role="option" key={person.id} onMouseDown={event => {
+                        event.preventDefault();
+                        composer.setDraft(insertMention(composer.draft, person));
+                      }}>
+                        @{person.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 <div className="ticket-composer-footer">
                   <span>
