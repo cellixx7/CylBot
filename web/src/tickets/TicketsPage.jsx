@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getMessages, getTicket, getTickets } from './ticketsApi.js';
-import { useTicketComposer } from './useTicketComposer.js';
-import { useTicketPolling } from './useTicketPolling.js';
 import {
   isLocalMessageConfirmed,
   mergeTicketMessages,
 } from './messageReconciliation.js';
+import { useTicketComposer } from './useTicketComposer.js';
+import { useTicketPolling } from './useTicketPolling.js';
 import './tickets.css';
 
 const statuses = {
@@ -57,7 +57,9 @@ function PollStatus({ state }) {
   return (
     <div className="ticket-poll-status">
       {state.loading && (
-        <p role="status">Carregando tickets...</p>
+        <p role="status">
+          Carregando tickets...
+        </p>
       )}
 
       {state.error && (
@@ -89,6 +91,7 @@ function PollStatus({ state }) {
             ? 'Dados da última consulta: '
             : 'Atualizado em '}
           {date(state.updatedAt)}.
+
           {!state.error &&
             ' Atualização automática a cada 15 segundos com a aba visível.'}
         </p>
@@ -146,7 +149,10 @@ function Pagination({
         <button
           className="button button-outline"
           onClick={() =>
-            setCursors([...cursors, nextBefore])
+            setCursors([
+              ...cursors,
+              nextBefore,
+            ])
           }
         >
           {history
@@ -191,7 +197,9 @@ function TicketList({
           <Pagination
             cursors={cursors}
             setCursors={setCursors}
-            nextBefore={state.data.nextBefore}
+            nextBefore={
+              state.data.nextBefore
+            }
           />
 
           {state.data.tickets.length ? (
@@ -218,7 +226,9 @@ function TicketList({
                       />
                     </div>
 
-                    <h2>{ticket.subject}</h2>
+                    <h2>
+                      {ticket.subject}
+                    </h2>
 
                     <p>
                       {ticket.categoryName ||
@@ -236,7 +246,9 @@ function TicketList({
 
                     <small>
                       Aberto em{' '}
-                      {date(ticket.createdAt)}
+                      {date(
+                        ticket.createdAt,
+                      )}
                     </small>
 
                     <span className="ticket-open">
@@ -314,40 +326,71 @@ function TicketDetail({
 
   const ticket = state.data?.ticket;
 
-  const upsertLocalMessage = useCallback(message => {
-  setLocalMessages(previous => {
-    const withoutCurrent = previous.filter(
-      current => current.id !== message.id,
-    );
+  useEffect(() => {
+    setLocalMessages([]);
+    messageAttemptRef.current = null;
+  }, [guildId, ticketId]);
 
-    return [...withoutCurrent, message];
-  });
-}, []);
+  const upsertLocalMessage = useCallback(
+    message => {
+      setLocalMessages(previous => {
+        const index = previous.findIndex(
+          current =>
+            current.id === message.id,
+        );
+
+        if (index === -1) {
+          return [
+            ...previous,
+            message,
+          ];
+        }
+
+        return previous.map(current =>
+          current.id === message.id
+            ? message
+            : current,
+        );
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
-  const serverMessages = state.data?.messages;
+    const serverMessages =
+      state.data?.messages;
 
-  if (!serverMessages?.length) {
-    return;
-  }
+    if (!serverMessages?.length) {
+      return;
+    }
 
-  setLocalMessages(previous =>
-    previous.filter(
-      localMessage =>
-        !isLocalMessageConfirmed(
-          localMessage,
-          serverMessages,
-        ),
-    ),
-  );
-}, [state.data?.messages]);
+    setLocalMessages(previous => {
+      const remaining =
+        previous.filter(
+          localMessage =>
+            !isLocalMessageConfirmed(
+              localMessage,
+              serverMessages,
+            ),
+        );
+
+      if (
+        remaining.length ===
+        previous.length
+      ) {
+        return previous;
+      }
+
+      return remaining;
+    });
+  }, [state.data?.messages]);
 
   const displayedMessages = before
-  ? state.data?.messages ?? []
-  : mergeTicketMessages(
-      state.data?.messages ?? [],
-      localMessages,
-    );
+    ? state.data?.messages ?? []
+    : mergeTicketMessages(
+        state.data?.messages ?? [],
+        localMessages,
+      );
 
   const canRespond = [
     'OPEN',
@@ -355,52 +398,74 @@ function TicketDetail({
     'REOPENED',
   ].includes(ticket?.status);
 
-async function handleSubmit(event) {
-  event.preventDefault();
+  async function handleSubmit(event) {
+    event.preventDefault();
 
-  if (composer.sending || !canRespond) {
-    return;
-  }
-
-  const currentDraft = composer.draft.trim();
-
-  if (!currentDraft) {
-    return;
-  }
-
-  if (!messageAttemptRef.current) {
-    messageAttemptRef.current = {
-      clientMessageId: crypto.randomUUID(),
-      content: currentDraft,
-    };
-  }
-
-  const attempt = messageAttemptRef.current;
-
-  try {
-    const message = await composer.send(attempt);
-
-    if (!message) {
+    if (
+      composer.sending ||
+      !canRespond
+    ) {
       return;
     }
 
-    upsertLocalMessage(message);
+    const currentDraft =
+      composer.draft.trim();
 
-    if (before) {
-      setCursors([null]);
-    }
-
-    if (message.deliveryStatus === 'FAILED') {
+    if (!currentDraft) {
       return;
     }
 
-    composer.setDraft('');
-    composer.clearAttempt();
-    messageAttemptRef.current = null;
-  } catch {
-    // Mantém a mesma tentativa para retry.
+    if (!messageAttemptRef.current) {
+      messageAttemptRef.current = {
+        clientMessageId:
+          crypto.randomUUID(),
+        content: currentDraft,
+      };
+    }
+
+    const attempt =
+      messageAttemptRef.current;
+
+    try {
+      const message =
+        await composer.send(
+          attempt,
+        );
+
+      if (!message) {
+        return;
+      }
+
+      upsertLocalMessage(
+        message,
+      );
+
+      if (before) {
+        setCursors([null]);
+      }
+
+      const delivered = [
+        'SENT',
+        'NOT_REQUIRED',
+      ].includes(
+        message.deliveryStatus,
+      );
+
+      if (!delivered) {
+        return;
+      }
+
+      composer.setDraft('');
+      composer.clearAttempt();
+
+      messageAttemptRef.current =
+        null;
+    } catch {
+      // Mantém o mesmo clientMessageId
+      // e o mesmo conteúdo para retry.
+    }
   }
-}
+
   return (
     <>
       <PollStatus state={state} />
@@ -422,7 +487,9 @@ async function handleSubmit(event) {
               />
             </div>
 
-            <h2>{ticket.subject}</h2>
+            <h2>
+              {ticket.subject}
+            </h2>
 
             <p className="ticket-content">
               {ticket.description}
@@ -472,7 +539,10 @@ async function handleSubmit(event) {
 
               {ticket.claimedAt && (
                 <div>
-                  <dt>Assumido em</dt>
+                  <dt>
+                    Assumido em
+                  </dt>
+
                   <dd>
                     {date(
                       ticket.claimedAt,
@@ -486,6 +556,7 @@ async function handleSubmit(event) {
                   <dt>
                     Último encerramento
                   </dt>
+
                   <dd>
                     {date(
                       ticket.closedAt,
@@ -496,7 +567,10 @@ async function handleSubmit(event) {
 
               {ticket.reopenedAt && (
                 <div>
-                  <dt>Reaberto em</dt>
+                  <dt>
+                    Reaberto em
+                  </dt>
+
                   <dd>
                     {date(
                       ticket.reopenedAt,
@@ -627,14 +701,21 @@ async function handleSubmit(event) {
 
                 <textarea
                   id="ticket-message"
-                  value={composer.draft}
+                  value={
+                    composer.draft
+                  }
                   onChange={event =>
-                    composer.setDraft(event.target.value)
+                    composer.setDraft(
+                      event.target.value,
+                    )
                   }
                   placeholder="Escreva sua mensagem..."
                   maxLength={1800}
                   rows={4}
-                  disabled={composer.sending || composer.retryPending}
+                  disabled={
+                    composer.sending ||
+                    composer.retryPending
+                  }
                 />
 
                 <div className="ticket-composer-footer">

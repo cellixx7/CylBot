@@ -81,17 +81,19 @@ export function useTicketComposer({
         return null;
       }
 
-        const delivered = ['SENT', 'NOT_REQUIRED'].includes(
-            message.deliveryStatus,
-        );
+      const message = result.message;
 
-        if (!delivered) {
-            return;
-        }
+      if (message.deliveryStatus === 'FAILED') {
+        setState(previous => ({
+          ...previous,
+          sending: false,
+          retryPending: true,
+          error: 'A mensagem foi salva, mas não pôde ser entregue ao Discord.',
+          lastMessage: message,
+        }));
 
-        composer.setDraft('');
-        composer.clearAttempt();
-        messageAttemptRef.current = null;
+        return message;
+      }
 
       setState(previous => ({
         ...previous,
@@ -103,27 +105,27 @@ export function useTicketComposer({
 
       return message;
     } catch (error) {
-  if (controller.signal.aborted) {
-    return null;
-  }
+      if (controller.signal.aborted) {
+        return null;
+      }
 
-  if (error.reloginRequired) {
-    requireRelogin();
-  }
+      if (error.reloginRequired) {
+        requireRelogin();
+      }
 
-  const retryable =
-    error.status == null ||
-    [429, 502, 503, 504].includes(error.status);
+      const retryable =
+        error.status == null ||
+        [429, 502, 503, 504].includes(error.status);
 
-  setState(previous => ({
-    ...previous,
-    sending: false,
-    retryPending: retryable,
-    error: error.message,
-  }));
+      setState(previous => ({
+        ...previous,
+        sending: false,
+        retryPending: retryable,
+        error: error.message,
+      }));
 
-  throw error;
-} finally {
+      throw error;
+    } finally {
       if (controllerRef.current === controller) {
         controllerRef.current = null;
       }
