@@ -43,6 +43,18 @@ export const getMessages = (guildId, ticketId, before, signal) =>
 export const getMessageRevisions = (guildId, ticketId, messageId, signal) =>
   get(`/${ticketId}/messages/${messageId}/revisions`, { guildId }, signal);
 
+export async function ticketAction(guildId, ticketId, action, values = {}) {
+  const response = await fetch(`/api/tickets/${ticketId}/actions/${action}`, {
+    method: 'POST', credentials: 'include', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ guildId, ...values }),
+  });
+  if (!response.ok) throw Object.assign(new Error(ticketMessages[response.status] || ticketMessages.default), {
+    status: response.status, reloginRequired: response.status === 401,
+    requestId: response.headers.get('X-Request-Id') || undefined,
+  });
+  return response.json();
+}
+
 export async function postTicketMessage(
   guildId,
   ticketId,

@@ -8,6 +8,7 @@ import {
   getTickets,
   postTicketMessage,
   retryTicketMessage,
+  ticketAction,
 } from '../src/tickets/ticketsApi.js';
 import { ticketConversationMode } from '../src/tickets/messageReconciliation.js';
 
@@ -671,4 +672,31 @@ test('API distingue autorização, indisponibilidade e limite sem refletir erro 
 
     mock.mock.restore();
   }
+});
+
+test('ticket action posts only the action contract', async t => {
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    calls.push({ url, options });
+    return new Response(JSON.stringify({ ticket: { status: 'CLOSED' } }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  });
+
+  const result = await ticketAction(
+    '111111111111111111',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    'close',
+    { reason: 'Resolved', summary: 'Guidance sent' },
+  );
+
+  assert.equal(calls[0].url, '/api/tickets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/actions/close');
+  assert.equal(calls[0].options.method, 'POST');
+  assert.equal(calls[0].options.credentials, 'include');
+  assert.equal(calls[0].options.cache, 'no-store');
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    guildId: '111111111111111111', reason: 'Resolved', summary: 'Guidance sent',
+  });
+  assert.equal(result.ticket.status, 'CLOSED');
 });

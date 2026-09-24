@@ -2,7 +2,7 @@ const { clientError } = require('../../api/http/errors');
 const { TICKET_PERMISSION } = require('./ticketPermissionService');
 
 // Explicit allowlist: lifecycle state, transcript paths and audit data stay private.
-function ticketDto(ticket) {
+function ticketDto(ticket, actions) {
   return {
     id: ticket.id, guildId: ticket.guildId, guildName: ticket.guildName,
     publicNumber: ticket.publicNumber ?? ticket.sequence,
@@ -11,7 +11,17 @@ function ticketDto(ticket) {
     assignedName: ticket.assignedName || null, createdAt: ticket.createdAt,
     claimedAt: ticket.claimedAt || null, closedAt: ticket.closedAt || null,
     reopenedAt: ticket.reopenedAt || null,
+    ...(actions ? { actions } : {}),
   };
+}
+
+function ticketActions(ticket, actor, permissions) {
+  const active = ticket.initialized && !ticket.closing && !ticket.reopening && ['OPEN', 'CLAIMED', 'REOPENED'].includes(ticket.status);
+  const staff = permissions.staff(actor, ticket);
+  return { canClaim: staff && active && !ticket.assignedUserId,
+    canRespond: active && (actor.id === ticket.creatorUserId || staff && ticket.assignedUserId === actor.id),
+    canClose: active && (actor.id === ticket.creatorUserId || staff),
+    canReopen: staff && ticket.status === 'CLOSED' && ticket.closing?.completed && !ticket.reopening };
 }
 
 class TicketReadService {
@@ -31,8 +41,8 @@ class TicketReadService {
   async detail({ guildId, ticketId, userId }) {
     this.requireStorage();
     const ticket = await this.tickets.ticket(guildId, ticketId);
-    await this.permissions.requireAction(TICKET_PERMISSION.VIEW, guildId, userId, ticket, ticket);
-    return { ticket: ticketDto(ticket) };
+    const actor = await this.permissions.requireAction(TICKET_PERMISSION.VIEW, guildId, userId, ticket, ticket);
+    return { ticket: ticketDto(ticket, ticketActions(ticket, actor, this.permissions)) };
   }
 }
-module.exports = { TicketReadService };
+module.exports = { TicketReadService, ticketActions };

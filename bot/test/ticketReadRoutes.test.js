@@ -58,7 +58,8 @@ test('criador lista apenas seus tickets; detalhe usa allowlist sem dados de life
   assert.equal(detail.body.ticket.subject, f.ticket.subject);
   assert.equal(detail.body.ticket.publicNumber, 1);
   assert.deepEqual(Object.keys(detail.body.ticket).sort(), ['id', 'guildId', 'guildName', 'publicNumber', 'subject', 'description',
-    'status', 'categoryName', 'creatorName', 'assignedName', 'createdAt', 'claimedAt', 'closedAt', 'reopenedAt'].sort());
+    'status', 'categoryName', 'creatorName', 'assignedName', 'createdAt', 'claimedAt', 'closedAt', 'reopenedAt', 'actions'].sort());
+  assert.deepEqual(detail.body.ticket.actions, { canClaim: false, canRespond: true, canClose: true, canReopen: false });
   assert.equal(f.core.calls.includes('messages'), false, 'leitura não importa histórico Discord');
 });
 

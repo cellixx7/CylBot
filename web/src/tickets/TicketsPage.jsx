@@ -6,6 +6,7 @@ import {
   getTicket,
   getTickets,
   retryTicketMessage,
+  ticketAction,
 } from './ticketsApi.js';
 import {
   isLocalMessageConfirmed,
@@ -298,6 +299,11 @@ function TicketDetail({
   const [editingError, setEditingError] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [revisions, setRevisions] = useState({});
+  const [ticketOverride, setTicketOverride] = useState(null);
+  const [actionState, setActionState] = useState({ name: '', error: '' });
+  const [closeForm, setCloseForm] = useState(false);
+  const [closeReason, setCloseReason] = useState('');
+  const [closeSummary, setCloseSummary] = useState('');
 
   const messageAttemptRef = useRef(null);
 
@@ -343,7 +349,7 @@ function TicketDetail({
     requireRelogin,
   );
 
-  const ticket = state.data?.ticket;
+  const ticket = ticketOverride || state.data?.ticket;
 
   useEffect(() => {
     setLocalMessages([]);
@@ -353,8 +359,22 @@ function TicketDetail({
     setEditingError('');
     setSavingEdit(false);
     setRevisions({});
+    setTicketOverride(null);
+    setActionState({ name: '', error: '' });
+    setCloseForm(false);
     messageAttemptRef.current = null;
   }, [guildId, ticketId]);
+
+  useEffect(() => {
+    const serverTicket = state.data?.ticket;
+    if (!ticketOverride || !serverTicket) return;
+    if (
+      serverTicket.status === ticketOverride.status &&
+      serverTicket.assignedName === ticketOverride.assignedName &&
+      serverTicket.closedAt === ticketOverride.closedAt &&
+      serverTicket.reopenedAt === ticketOverride.reopenedAt
+    ) setTicketOverride(null);
+  }, [state.data?.ticket, ticketOverride]);
 
   const upsertLocalMessage = useCallback(
     message => {
@@ -417,12 +437,22 @@ function TicketDetail({
         localMessages,
       );
 
-  const canRespond = [
-    'OPEN',
-    'CLAIMED',
-    'REOPENED',
-  ].includes(ticket?.status);
+  const canRespond = ticket?.actions?.canRespond === true;
   const closed = ticketConversationMode(ticket?.status) === 'history';
+
+  async function runAction(action, values) {
+    if (actionState.name) return;
+    setActionState({ name: action, error: '' });
+    try {
+      const result = await ticketAction(guildId, ticketId, action, values);
+      setTicketOverride(result.ticket);
+      if (action === 'close') setCloseForm(false);
+      setActionState({ name: '', error: '' });
+    } catch (error) {
+      if (error.reloginRequired) requireRelogin();
+      setActionState({ name: '', error: error.message || 'Não foi possível concluir a ação.' });
+    }
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -708,6 +738,19 @@ async function toggleRevisions(message) {
                 </div>
               )}
             </dl>
+
+            <div className="ticket-actions">
+              {ticket.actions?.canClaim && <button className="button" disabled={Boolean(actionState.name)} onClick={() => runAction('claim')}>{actionState.name === 'claim' ? 'Assumindo...' : 'Assumir ticket'}</button>}
+              {ticket.actions?.canClose && !closeForm && <button className="button button-outline" disabled={Boolean(actionState.name)} onClick={() => setCloseForm(true)}>Encerrar ticket</button>}
+              {ticket.actions?.canReopen && <button className="button" disabled={Boolean(actionState.name)} onClick={() => runAction('reopen')}>{actionState.name === 'reopen' ? 'Reabrindo...' : 'Reabrir ticket'}</button>}
+              {actionState.error && <p className="dashboard-notice" role="alert">{actionState.error}</p>}
+            </div>
+
+            {closeForm && <form className="ticket-close-form" onSubmit={event => { event.preventDefault(); runAction('close', { reason: closeReason, summary: closeSummary }); }}>
+              <label>Motivo<textarea required maxLength={1000} value={closeReason} onChange={event => setCloseReason(event.target.value)} /></label>
+              <label>Resumo (opcional)<textarea maxLength={1000} value={closeSummary} onChange={event => setCloseSummary(event.target.value)} /></label>
+              <div><button type="button" className="button button-outline" disabled={Boolean(actionState.name)} onClick={() => setCloseForm(false)}>Cancelar</button><button className="button" disabled={!closeReason.trim() || Boolean(actionState.name)}>{actionState.name === 'close' ? 'Encerrando...' : 'Confirmar encerramento'}</button></div>
+            </form>}
           </section>
 
           <section
@@ -982,7 +1025,7 @@ async function toggleRevisions(message) {
                 className="dashboard-notice"
                 role="status"
               >
-                Este ticket não aceita novas mensagens.
+                {closed ? 'Este ticket está encerrado.' : ticket.actions?.canClaim ? 'Assuma este ticket para responder.' : 'Você não pode responder neste atendimento no momento.'}
               </p>
             )}
           </section>

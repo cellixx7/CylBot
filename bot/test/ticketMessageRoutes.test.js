@@ -18,7 +18,7 @@ async function setup(t, userId = ids.staff) {
   const provider = { getCurrentUserGuilds: async () => memberships };
   const client = { isReady: () => true, guilds: { cache: new Map([[ids.guild, {}]]) } };
   const auth = new AuthService({ config, sessions, provider });
-  const services = { auth, dashboard: new DashboardService({ provider, client }), ticketMessages: f.messageService, ticketAI: f.ai };
+  const services = { auth, dashboard: new DashboardService({ provider, client }), tickets: f.core.service, ticketMessages: f.messageService, ticketAI: f.ai };
   const handler = createRequestHandler({ services, client });
   const request = async (url, { method = 'GET', body, authenticated = true, origin = config.webOrigin } = {}) => {
     const req = Object.assign(Readable.from(body ? [JSON.stringify(body)] : []), { method, url, headers: {
@@ -33,6 +33,7 @@ async function setup(t, userId = ids.staff) {
 
 test('support role sem ManageGuild lista e envia; OAuth membership continua obrigatório', async t => {
   const f = await setup(t);
+  await f.core.service.claim({ guildId: ids.guild, ticketId: f.ticket.id, userId: ids.staff, channelId: f.ticket.channelId });
   const post = await f.request(f.base, { method: 'POST', body: { guildId: ids.guild,
     clientMessageId: 'route-message-0001', content: 'Resposta da equipe' } });
   assert.equal(post.status, 200);
@@ -114,4 +115,17 @@ test('GET revisions requires session and membership and returns requested histor
   assert.equal((await f.request(route, { authenticated: false })).status, 401);
   f.memberships.length = 0;
   assert.equal((await f.request(route)).status, 403);
+});
+
+test('claim action uses session and canonical ticket channel', async t => {
+  const f = await setup(t);
+  const route = `/api/tickets/${f.ticket.id}/actions/claim`;
+  assert.equal((await f.request(route, { method: 'POST', authenticated: false, body: { guildId: ids.guild } })).status, 401);
+  assert.equal((await f.request(route, { method: 'POST', body: { guildId: ids.guild, channelId: ids.panel } })).status, 400);
+  const response = await f.request(route, { method: 'POST', body: { guildId: ids.guild } });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers['Cache-Control'], 'no-store');
+  assert.equal(response.body.ticket.status, 'CLAIMED');
+  assert.equal(response.body.ticket.assignedName, 'Equipe');
+  assert.equal(response.body.ticket.actions.canRespond, true);
 });

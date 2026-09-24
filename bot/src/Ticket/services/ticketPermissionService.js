@@ -41,7 +41,10 @@ class TicketPermissionService {
     if (!ticket.initialized || ticket.closing || ticket.reopening || !['OPEN', 'CLAIMED', 'REOPENED'].includes(ticket.status)) {
       throw clientError(409, 'Este ticket não aceita novas mensagens.');
     }
-    return actor;
+    if (actor.id === ticket.creatorUserId) return actor;
+    if (ticket.assignedUserId === actor.id) return actor;
+    if (ticket.assignedUserId) throw clientError(403, 'Este ticket está sendo atendido por outro membro da equipe.');
+    throw clientError(403, 'Assuma este ticket antes de responder.');
   }
   async requireAction(action, guildId, userId, config, ticket) {
     if (action === TICKET_PERMISSION.CONFIGURE) return this.requireAdmin(guildId, userId);
