@@ -23,7 +23,20 @@
 .ticket-metadata dd { margin: 0; overflow-wrap: anywhere; font-size: .9rem; }
 .ticket-history { margin-top: 40px; }
 .ticket-history > h2 { font-size: 2rem; }
+.ticket-chat { max-width: 920px; margin: 40px auto 0; }
+.ticket-chat > h2 { font-size: 2rem; }
 .ticket-messages { display: grid; gap: 16px; }
+.ticket-chat-messages { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.ticket-chat-message { width: min(82%, 680px); padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px 14px 14px 4px; background: var(--surface); }
+.ticket-chat-message.ticket-chat-own { margin-left: auto; border-radius: 14px 14px 4px; background: var(--surface-raised); }
+.ticket-chat-message header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.ticket-chat-message header span, .ticket-chat-message time, .ticket-chat-message footer { color: var(--muted); font-size: .75rem; }
+.ticket-chat-message time { margin-left: auto; }
+.ticket-edited { margin: 8px 0 0; color: var(--muted); font-size: .75rem; }
+.ticket-revisions { margin-top: 16px; }
+.ticket-revision-list { margin-top: 12px; padding: 14px; border-left: 2px solid var(--line); background: var(--surface-raised); }
+.ticket-revision-list ol { display: grid; gap: 12px; margin: 12px 0 0; padding-left: 22px; }
+.ticket-revision-list time { color: var(--muted); font-size: .75rem; }
 .ticket-message { padding: 22px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
 .ticket-message-staff, .ticket-message-ai { border-left: 3px solid #8dafa0; }
 .ticket-message-system { background: var(--surface-raised); }
@@ -35,5 +48,7 @@
 @media (max-width: 600px) {
   .ticket-message, .ticket-detail, .ticket-card { padding: 18px; }
   .ticket-message time { width: 100%; margin-left: 0; }
+  .ticket-chat-message { width: 100%; }
+  .ticket-chat-message time { width: 100%; margin-left: 0; }
   .ticket-pagination .button { width: 100%; justify-content: center; }
 }

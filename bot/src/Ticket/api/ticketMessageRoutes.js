@@ -13,6 +13,14 @@ const retryRoute = new RegExp(
   `^/api/tickets/(${UUID})/messages/(${UUID})/retry$`,
 );
 
+const messageRoute = new RegExp(
+  `^/api/tickets/(${UUID})/messages/(${UUID})$`,
+);
+
+const revisionsRoute = new RegExp(
+  `^/api/tickets/(${UUID})/messages/(${UUID})/revisions$`,
+);
+
 function validGuildId(guildId) {
   return /^\d{17,20}$/.test(guildId || '');
 }
@@ -242,6 +250,122 @@ async function handle(
     'http://localhost',
   );
 
+  const messageMatch =
+    url.pathname.match(
+      messageRoute,
+    );
+
+  const revisionsMatch =
+    url.pathname.match(
+      revisionsRoute,
+    );
+
+  if (revisionsMatch) {
+    if (request.method !== 'GET') {
+      throw clientError(405, 'Método não permitido.');
+    }
+
+    const guildId = url.searchParams.get('guildId');
+    if (!validGuildId(guildId)) {
+      throw clientError(400, 'Parâmetros inválidos.');
+    }
+
+    const session = requireSession(request, services);
+    response.setHeader('Cache-Control', 'no-store');
+    await services.dashboard.requireGuildMembership(session, guildId);
+    requireSession(request, services);
+
+    const [, ticketId, messageId] = revisionsMatch;
+    const revisions = await services.ticketMessages.listRevisions({
+      guildId,
+      ticketId,
+      messageId,
+      userId: session.user.id,
+    });
+    sendJson(response, 200, { revisions });
+    return true;
+  }
+
+  if (messageMatch) {
+    if (request.method !== 'PATCH') {
+      throw clientError(
+        405,
+        'Método não permitido.',
+      );
+    }
+
+    const [
+      ,
+      ticketId,
+      messageId,
+    ] = messageMatch;
+
+    const body =
+      await readJson(request);
+
+    const session =
+      requireSession(
+        request,
+        services,
+      );
+
+    response.setHeader(
+      'Cache-Control',
+      'no-store',
+    );
+
+    if (
+      Object.keys(body).some(
+        key =>
+          ![
+            'guildId',
+            'content',
+          ].includes(key),
+      ) ||
+      !validGuildId(body.guildId)
+    ) {
+      throw clientError(
+        400,
+        'Corpo de edição inválido.',
+      );
+    }
+
+    await services.dashboard.requireGuildMembership(
+      session,
+      body.guildId,
+    );
+
+    requireSession(
+      request,
+      services,
+    );
+
+    const message =
+      await services.ticketMessages.editWebMessage({
+        guildId:
+          body.guildId,
+        ticketId,
+        messageId,
+        userId:
+          session.user.id,
+        content:
+          body.content,
+      });
+
+    sendJson(
+      response,
+      200,
+      {
+        message:
+          services.ticketMessages.dto(
+            message,
+          ),
+      },
+    );
+
+    return true;
+  }
+
   const retryMatch =
     url.pathname.match(
       retryRoute,
@@ -253,11 +377,13 @@ async function handle(
     );
 
   if (
-    !retryMatch &&
-    !messagesMatch
-  ) {
-    return false;
-  }
+  !messageMatch &&
+  !revisionsMatch &&
+  !retryMatch &&
+  !messagesMatch
+) {
+  return false;
+}
 
   const session =
     requireSession(

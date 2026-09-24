@@ -40,6 +40,9 @@ export const getTicket = (guildId, ticketId, signal) =>
 export const getMessages = (guildId, ticketId, before, signal) =>
   get(`/${ticketId}/messages`, { guildId, before, limit: 50 }, signal);
 
+export const getMessageRevisions = (guildId, ticketId, messageId, signal) =>
+  get(`/${ticketId}/messages/${messageId}/revisions`, { guildId }, signal);
+
 export async function postTicketMessage(
   guildId,
   ticketId,
@@ -92,6 +95,51 @@ export async function retryTicketMessage(
       },
       body: JSON.stringify({
         guildId,
+      }),
+      signal,
+    },
+  );
+
+  if (!response.ok) {
+    throw Object.assign(
+      new Error(
+        ticketMessages[response.status] ||
+        ticketMessages.default,
+      ),
+      {
+        status: response.status,
+        reloginRequired:
+          response.status === 401,
+        requestId:
+          response.headers.get(
+            'X-Request-Id',
+          ) || undefined,
+      },
+    );
+  }
+
+  return response.json();
+}
+
+export async function editTicketMessage(
+  guildId,
+  ticketId,
+  messageId,
+  content,
+  signal,
+) {
+  const response = await fetch(
+    `/api/tickets/${ticketId}/messages/${messageId}`,
+    {
+      method: 'PATCH',
+      credentials: 'include',
+      cache: 'no-store',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        guildId,
+        content,
       }),
       signal,
     },

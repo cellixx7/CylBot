@@ -80,15 +80,117 @@ class TicketMessageService {
       logger.info('ticket.message.duplicate', this.log(ticket, existing));
       return this.deliver(ticket, existing);
     }
-    const result = await this.repository.create({ ticketId: ticket.id, guildId, authorDiscordId: actor.id,
+    const result = await this.repository.create({
+      ticketId: ticket.id, guildId, authorDiscordId: actor.id,
       authorName: actor.name, authorType: this.authorType(actor, ticket), origin: O.WEB, visibility: V.PUBLIC,
-      content: text, clientMessageId: clientId, deliveryStatus: D.PENDING });
+      content: text, clientMessageId: clientId, deliveryStatus: D.PENDING
+    });
     if (result.duplicate) {
       if (result.message.authorDiscordId !== actor.id || result.message.origin !== O.WEB) throw clientError(409, 'clientMessageId já utilizado.');
       return this.deliver(ticket, result.message);
     }
     logger.info('ticket.message.persisted', this.log(ticket, result.message));
     return this.deliver(ticket, result.message);
+  }
+
+  async editWebMessage({
+    guildId,
+    ticketId,
+    messageId,
+    userId,
+    content: text,
+  }) {
+    this.requireStorage();
+
+    text = content(
+      text,
+      WEB_CONTENT_LIMIT,
+    );
+
+    const ticket =
+      await this.tickets.ticket(
+        guildId,
+        ticketId,
+      );
+
+    this.active(ticket);
+
+    const actor =
+      await this.permissions.requireAction(
+        TICKET_PERMISSION.RESPOND,
+        guildId,
+        userId,
+        ticket,
+        ticket,
+      );
+
+    const message =
+      await this.repository.findById(
+        guildId,
+        messageId,
+      );
+
+    if (
+      !message ||
+      message.ticketId !== ticketId
+    ) {
+      throw clientError(
+        404,
+        'Mensagem não encontrada neste ticket.',
+      );
+    }
+
+    if (message.origin !== O.WEB) {
+      throw clientError(
+        409,
+        'Somente mensagens enviadas pela Web podem ser editadas aqui.',
+      );
+    }
+
+    if (
+      message.authorDiscordId !== actor.id
+    ) {
+      throw clientError(
+        403,
+        'Você só pode editar suas próprias mensagens.',
+      );
+    }
+
+    if (message.content === text) {
+      return message;
+    }
+
+    await this.adapter.editTicketMessage(
+      ticket,
+      message,
+      text,
+    );
+
+    const updated =
+      await this.repository.editContent({
+        guildId,
+        ticketId,
+        messageId,
+        editorDiscordId: actor.id,
+        content: text,
+      });
+
+    if (!updated) {
+      throw clientError(
+        404,
+        'Mensagem não encontrada.',
+      );
+    }
+
+    logger.info(
+      'ticket.message.edited',
+      this.log(
+        ticket,
+        updated,
+      ),
+    );
+
+    return updated;
   }
 
   async reserveAIMessage({ ticket, config, proposal, runId, internal = false, db }) {
@@ -198,13 +300,31 @@ class TicketMessageService {
     const actor = await this.permissions.requireAction(TICKET_PERMISSION.VIEW, guildId, userId, ticket, ticket);
     const visibilities = this.permissions.staff(actor, ticket) ? [V.PUBLIC, V.INTERNAL, V.SYSTEM] : [V.PUBLIC];
     const page = await this.repository.listPage(ticket.id, { limit, before, visibilities });
-    return { ...page, messages: page.messages.map(this.dto) };
+    return { ...page, messages: page.messages.map(message => this.dto(message, userId)) };
+  }
+
+  async listRevisions({ guildId, ticketId, messageId, userId }) {
+    this.requireStorage();
+    const ticket = await this.tickets.ticket(guildId, ticketId);
+    const actor = await this.permissions.requireAction(TICKET_PERMISSION.VIEW, guildId, userId, ticket, ticket);
+    const message = await this.repository.findById(guildId, messageId);
+    if (!message || message.ticketId !== ticketId ||
+      (message.visibility !== V.PUBLIC && !this.permissions.staff(actor, ticket))) {
+      throw clientError(404, 'Mensagem não encontrada neste ticket.');
+    }
+    const revisions = await this.repository.listRevisions(messageId);
+    return revisions.map(revision => ({
+      id: revision.id,
+      previousContent: revision.previousContent,
+      createdAt: revision.createdAt,
+    }));
   }
 
   async recentForAI(ticket, limit = 12) { this.requireStorage(); return this.repository.listRecent(ticket.id, { limit, visibilities: [V.PUBLIC] }); }
   async forTranscript(ticket, limit = 5000) { this.requireStorage(); return this.repository.listForTranscript(ticket.id, { limit }); }
-  dto(message) { return { id: message.id, authorName: message.authorName, authorType: message.authorType, origin: message.origin,
-    visibility: message.visibility, content: message.content, deliveryStatus: message.deliveryStatus, createdAt: message.createdAt, editedAt: message.editedAt }; }
+  dto(message, viewerId) { return { id: message.id, authorName: message.authorName, authorType: message.authorType, origin: message.origin,
+    visibility: message.visibility, content: message.content, deliveryStatus: message.deliveryStatus, createdAt: message.createdAt, editedAt: message.editedAt,
+    ...(viewerId ? { isOwn: message.authorDiscordId === viewerId } : {}) }; }
   log(ticket, message) { return { ticketId: ticket.id, guildId: ticket.guildId, messageId: message.id,
     origin: message.origin, deliveryStatus: message.deliveryStatus }; }
 }

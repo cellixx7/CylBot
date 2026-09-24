@@ -51,3 +51,6 @@ export function mergeTicketMessages(
       new Date(right.createdAt).getTime(),
   );
 }
+
+export const ticketConversationMode = status =>
+  status === 'CLOSED' ? 'history' : 'chat';

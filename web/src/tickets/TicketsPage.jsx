@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  editTicketMessage,
   getMessages,
+  getMessageRevisions,
   getTicket,
   getTickets,
   retryTicketMessage,
@@ -8,6 +10,7 @@ import {
 import {
   isLocalMessageConfirmed,
   mergeTicketMessages,
+  ticketConversationMode,
 } from './messageReconciliation.js';
 import { useTicketComposer } from './useTicketComposer.js';
 import { useTicketPolling } from './useTicketPolling.js';
@@ -46,6 +49,11 @@ const date = value =>
   value == null
     ? '—'
     : new Date(value).toLocaleString('pt-BR');
+
+const shortTime = value =>
+  value == null ? '—' : new Date(value).toLocaleTimeString('pt-BR', {
+    hour: '2-digit', minute: '2-digit',
+  });
 
 const href = (guildId, ticketId) =>
   `#/dashboard/${guildId}/tickets${ticketId ? `/${ticketId}` : ''}`;
@@ -285,6 +293,11 @@ function TicketDetail({
   const [cursors, setCursors] = useState([null]);
   const [localMessages, setLocalMessages] = useState([]);
   const [retryingMessageId, setRetryingMessageId] = useState(null);
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editingContent, setEditingContent] = useState('');
+  const [editingError, setEditingError] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [revisions, setRevisions] = useState({});
 
   const messageAttemptRef = useRef(null);
 
@@ -335,6 +348,11 @@ function TicketDetail({
   useEffect(() => {
     setLocalMessages([]);
     setRetryingMessageId(null);
+    setEditingMessageId(null);
+    setEditingContent('');
+    setEditingError('');
+    setSavingEdit(false);
+    setRevisions({});
     messageAttemptRef.current = null;
   }, [guildId, ticketId]);
 
@@ -404,6 +422,7 @@ function TicketDetail({
     'CLAIMED',
     'REOPENED',
   ].includes(ticket?.status);
+  const closed = ticketConversationMode(ticket?.status) === 'history';
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -443,9 +462,7 @@ function TicketDetail({
         return;
       }
 
-      upsertLocalMessage(
-        message,
-      );
+      upsertLocalMessage({ ...message, isOwn: true });
 
       if (before) {
         setCursors([null]);
@@ -504,6 +521,77 @@ function TicketDetail({
     );
   } finally {
     setRetryingMessageId(null);
+  }
+}
+
+function startEditing(message) {
+  setEditingMessageId(message.id);
+  setEditingContent(message.content);
+  setEditingError('');
+}
+
+function cancelEditing() {
+  setEditingMessageId(null);
+  setEditingContent('');
+  setEditingError('');
+}
+
+async function saveEditing(message) {
+  const content =
+    editingContent.trim();
+
+  if (
+    !content ||
+    savingEdit
+  ) {
+    return;
+  }
+
+  setSavingEdit(true);
+  setEditingError('');
+
+  try {
+    const result =
+      await editTicketMessage(
+        guildId,
+        ticketId,
+        message.id,
+        content,
+      );
+
+    upsertLocalMessage({ ...result.message, isOwn: true });
+
+    cancelEditing();
+  } catch (error) {
+    if (error.reloginRequired) {
+      requireRelogin();
+    }
+
+    setEditingError(
+      error.message ||
+      'Não foi possível editar a mensagem.',
+    );
+  } finally {
+    setSavingEdit(false);
+  }
+}
+
+async function toggleRevisions(message) {
+  const current = revisions[message.id];
+  if (current?.loading) return;
+  if (current?.items) {
+    setRevisions(previous => ({ ...previous, [message.id]: { ...current, visible: !current.visible } }));
+    return;
+  }
+  setRevisions(previous => ({ ...previous, [message.id]: { loading: true, visible: true } }));
+  try {
+    const result = await getMessageRevisions(guildId, ticketId, message.id);
+    setRevisions(previous => ({ ...previous, [message.id]: { items: result.revisions, visible: true } }));
+  } catch (error) {
+    if (error.reloginRequired) requireRelogin();
+    setRevisions(previous => ({ ...previous, [message.id]: {
+      error: error.message || 'Não foi possível carregar o histórico de edição.',
+    } }));
   }
 }
 
@@ -623,17 +711,19 @@ function TicketDetail({
           </section>
 
           <section
-            className="ticket-history"
+            className={closed ? 'ticket-history' : 'ticket-chat'}
             aria-labelledby="ticket-history-title"
           >
             <h2 id="ticket-history-title">
-              Histórico da conversa
+              {closed ? 'Histórico da conversa' : 'Conversa'}
             </h2>
 
             <p className="description">
               {before
                 ? 'Você está consultando uma página anterior do histórico.'
-                : 'As mensagens mais recentes aparecem ao final desta página.'}
+                : closed
+                  ? 'Registro consolidado das mensagens deste ticket.'
+                  : 'As mensagens mais recentes aparecem ao final desta página.'}
             </p>
 
             <Pagination
@@ -647,18 +737,20 @@ function TicketDetail({
 
             {displayedMessages.length ? (
               <ol
-                className="ticket-messages"
+                className={closed ? 'ticket-messages' : 'ticket-chat-messages'}
                 aria-label="Mensagens em ordem cronológica"
               >
                 {displayedMessages.map(
                   message => (
                     <li
-                      className={`ticket-message ticket-message-${message.authorType.toLowerCase()}`}
+                      className={`${closed ? 'ticket-message' : 'ticket-chat-message'} ticket-message-${message.authorType.toLowerCase()} ${!closed && message.isOwn && !['AI', 'SYSTEM'].includes(message.authorType) ? 'ticket-chat-own' : ''}`}
                       key={message.id}
                     >
                       <header>
                         <strong>
-                          {message.authorName ||
+                          {!closed && message.isOwn
+                            ? 'Você'
+                            : message.authorName ||
                             authors[
                               message
                                 .authorType
@@ -685,9 +777,7 @@ function TicketDetail({
                             message.createdAt,
                           ).toISOString()}
                         >
-                          {date(
-                            message.createdAt,
-                          )}
+                          {closed ? date(message.createdAt) : shortTime(message.createdAt)}
                         </time>
                       </header>
 
@@ -701,39 +791,115 @@ function TicketDetail({
                         </p>
                       )}
 
-                      <p className="ticket-content">
-                        {message.content}
-                      </p>
+                      {editingMessageId === message.id ? (
+                        <div className="ticket-message-edit">
+                          <textarea
+                            value={editingContent}
+                            maxLength={1800}
+                            disabled={savingEdit}
+                            onChange={event =>
+                              setEditingContent(
+                                event.target.value,
+                              )
+                            }
+                          />
 
-                      <footer>
-                        <span>
-                          {
-                            deliveries[
-                            message.deliveryStatus
-                            ]
-                          }
+                          {editingError && (
+                            <p
+                              className="dashboard-notice"
+                              role="alert"
+                            >
+                              {editingError}
+                            </p>
+                          )}
 
-                          {message.editedAt &&
-                            ` · Editada em ${date(
-                              message.editedAt,
-                            )}`}
-                        </span>
+                          <div className="ticket-message-edit-actions">
+                            <button
+                              type="button"
+                              className="button button-outline"
+                              disabled={savingEdit}
+                              onClick={cancelEditing}
+                            >
+                              Cancelar
+                            </button>
 
-                        {message.deliveryStatus === 'FAILED' && (
+                            <button
+                              type="button"
+                              className="button"
+                              disabled={
+                                savingEdit ||
+                                !editingContent.trim()
+                              }
+                              onClick={() =>
+                                saveEditing(message)
+                              }
+                            >
+                              {savingEdit
+                                ? 'Salvando...'
+                                : 'Salvar edição'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="ticket-content">
+                          {message.content}
+                        </p>
+                      )}
+
+                      {message.editedAt && (
+                        <p className="ticket-edited">
+                          {closed ? 'Mensagem editada.' : 'Editado'}
+                        </p>
+                      )}
+
+                      {!closed && message.origin === 'WEB' &&
+                        message.isOwn &&
+                        message.authorType !== 'AI' &&
+                        message.authorType !== 'SYSTEM' &&
+                        editingMessageId !== message.id && (
                           <button
                             type="button"
                             className="button button-outline"
-                            disabled={retryingMessageId !== null}
+                            disabled={
+                              savingEdit ||
+                              editingMessageId !== null
+                            }
                             onClick={() =>
-                              handleRetryMessage(message)
+                              startEditing(message)
                             }
                           >
-                            {retryingMessageId === message.id
-                              ? 'Reenviando...'
-                              : 'Tentar novamente'}
+                            Editar
                           </button>
                         )}
-                      </footer>
+
+                      {closed && message.editedAt && (
+                        <div className="ticket-revisions">
+                          <button
+                            type="button"
+                            className="button button-outline"
+                            onClick={() => toggleRevisions(message)}
+                          >
+                            {revisions[message.id]?.visible ? 'Ocultar histórico de edição' : 'Ver histórico de edição'}
+                          </button>
+                          {revisions[message.id]?.loading && <p role="status">Carregando histórico de edição...</p>}
+                          {revisions[message.id]?.error && <p className="dashboard-notice" role="alert">{revisions[message.id].error}</p>}
+                          {revisions[message.id]?.visible && revisions[message.id]?.items && (
+                            <div className="ticket-revision-list">
+                              <strong>Histórico de edição</strong>
+                              {revisions[message.id].items.length ? (
+                                <ol>
+                                  {revisions[message.id].items.map(revision => (
+                                    <li key={revision.id}>
+                                      <time dateTime={new Date(revision.createdAt).toISOString()}>{date(revision.createdAt)}</time>
+                                      <p className="ticket-content">{revision.previousContent}</p>
+                                    </li>
+                                  ))}
+                                </ol>
+                              ) : <p>Nenhuma versão anterior disponível.</p>}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </li>
                   ),
                 )}
@@ -747,7 +913,7 @@ function TicketDetail({
               </p>
             )}
 
-            {canRespond ? (
+            {!closed && canRespond ? (
               <form
                 className="ticket-composer"
                 onSubmit={handleSubmit}

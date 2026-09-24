@@ -35,8 +35,10 @@ class DiscordTicketAdapter {
         try {
           const guild = await this.guild(guildId);
           const member = await guild.members.fetch({ user: userId, force: true });
-          return { id: member.id, name: member.displayName, bot: member.user.bot,
-            permissions: member.permissions.bitfield.toString(), roleIds: [...member.roles.cache.keys()] };
+          return {
+            id: member.id, name: member.displayName, bot: member.user.bot,
+            permissions: member.permissions.bitfield.toString(), roleIds: [...member.roles.cache.keys()]
+          };
         } catch (error) { throw memberReadError(error); }
       })().finally(() => this.pendingActors.delete(key));
       this.pendingActors.set(key, pending);
@@ -94,8 +96,10 @@ class DiscordTicketAdapter {
     return [
       { id: guildId, type: OverwriteType.Role, deny: [P.ViewChannel, ...NO_WRITE] },
       { id: botId, type: OverwriteType.Member, allow: BOT_CHANNEL_ALLOW },
-      ...ids.filter(id => id !== botId).map(id => ({ id, type: id === creatorUserId ? OverwriteType.Member : OverwriteType.Role,
-        allow: locked ? READ : [...READ, ...WRITE], deny: locked ? NO_WRITE : [P.CreatePublicThreads, P.CreatePrivateThreads] })),
+      ...ids.filter(id => id !== botId).map(id => ({
+        id, type: id === creatorUserId ? OverwriteType.Member : OverwriteType.Role,
+        allow: locked ? READ : [...READ, ...WRITE], deny: locked ? NO_WRITE : [P.CreatePublicThreads, P.CreatePrivateThreads]
+      })),
     ];
   }
   async ensureStructure(config, save) {
@@ -105,9 +109,11 @@ class DiscordTicketAdapter {
     const privateOverwrites = this.overwrites(guild.id, bot.id, config.supportRoleIds);
     // IDs persistidos após cada recurso. Recursos existentes nunca são apagados pelo setup.
     for (const [key, options] of [
-      ['publicCategoryId', { name: 'TICKETS', type: ChannelType.GuildCategory, permissionOverwrites: [
-        { id: guild.id, type: OverwriteType.Role, allow: READ, deny: NO_WRITE }, { id: bot.id, type: OverwriteType.Member, allow: BOT_CHANNEL_ALLOW },
-      ] }],
+      ['publicCategoryId', {
+        name: 'TICKETS', type: ChannelType.GuildCategory, permissionOverwrites: [
+          { id: guild.id, type: OverwriteType.Role, allow: READ, deny: NO_WRITE }, { id: bot.id, type: OverwriteType.Member, allow: BOT_CHANNEL_ALLOW },
+        ]
+      }],
       ['activeCategoryId', { name: 'em-atendimento', type: ChannelType.GuildCategory, permissionOverwrites: privateOverwrites }],
       ['panelChannelId', { name: 'abrir-ticket', type: ChannelType.GuildText }],
       ['logChannelId', { name: 'ticket-log', type: ChannelType.GuildText, permissionOverwrites: privateOverwrites }],
@@ -130,8 +136,10 @@ class DiscordTicketAdapter {
     const existing = channels.find(channel => channel?.type === ChannelType.GuildText && channel.topic === topic);
     const overwrites = this.overwrites(guild.id, bot.id, ticket.supportRoleIds, ticket.creatorUserId);
     this.checkPermissions(await this.channel(guild.id, config.activeCategoryId, ChannelType.GuildCategory), bot);
-    const channel = existing || await guild.channels.create({ name: `ticket-${ticketNumber(ticket)}`, type: ChannelType.GuildText,
-      parent: config.activeCategoryId, topic, permissionOverwrites: overwrites, reason: `Ticket #${ticketNumber(ticket)}` });
+    const channel = existing || await guild.channels.create({
+      name: `ticket-${ticketNumber(ticket)}`, type: ChannelType.GuildText,
+      parent: config.activeCategoryId, topic, permissionOverwrites: overwrites, reason: `Ticket #${ticketNumber(ticket)}`
+    });
     if (existing) await channel.permissionOverwrites.set(overwrites);
     this.checkPermissions(channel, bot);
     return channel.id;
@@ -177,8 +185,10 @@ class DiscordTicketAdapter {
     if (!channel) return false;
     if (channel.id !== ticket.channelId || channel.guildId !== ticket.guildId || channel.type !== ChannelType.GuildText
       || channel.topic !== `cylbot-ticket:${ticket.id}:${ticket.reopenCount}` || channel.id === ticket.logChannelId) {
-      logger.warn('ticket.channel.inconsistent', { ...ticketLogContext(), guildId: ticket.guildId, ticketId: ticket.id,
-        channelId: ticket.channelId });
+      logger.warn('ticket.channel.inconsistent', {
+        ...ticketLogContext(), guildId: ticket.guildId, ticketId: ticket.id,
+        channelId: ticket.channelId
+      });
       throw Object.assign(clientError(409, 'O canal não corresponde a este ticket e ciclo. Nenhum canal foi removido.'), { code: 'TICKET_CHANNEL_MISMATCH' });
     }
     await this.lockChannel(ticket);
@@ -195,7 +205,8 @@ class DiscordTicketAdapter {
     const channel = await this.channel(guildId, channelId);
     this.checkPermissions(channel, await this.bot(channel.guild));
     const messages = await channel.messages.fetch({ ...options, cache: false });
-    return [...messages.values()].map(message => ({ id: message.id, authorId: message.author.id, authorName: message.author.username,
+    return [...messages.values()].map(message => ({
+      id: message.id, authorId: message.author.id, authorName: message.author.username,
       authorBot: message.author.bot === true,
       createdAt: message.createdAt.toISOString(), content: message.content,
       embeds: message.embeds.map(embed => [embed.title, embed.description, ...(embed.fields || []).map(field => `${field.name}: ${field.value}`)].filter(Boolean).join('\n')),
@@ -223,6 +234,121 @@ class DiscordTicketAdapter {
     const sent = await this.send(channel, { content: `${heading}\n${message.content}${suffix}` }, `ticket-message:${message.id}`);
     return { id: sent.id, channelId: channel.id };
   }
+
+  async editTicketMessage(ticket, message, content) {
+    try {
+      if (
+        !message.discordMessageId ||
+        !message.discordChannelId
+      ) {
+        throw clientError(
+          409,
+          'A mensagem ainda não possui vínculo com o Discord.',
+        );
+      }
+
+      const channel =
+        message.visibility === 'INTERNAL'
+          ? await this.validatePrivateLog(
+            ticket.guildId,
+            ticket.logChannelId,
+            ticket.supportRoleIds,
+          )
+          : await this.aiChannel(ticket);
+
+      if (
+        channel.id !==
+        message.discordChannelId
+      ) {
+        throw clientError(
+          409,
+          'A mensagem não pertence ao canal atual do ticket.',
+        );
+      }
+
+      const discordMessage =
+        await channel.messages.fetch(
+          message.discordMessageId,
+        );
+
+      if (
+        !discordMessage ||
+        discordMessage.author.id !==
+        this.client.user.id
+      ) {
+        throw clientError(
+          409,
+          'A mensagem do Discord não pode ser editada pelo CylBot.',
+        );
+      }
+
+      const name = String(
+        message.authorName ||
+        'CylBot',
+      )
+        .replace(/[\r\n]/g, ' ')
+        .slice(0, 80);
+
+      let heading =
+        `**${name} · via Web**`;
+
+      if (
+        message.authorType ===
+        'AI'
+      ) {
+        heading =
+          message.visibility ===
+            'INTERNAL'
+            ? `**Sugestão de IA · Ticket #${ticketNumber(ticket)}**`
+            : '**CylBot · Assistente IA**';
+      }
+
+      if (
+        message.authorType ===
+        'SYSTEM'
+      ) {
+        heading =
+          '**CylBot · Sistema de atendimento**';
+      }
+
+      const suffix =
+        message.visibility ===
+          'INTERNAL'
+          ? '\n\nRevisão humana necessária; nenhuma alteração administrativa foi executada.'
+          : '';
+
+      await discordMessage.edit({
+        content:
+          `${heading}\n${content}${suffix}`,
+        allowedMentions: {
+          parse: [],
+        },
+      });
+    } catch (error) {
+      logger.error(
+        'ticket.message.edit_discord_failed',
+        {
+          ticketId: ticket.id,
+          guildId: ticket.guildId,
+          messageId: message.id,
+          discordMessageId:
+            message.discordMessageId,
+          discordChannelId:
+            message.discordChannelId,
+          errorName:
+            error?.name,
+          errorCode:
+            error?.code,
+          statusCode:
+            error?.status ??
+            error?.statusCode,
+        },
+      );
+
+      throw error;
+    }
+  }
+
   async aiHandoffStaff(ticket, runId) {
     const log = await this.validatePrivateLog(ticket.guildId, ticket.logChannelId, ticket.supportRoleIds);
     await this.send(log, { content: `Atendimento humano solicitado no ticket #${ticketNumber(ticket)}: <#${ticket.channelId}>. IA pausada.` }, `ticket-ai-human-log:${runId}`);

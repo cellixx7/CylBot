@@ -66,3 +66,52 @@ test('paginação valida limit/cursor e ticket de outra guild não pode ser cons
   f.memberships.push({ id: ids.otherGuild, name: 'Outra', permissions: '0', owner: false });
   assert.equal((await f.request(`${f.base}?guildId=${ids.otherGuild}`)).status, 403);
 });
+
+test('PATCH cria a sessão antes de chamar o fluxo de edição e encaminha os identificadores canônicos', async t => {
+  const f = await setup(t, ids.user);
+  const messageId = '09876556-6a61-42dc-bbdb-9c88548e27dc';
+  const calls = [];
+  f.messageService.editWebMessage = async input => {
+    calls.push(input);
+    return { id: messageId, authorName: 'Criador', authorType: 'USER', origin: 'WEB', visibility: 'PUBLIC',
+      content: input.content, deliveryStatus: 'SENT', createdAt: Date.now(), editedAt: Date.now() };
+  };
+  const response = await f.request(`${f.base}/${messageId}`, { method: 'PATCH', body: {
+    guildId: ids.guild, content: 'Conteúdo corrigido',
+  } });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers['Cache-Control'], 'no-store');
+  assert.deepEqual(calls, [{ guildId: ids.guild, ticketId: f.ticket.id, messageId, userId: ids.user, content: 'Conteúdo corrigido' }]);
+  assert.equal(response.body.message.content, 'Conteúdo corrigido');
+});
+
+test('PATCH mantém sessão, Origin e corpo estrito antes de chamar edição', async t => {
+  const f = await setup(t, ids.user);
+  const messageId = '09876556-6a61-42dc-bbdb-9c88548e27dc';
+  let calls = 0;
+  f.messageService.editWebMessage = async () => { calls++; };
+  const route = `${f.base}/${messageId}`;
+  assert.equal((await f.request(route, { method: 'PATCH', authenticated: false, body: { guildId: ids.guild, content: 'Teste' } })).status, 401);
+  assert.equal((await f.request(route, { method: 'PATCH', origin: null, body: { guildId: ids.guild, content: 'Teste' } })).status, 403);
+  assert.equal((await f.request(route, { method: 'PATCH', body: { guildId: ids.guild, content: 'Teste', authorDiscordId: ids.staff } })).status, 400);
+  assert.equal(calls, 0);
+});
+
+test('GET revisions requires session and membership and returns requested history', async t => {
+  const f = await setup(t, ids.user);
+  const messageId = '09876556-6a61-42dc-bbdb-9c88548e27dc';
+  const calls = [];
+  f.messageService.listRevisions = async input => {
+    calls.push(input);
+    return [{ id: '11111111-1111-1111-1111-111111111111', previousContent: 'Previous version', createdAt: 1 }];
+  };
+  const route = `${f.base}/${messageId}/revisions?guildId=${ids.guild}`;
+  const response = await f.request(route);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers['Cache-Control'], 'no-store');
+  assert.deepEqual(calls, [{ guildId: ids.guild, ticketId: f.ticket.id, messageId, userId: ids.user }]);
+  assert.deepEqual(response.body.revisions, [{ id: '11111111-1111-1111-1111-111111111111', previousContent: 'Previous version', createdAt: 1 }]);
+  assert.equal((await f.request(route, { authenticated: false })).status, 401);
+  f.memberships.length = 0;
+  assert.equal((await f.request(route)).status, 403);
+});

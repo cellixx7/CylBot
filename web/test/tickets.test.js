@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import { startPolling } from '../src/tickets/polling.js';
 import {
   getMessages,
+  getMessageRevisions,
   getTicket,
   getTickets,
   postTicketMessage,
   retryTicketMessage,
 } from '../src/tickets/ticketsApi.js';
+import { ticketConversationMode } from '../src/tickets/messageReconciliation.js';
 
 const flush = async () => {
   for (let i = 0; i < 8; i++) {
@@ -567,6 +569,13 @@ test('API usa somente GET autenticado, parâmetros de página e AbortSignal', as
     signal,
   );
 
+  await getMessageRevisions(
+    'guild',
+    'ticket',
+    'message',
+    signal,
+  );
+
   assert.deepEqual(
     calls.map(
       call => call.url,
@@ -575,6 +584,7 @@ test('API usa somente GET autenticado, parâmetros de página e AbortSignal', as
       '/api/tickets?guildId=guild&limit=25',
       '/api/tickets/ticket?guildId=guild',
       '/api/tickets/ticket/messages?guildId=guild&before=cursor&limit=50',
+      '/api/tickets/ticket/messages/message/revisions?guildId=guild',
     ],
   );
 
@@ -607,6 +617,13 @@ test('API usa somente GET autenticado, parâmetros de página e AbortSignal', as
       undefined,
     );
   }
+});
+
+test('conversation mode separates active tickets from closed history', () => {
+  for (const status of ['OPEN', 'CLAIMED', 'REOPENED']) {
+    assert.equal(ticketConversationMode(status), 'chat');
+  }
+  assert.equal(ticketConversationMode('CLOSED'), 'history');
 });
 
 test('API distingue autorização, indisponibilidade e limite sem refletir erro privado do servidor', async t => {

@@ -135,6 +135,36 @@ const ticketMessages = pgTable('ticket_messages', {
   attemptsPositive: check('ticket_messages_delivery_attempts_check', sql`${table.deliveryAttempts} >= 0`),
 }));
 
+const ticketMessageRevisions = pgTable('ticket_message_revisions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+
+  messageId: uuid('message_id')
+    .notNull()
+    .references(() => ticketMessages.id, {
+      onDelete: 'cascade',
+    }),
+
+  editorDiscordId: text('editor_discord_id'),
+
+  previousContent: text('previous_content').notNull(),
+
+  createdAt: timestamp(
+    'created_at',
+    {
+      withTimezone: true,
+    },
+  )
+    .defaultNow()
+    .notNull(),
+}, table => ({
+  messageIndex: index(
+    'ticket_message_revisions_message_id_idx',
+  ).on(
+    table.messageId,
+    table.createdAt,
+  ),
+}));
+
 const ticketSequences = pgTable('ticket_sequences', {
   guildId: text('guild_id').primaryKey(),
   nextNumber: integer('next_number').notNull().default(0),
@@ -191,7 +221,9 @@ const ticketAIRuns = pgTable('ticket_ai_runs', {
 }, table => ({ ticketIndex: index('ticket_ai_runs_ticket_idx').on(table.ticketId, table.createdAt),
   guildIndex: index('ticket_ai_runs_guild_idx').on(table.guildId, table.createdAt) }));
 
-module.exports = { users, ticketConfigs, ticketCategories, tickets, ticketEvents, ticketMessages, ticketSequences,
+module.exports = {
+  users, ticketConfigs, ticketCategories, tickets, ticketEvents, ticketMessages, ticketMessageRevisions, ticketSequences,
   ticketStatus, ticketEventType, ticketMessageOrigin, ticketMessageAuthorType, ticketMessageVisibility,
   ticketMessageDeliveryStatus, ticketRelations, eventRelations, messageRelations,
-  ticketAIConfigs, ticketAITicketStates, ticketAIRuns };
+  ticketAIConfigs, ticketAITicketStates, ticketAIRuns
+};

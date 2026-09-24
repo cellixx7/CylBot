@@ -108,6 +108,44 @@ test('falha de entrega preserva mensagem FAILED e retry usa a mesma identidade',
   assert.equal(f.messages.length, 1);
 });
 
+test('edição Web chama Discord antes da revisão persistida e não cria revisão para conteúdo idêntico', async t => {
+  const f = await ticketAIFixture(t); f.messages.length = 0;
+  const created = await f.messageRepository.create({ id: randomUUID(), ticketId: f.ticket.id, guildId: ids.guild,
+    authorDiscordId: ids.user, authorName: 'Criador', authorType: 'USER', origin: 'WEB', visibility: 'PUBLIC',
+    content: 'Antes', discordMessageId: '100000000000000110', discordChannelId: f.ticket.channelId, deliveryStatus: 'SENT' });
+  const order = []; const revisions = [];
+  f.core.adapter.editTicketMessage = async (ticket, message, content) => {
+    order.push('discord');
+    assert.equal(ticket.id, f.ticket.id); assert.equal(message.id, created.message.id); assert.equal(content, 'Depois');
+  };
+  f.messageRepository.editContent = async input => {
+    order.push('repository'); revisions.push({ messageId: input.messageId, previousContent: created.message.content, editorDiscordId: input.editorDiscordId });
+    Object.assign(created.message, { content: input.content, editedAt: Date.now(), updatedAt: Date.now() });
+    return created.message;
+  };
+  const updated = await f.messageService.editWebMessage({ guildId: ids.guild, ticketId: f.ticket.id, messageId: created.message.id,
+    userId: ids.user, content: 'Depois' });
+  assert.equal(updated.content, 'Depois');
+  assert.deepEqual(order, ['discord', 'repository']);
+  assert.deepEqual(revisions, [{ messageId: created.message.id, previousContent: 'Antes', editorDiscordId: ids.user }]);
+  order.length = 0;
+  await f.messageService.editWebMessage({ guildId: ids.guild, ticketId: f.ticket.id, messageId: created.message.id,
+    userId: ids.user, content: 'Depois' });
+  assert.deepEqual(order, []);
+});
+
+test('revision history requires VIEW, checks its ticket, and omits the editor', async t => {
+  const f = await ticketAIFixture(t);
+  const message = f.messages[0];
+  f.messageRepository.listRevisions = async id => {
+    assert.equal(id, message.id);
+    return [{ id: randomUUID(), messageId: id, editorDiscordId: ids.staff, previousContent: 'Previous content', createdAt: 10 }];
+  };
+  const revisions = await f.messageService.listRevisions({ guildId: ids.guild, ticketId: f.ticket.id, messageId: message.id, userId: ids.user });
+  assert.deepEqual(revisions, [{ id: revisions[0].id, previousContent: 'Previous content', createdAt: 10 }]);
+  await assert.rejects(f.messageService.listRevisions({ guildId: ids.guild, ticketId: f.ticket.id, messageId: randomUUID(), userId: ids.user }), { statusCode: 404 });
+});
+
 test('duas tentativas concorrentes reservam uma única entrega Discord', async t => {
   const f = await ticketAIFixture(t); f.messages.length = 0;
   const reserved = await f.messageRepository.create({ id: randomUUID(), ticketId: f.ticket.id, guildId: ids.guild,

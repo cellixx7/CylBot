@@ -1,5 +1,8 @@
 const { and, asc, desc, eq, inArray, lt, or, sql } = require('drizzle-orm');
-const { ticketMessages } = require('../../database/schema');
+const {
+  ticketMessages,
+  ticketMessageRevisions,
+} = require('../../database/schema');
 
 const millis = value => value instanceof Date ? value.getTime() : value;
 const map = row => row && ({ ...row, createdAt: millis(row.createdAt), updatedAt: millis(row.updatedAt), editedAt: millis(row.editedAt) });
@@ -36,6 +39,87 @@ class PostgresTicketMessageRepository {
   async findByDiscordMessageId(guildId, value, db = this.db) {
     const [row] = await db.select().from(ticketMessages).where(and(eq(ticketMessages.guildId, guildId), eq(ticketMessages.discordMessageId, value))).limit(1);
     return map(row);
+  }
+
+  async editContent({
+  guildId,
+  ticketId,
+  messageId,
+  editorDiscordId,
+  content,
+}) {
+  return this.db.transaction(async tx => {
+    const current = await this.findByIdForTicket(
+      ticketId,
+      messageId,
+      tx,
+    );
+
+    if (
+      !current ||
+      current.guildId !== guildId
+    ) {
+      return null;
+    }
+
+    if (current.content === content) {
+      return current;
+    }
+
+    const now = new Date();
+
+    await tx
+      .insert(ticketMessageRevisions)
+      .values({
+        messageId,
+        editorDiscordId,
+        previousContent: current.content,
+        createdAt: now,
+      });
+
+    const [updated] = await tx
+      .update(ticketMessages)
+      .set({
+        content,
+        editedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(ticketMessages.guildId, guildId),
+          eq(ticketMessages.ticketId, ticketId),
+          eq(ticketMessages.id, messageId),
+        ),
+      )
+      .returning();
+
+    return map(updated);
+  });
+  }
+
+  async listRevisions(
+    messageId,
+    db = this.db,
+  ) {
+    const rows = await db
+      .select()
+      .from(ticketMessageRevisions)
+      .where(
+        eq(
+          ticketMessageRevisions.messageId,
+          messageId,
+        ),
+      )
+      .orderBy(
+        desc(
+          ticketMessageRevisions.createdAt,
+        ),
+      );
+
+    return rows.map(row => ({
+      ...row,
+      createdAt: millis(row.createdAt),
+    }));
   }
 
   async hasLegacySyncBoundary(ticketId, db = this.db) {
@@ -80,8 +164,10 @@ class PostgresTicketMessageRepository {
 
   async startDelivery(guildId, id) {
     const retryBefore = new Date(Date.now() - 60_000);
-    const [row] = await this.db.update(ticketMessages).set({ deliveryStatus: 'SENDING',
-      deliveryAttempts: sql`${ticketMessages.deliveryAttempts} + 1`, deliveryErrorCode: null, updatedAt: new Date() })
+    const [row] = await this.db.update(ticketMessages).set({
+      deliveryStatus: 'SENDING',
+      deliveryAttempts: sql`${ticketMessages.deliveryAttempts} + 1`, deliveryErrorCode: null, updatedAt: new Date()
+    })
       .where(and(eq(ticketMessages.guildId, guildId), eq(ticketMessages.id, id), or(
         inArray(ticketMessages.deliveryStatus, ['PENDING', 'FAILED']),
         and(eq(ticketMessages.deliveryStatus, 'SENDING'), lt(ticketMessages.updatedAt, retryBefore)),
@@ -90,15 +176,19 @@ class PostgresTicketMessageRepository {
   }
 
   async markDelivered(guildId, id, attempt, { discordMessageId, discordChannelId }) {
-    const [row] = await this.db.update(ticketMessages).set({ deliveryStatus: 'SENT', discordMessageId, discordChannelId,
-      deliveryErrorCode: null, updatedAt: new Date() }).where(and(eq(ticketMessages.guildId, guildId), eq(ticketMessages.id, id),
+    const [row] = await this.db.update(ticketMessages).set({
+      deliveryStatus: 'SENT', discordMessageId, discordChannelId,
+      deliveryErrorCode: null, updatedAt: new Date()
+    }).where(and(eq(ticketMessages.guildId, guildId), eq(ticketMessages.id, id),
       eq(ticketMessages.deliveryStatus, 'SENDING'), eq(ticketMessages.deliveryAttempts, attempt))).returning();
     return map(row);
   }
 
   async markFailed(guildId, id, attempt, code) {
-    const [row] = await this.db.update(ticketMessages).set({ deliveryStatus: 'FAILED', deliveryErrorCode: code || 'DISCORD_ERROR',
-      updatedAt: new Date() }).where(and(eq(ticketMessages.guildId, guildId), eq(ticketMessages.id, id),
+    const [row] = await this.db.update(ticketMessages).set({
+      deliveryStatus: 'FAILED', deliveryErrorCode: code || 'DISCORD_ERROR',
+      updatedAt: new Date()
+    }).where(and(eq(ticketMessages.guildId, guildId), eq(ticketMessages.id, id),
       eq(ticketMessages.deliveryStatus, 'SENDING'), eq(ticketMessages.deliveryAttempts, attempt))).returning();
     return map(row);
   }
