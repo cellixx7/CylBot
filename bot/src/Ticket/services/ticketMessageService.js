@@ -128,15 +128,69 @@ class TicketMessageService {
     }
   }
 
-  async retryDelivery({ guildId, messageId, userId }) {
-    this.requireStorage();
-    const message = await this.repository.findById(guildId, messageId);
-    if (!message) throw clientError(404, 'Mensagem não encontrada.');
-    const ticket = await this.tickets.ticket(guildId, message.ticketId);
-    const actor = await this.permissions.requireAction(TICKET_PERMISSION.RESPOND, guildId, userId, ticket, ticket);
-    if (message.visibility === V.INTERNAL && !this.permissions.staff(actor, ticket)) throw clientError(403, 'Somente a equipe pode reenviar esta mensagem.');
-    return this.deliver(ticket, message);
+  async retryDelivery({
+  guildId,
+  ticketId,
+  messageId,
+  userId,
+}) {
+  this.requireStorage();
+
+  const message =
+    await this.repository.findById(
+      guildId,
+      messageId,
+    );
+
+  if (!message) {
+    throw clientError(
+      404,
+      'Mensagem não encontrada.',
+    );
   }
+
+  if (
+    message.ticketId !== ticketId
+  ) {
+    throw clientError(
+      404,
+      'Mensagem não encontrada neste ticket.',
+    );
+  }
+
+  const ticket =
+    await this.tickets.ticket(
+      guildId,
+      ticketId,
+    );
+
+  const actor =
+    await this.permissions.requireAction(
+      TICKET_PERMISSION.RESPOND,
+      guildId,
+      userId,
+      ticket,
+      ticket,
+    );
+
+  if (
+    message.visibility === V.INTERNAL &&
+    !this.permissions.staff(
+      actor,
+      ticket,
+    )
+  ) {
+    throw clientError(
+      403,
+      'Somente a equipe pode reenviar esta mensagem.',
+    );
+  }
+
+  return this.deliver(
+    ticket,
+    message,
+  );
+}
 
   async list({ guildId, ticketId, userId, limit = 50, before }) {
     this.requireStorage();

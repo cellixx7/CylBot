@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getMessages, getTicket, getTickets } from './ticketsApi.js';
+import {
+  getMessages,
+  getTicket,
+  getTickets,
+  retryTicketMessage,
+} from './ticketsApi.js';
 import {
   isLocalMessageConfirmed,
   mergeTicketMessages,
@@ -279,6 +284,7 @@ function TicketDetail({
 }) {
   const [cursors, setCursors] = useState([null]);
   const [localMessages, setLocalMessages] = useState([]);
+  const [retryingMessageId, setRetryingMessageId] = useState(null);
 
   const messageAttemptRef = useRef(null);
 
@@ -328,6 +334,7 @@ function TicketDetail({
 
   useEffect(() => {
     setLocalMessages([]);
+    setRetryingMessageId(null);
     messageAttemptRef.current = null;
   }, [guildId, ticketId]);
 
@@ -465,6 +472,40 @@ function TicketDetail({
       // e o mesmo conteúdo para retry.
     }
   }
+
+  async function handleRetryMessage(message) {
+  if (
+    retryingMessageId ||
+    message.deliveryStatus !== 'FAILED'
+  ) {
+    return;
+  }
+
+  setRetryingMessageId(message.id);
+
+  try {
+    const result = await retryTicketMessage(
+      guildId,
+      ticketId,
+      message.id,
+    );
+
+    const retriedMessage = result.message;
+
+    upsertLocalMessage(retriedMessage);
+  } catch (error) {
+    if (error.reloginRequired) {
+      requireRelogin();
+    }
+
+    console.error(
+      'Não foi possível reenviar a mensagem.',
+      error,
+    );
+  } finally {
+    setRetryingMessageId(null);
+  }
+}
 
   return (
     <>
@@ -665,17 +706,33 @@ function TicketDetail({
                       </p>
 
                       <footer>
-                        {
-                          deliveries[
-                            message
-                              .deliveryStatus
-                          ]
-                        }
+                        <span>
+                          {
+                            deliveries[
+                            message.deliveryStatus
+                            ]
+                          }
 
-                        {message.editedAt &&
-                          ` · Editada em ${date(
-                            message.editedAt,
-                          )}`}
+                          {message.editedAt &&
+                            ` · Editada em ${date(
+                              message.editedAt,
+                            )}`}
+                        </span>
+
+                        {message.deliveryStatus === 'FAILED' && (
+                          <button
+                            type="button"
+                            className="button button-outline"
+                            disabled={retryingMessageId !== null}
+                            onClick={() =>
+                              handleRetryMessage(message)
+                            }
+                          >
+                            {retryingMessageId === message.id
+                              ? 'Reenviando...'
+                              : 'Tentar novamente'}
+                          </button>
+                        )}
                       </footer>
                     </li>
                   ),

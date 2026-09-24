@@ -74,3 +74,46 @@ export async function postTicketMessage(
 
   return response.json();
 }
+
+export async function retryTicketMessage(
+  guildId,
+  ticketId,
+  messageId,
+  signal,
+) {
+  const response = await fetch(
+    `/api/tickets/${ticketId}/messages/${messageId}/retry`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      cache: 'no-store',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        guildId,
+      }),
+      signal,
+    },
+  );
+
+  if (!response.ok) {
+    throw Object.assign(
+      new Error(
+        ticketMessages[response.status] ||
+        ticketMessages.default,
+      ),
+      {
+        status: response.status,
+        reloginRequired:
+          response.status === 401,
+        requestId:
+          response.headers.get(
+            'X-Request-Id',
+          ) || undefined,
+      },
+    );
+  }
+
+  return response.json();
+}

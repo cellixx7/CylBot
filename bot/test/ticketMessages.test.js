@@ -96,7 +96,12 @@ test('falha de entrega preserva mensagem FAILED e retry usa a mesma identidade',
     clientMessageId: 'web-message-0002', content: 'Persistir mesmo com falha' });
   assert.equal(failed.deliveryStatus, 'FAILED');
   fail = false;
-  const delivered = await f.messageService.retryDelivery({ guildId: ids.guild, messageId: failed.id, userId: ids.user });
+  const delivered = await f.messageService.retryDelivery({
+  guildId: ids.guild,
+  ticketId: f.ticket.id,
+  messageId: failed.id,
+  userId: ids.user,
+});
   assert.equal(delivered.id, failed.id);
   assert.equal(delivered.deliveryStatus, 'SENT');
   assert.equal(delivered.deliveryAttempts, 2);
