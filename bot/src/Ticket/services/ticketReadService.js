@@ -21,7 +21,7 @@ function ticketActions(ticket, actor, permissions) {
   return { canClaim: staff && active && !ticket.assignedUserId,
     canRespond: active && (actor.id === ticket.creatorUserId || staff && ticket.assignedUserId === actor.id),
     canClose: active && (actor.id === ticket.creatorUserId || staff),
-    canReopen: staff && ticket.status === 'CLOSED' && ticket.closing?.completed && !ticket.reopening };
+    canReopen: staff && ticket.status === 'CLOSED' && ticket.closing?.completed && Boolean(ticket.closing?.transcript) && !ticket.reopening };
 }
 
 class TicketReadService {

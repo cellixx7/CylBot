@@ -42,9 +42,52 @@ for (const mode of ['auto', 'existing']) {
     assert.equal(config.categories.length, mode === 'auto' ? 4 : 2);
     assert.equal(f.configs.get(ids.guild).panelMessageId, 'panel-message');
     assert(f.calls.includes(mode));
-    await assert.rejects(f.setup.begin({ guildId: ids.guild, userId: ids.admin }), /já configurados/);
+    assert.equal((await f.setup.begin({ guildId: ids.guild, userId: ids.admin })).step, 'manage');
   });
 }
+
+test('setup repara painel apagado e cancelamento desativa sem excluir dados', async t => {
+  const f = ticketFixture(t);
+  f.adapter.missingStructure = async () => ['panelChannelId'];
+  const repair = await f.setup.begin({ guildId: ids.guild, userId: ids.admin });
+  assert.equal(repair.step, 'resume');
+  assert.equal(f.configs.get(ids.guild).ready, false);
+  assert.equal(f.configs.get(ids.guild).panelChannelId, null);
+  const repairInput = { guildId: ids.guild, userId: ids.admin, sessionId: repair.id };
+  assert.equal((await f.setup.change({ ...repairInput, action: 'continue' })).step, 'panel');
+  assert.equal((await f.setup.change({ ...repairInput, action: 'panel', values: [ids.panel] })).step, 'confirm');
+  const repaired = await f.setup.confirm(repairInput);
+  assert.equal(repaired.ready, true);
+  assert.equal(repaired.panelChannelId, ids.panel);
+
+  f.adapter.missingStructure = async () => [];
+  const manage = await f.setup.begin({ guildId: ids.guild, userId: ids.admin });
+  const confirmation = await f.setup.change({ guildId: ids.guild, userId: ids.admin, sessionId: manage.id, action: 'disable' });
+  assert.equal(confirmation.step, 'disable-confirm');
+  await f.setup.disable({ guildId: ids.guild, userId: ids.admin });
+  assert.equal(f.configs.get(ids.guild).ready, false);
+  assert.equal(f.configs.get(ids.guild).panelMessageId, null);
+  assert(f.calls.includes('disablePanel'));
+});
+
+test('configuracao salva permite continuar ou recomecar sem alterar o registro persistido', async t => {
+  const f = ticketFixture(t);
+  const persisted = await f.configs.get(ids.guild);
+  persisted.ready = false;
+  await f.configs.save(persisted);
+
+  const resume = await f.setup.begin({ guildId: ids.guild, userId: ids.admin });
+  assert.equal(resume.step, 'resume');
+  assert.equal((await f.setup.change({ guildId: ids.guild, userId: ids.admin, sessionId: resume.id, action: 'continue' })).step, 'confirm');
+
+  const choice = await f.setup.begin({ guildId: ids.guild, userId: ids.admin });
+  const restarted = await f.setup.change({ guildId: ids.guild, userId: ids.admin, sessionId: choice.id, action: 'restart' });
+  assert.equal(restarted.step, 'start');
+  assert.deepEqual(restarted.supportRoleIds, []);
+  assert.equal(restarted.categories.length, 4);
+  assert.equal(restarted.panelChannelId, null);
+  assert.equal((await f.configs.get(ids.guild)).panelChannelId, ids.panel);
+});
 
 test('wizard rejeita replay de etapas, @everyone, categorias duplicadas e confirmação antecipada', async t => {
   const f = ticketFixture(t, { configured: false });
@@ -75,7 +118,8 @@ test('setup interrompido retoma configuração persistida após reinício e não
   f.adapter.publishPanel = publish;
   const setup = new TicketSetupService({ repository: f.configs, adapter: f.adapter, permissions: f.permissions, now: f.now });
   const session = await setup.begin({ guildId: ids.guild, userId: ids.admin });
-  assert.equal(session.step, 'confirm');
+  assert.equal(session.step, 'resume');
+  assert.equal((await setup.change({ guildId: ids.guild, userId: ids.admin, sessionId: session.id, action: 'continue' })).step, 'confirm');
   const result = await setup.confirm({ guildId: ids.guild, userId: ids.admin, sessionId: session.id });
   assert.equal(result.ready, true);
   assert.equal(result.panelChannelId, ids.panel);

@@ -245,13 +245,20 @@ test('criador responde sem claim, mas staff precisa assumir e outro staff não r
     clientMessageId: 'creator-can-respond', content: 'Mensagem do criador' });
   await assert.rejects(f.messageService.createWebMessage({ guildId: ids.guild, ticketId: f.ticket.id, userId: ids.staff,
     clientMessageId: 'staff-before-claim', content: 'Mensagem staff' }), { statusCode: 403 });
+  await assert.rejects(f.messageService.ingestDiscordMessage({ ...discordInput(f), userId: ids.staff,
+    messageId: '100000000000000096', content: 'Discord antes do claim' }), { statusCode: 403 });
   await f.core.service.claim({ guildId: ids.guild, ticketId: f.ticket.id, userId: ids.staff, channelId: f.ticket.channelId });
   await f.messageService.createWebMessage({ guildId: ids.guild, ticketId: f.ticket.id, userId: ids.staff,
     clientMessageId: 'staff-after-claim', content: 'Mensagem staff' });
+  const discord = await f.messageService.ingestDiscordMessage({ ...discordInput(f), userId: ids.staff,
+    messageId: '100000000000000097', content: 'Discord depois do claim' });
+  assert.equal(discord.message.authorDiscordId, ids.staff);
   const other = '666666666666666666';
   f.core.actors.set(other, { id: other, name: 'Outra equipe', bot: false, roleIds: [ids.role], permissions: '0' });
   await assert.rejects(f.messageService.createWebMessage({ guildId: ids.guild, ticketId: f.ticket.id, userId: other,
     clientMessageId: 'other-staff', content: 'Negada' }), { statusCode: 403 });
+  await assert.rejects(f.messageService.ingestDiscordMessage({ ...discordInput(f), userId: other,
+    messageId: '100000000000000098', content: 'Discord de outro staff' }), { statusCode: 403 });
 });
 
 test('contexto da IA lê DISCORD, WEB e AI do armazenamento canônico em ordem', async t => {

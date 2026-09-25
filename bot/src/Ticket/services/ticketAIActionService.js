@@ -17,7 +17,10 @@ class TicketAIActionService {
       const log = { guildId: input.guildId, ticketId: ticket.id, runId: input.runId, action: decision.action, reason: decision.reason };
       if (decision.mode === 'execute' && decision.action === 'ESCALATE_TO_HUMAN') {
         // Pausa crítica persiste antes de qualquer notificação. Falha no Discord não reativa IA.
-        await patch({ paused: true, escalatedAt: new Date(), leaseId: null, leaseExpiresAt: null });
+        const escalatedAt = new Date(input.now || Date.now());
+        await patch({ paused: true, escalatedAt, handoffReason: decision.reason,
+          followUpDueAt: new Date(escalatedAt.getTime() + config.inactivityTimeoutSeconds * 1000),
+          awaitingClosureConfirmation: false, leaseId: null, leaseExpiresAt: null });
         await audit({ id: randomUUID(), trigger: 'handoff', status: 'escalated', actionExecuted: 'ESCALATE_TO_HUMAN',
           requiredHuman: true, reason: decision.reason });
         logger.info('ticket.ai.escalated', log);
@@ -40,13 +43,28 @@ class TicketAIActionService {
     }
     return reserved;
   }
-  async notifyHuman(ticket, runId) {
+  async notifyHuman(ticket, runId, message = 'Atendimento humano solicitado.', reason = 'user_requested_human') {
     try {
       await this.messages.createSystemMessage(ticket, { id: runId,
-        content: 'Atendimento humano solicitado. A IA foi pausada; a equipe poderá assumir normalmente.' });
-      await this.adapter.aiHandoffStaff(ticket, runId);
+        content: message === 'Atendimento humano solicitado.'
+          ? 'Atendimento humano solicitado. A IA foi pausada; a equipe poderá assumir normalmente.' : message });
+      await this.adapter.aiHandoffStaff(ticket, runId, reason);
     }
     catch { logger.warn('ticket.ai.notification_failed', { guildId: ticket.guildId, ticketId: ticket.id, runId }); }
+  }
+  async inactivityFollowUp(ticket, reason) {
+    const explanations = {
+      unsupported_request: ['o pedido está fora das capacidades seguras da IA', 'detalhar o contexto ou aguardar uma pessoa da equipe'],
+      low_confidence: ['não há confiança suficiente para orientar com segurança', 'enviar mais detalhes, exemplos ou capturas de tela'],
+      sensitive_action_required: ['a solicitação exige uma ação reservada à equipe', 'aguardar um atendente com as permissões necessárias'],
+      repeated_failure: ['as tentativas automáticas não produziram uma resposta confiável', 'tentar novamente mais tarde ou aguardar a equipe'],
+      user_requested_human: ['foi solicitado atendimento humano', 'aguardar uma pessoa da equipe'],
+    };
+    const [why, alternative] = explanations[reason] || explanations.unsupported_request;
+    return this.messages.createSystemMessage(ticket, { content: `Ainda não houve uma resposta da equipe. Não consegui ajudar porque ${why}. Como alternativa, você pode ${alternative}.\n\nVocê precisa de mais alguma coisa? Responda **sim** para continuar ou **não, pode encerrar** para finalizar o ticket.` });
+  }
+  async closingNotice(ticket) {
+    return this.messages.createSystemMessage(ticket, { content: 'Tudo certo. Vou encerrar o ticket agora.' });
   }
 }
 module.exports = { TicketAIActionService };

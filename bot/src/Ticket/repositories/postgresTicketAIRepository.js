@@ -1,4 +1,4 @@
-const { and, eq } = require('drizzle-orm');
+const { and, eq, lte } = require('drizzle-orm');
 const { ticketAIConfigs: configs, ticketAITicketStates: states, ticketAIRuns: runs, tickets } = require('../../database/schema');
 const { PostgresTicketRepository } = require('./postgresTicketRepository');
 const { DEFAULT_CONFIG } = require('../services/ticketAIContract');
@@ -51,6 +51,17 @@ class PostgresTicketAIRepository {
   async finish(guildId, ticketId, runId, values) {
     await this.db.update(runs).set(values).where(and(scope(runs, guildId, ticketId), eq(runs.id, runId)));
     await this.db.update(states).set({ leaseId: null, leaseExpiresAt: null }).where(and(scope(states, guildId, ticketId), eq(states.leaseId, runId)));
+  }
+  async claimDueFollowUps(now, limit = 20) {
+    return this.db.transaction(async tx => {
+      const due = await tx.select().from(states).where(and(
+        eq(states.awaitingClosureConfirmation, false), lte(states.followUpDueAt, new Date(now)),
+      )).limit(limit).for('update');
+      for (const state of due) await tx.update(states).set({
+        followUpDueAt: null, awaitingClosureConfirmation: true, updatedAt: new Date(),
+      }).where(scope(states, state.guildId, state.ticketId));
+      return due.map(state => ({ guildId: state.guildId, ticketId: state.ticketId, reason: state.handoffReason }));
+    });
   }
 }
 module.exports = { PostgresTicketAIRepository };

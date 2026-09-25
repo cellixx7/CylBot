@@ -12,6 +12,9 @@ function setupView(session) {
   const cancel = row(button(id('cancel'), 'Cancelar', ButtonStyle.Danger));
   let content; let components;
   switch (session.step) {
+    case 'resume': content = 'Existe uma configuração de tickets salva. Deseja recomeçar pelas configurações iniciais ou continuar de onde parou?'; components = [row(button(id('restart'), 'Configuração inicial'), button(id('continue'), 'Continuar', ButtonStyle.Primary))]; break;
+    case 'manage': content = 'O sistema de tickets está ativo neste servidor.'; components = [row(button(id('disable'), 'Cancelar sistema de tickets', ButtonStyle.Danger))]; break;
+    case 'disable-confirm': content = 'Desativar o sistema? Tickets, canais, logs e históricos serão preservados.'; components = [row(button(id('deactivate'), 'Confirmar cancelamento', ButtonStyle.Danger))]; break;
     case 'start': content = 'CONFIGURAÇÃO DE TICKETS\nVamos configurar o sistema deste servidor.'; components = [row(button(id('start'), 'Começar', ButtonStyle.Primary))]; break;
     case 'role': content = 'Qual cargo poderá atender tickets?'; components = [row(new RoleSelectMenuBuilder().setCustomId(`ticket:${id('role')}`).setMinValues(1).setMaxValues(1))]; break;
     case 'structure': content = 'Criar a estrutura automaticamente ou selecionar canais existentes?'; components = [row(button(id('auto'), 'Criar automaticamente'), button(id('existing'), 'Usar canais existentes'))]; break;
@@ -31,8 +34,13 @@ function panelPayload() {
   return { embeds: [new EmbedBuilder().setTitle('🎫 Suporte').setDescription('Precisa de ajuda?\nAbra um ticket e nossa equipe irá atendê-lo.\nO atendimento e sua transcrição ficam disponíveis à equipe de suporte.').setColor(0x176b57)],
     components: [row(button('create', 'Abrir ticket', ButtonStyle.Primary))], allowedMentions: { parse: [] } };
 }
-function categoryView(categories) {
-  return { content: 'Selecione a categoria do atendimento.', components: [row(new StringSelectMenuBuilder().setCustomId('ticket:category').setPlaceholder('Categoria').addOptions(categories.map(c => ({ label: c.name, value: c.id, description: c.description || c.name }))))] };
+function categoryView(categories, additional = false) {
+  return { content: 'Selecione a categoria do atendimento.', components: [row(new StringSelectMenuBuilder().setCustomId(`ticket:category${additional ? ':new' : ''}`).setPlaceholder('Categoria').addOptions(categories.map(c => ({ label: c.name, value: c.id, description: c.description || c.name }))))] };
+}
+function existingTicketView(tickets) {
+  const channels = tickets.map(ticket => `<#${ticket.channelId}>`).join(', ');
+  return { content: `Você já possui ticket em aberto: ${channels}. Ele atende ao que você precisa agora ou é outro assunto?`,
+    components: [row(button('existing:continue', 'Usar ticket aberto', ButtonStyle.Success), button('existing:new', 'É outro assunto', ButtonStyle.Primary))], allowedMentions: { parse: [] } };
 }
 function initialPayload(ticket) {
   const status = { [TICKET_STATUS.OPEN]: 'Aberto', [TICKET_STATUS.CLAIMED]: 'Em atendimento', [TICKET_STATUS.CLOSED]: 'Encerrado', [TICKET_STATUS.REOPENED]: 'Reaberto' }[ticket.status];
@@ -42,8 +50,14 @@ function initialPayload(ticket) {
       { name: 'Assunto', value: ticket.subject }, { name: 'Status', value: status },
       { name: 'Responsável', value: ticket.assignedUserId ? `${ticket.assignedName} (${ticket.assignedUserId})` : 'Nenhum' },
     );
+  if (ticket.webUrl) embed.setURL(ticket.webUrl).setFooter({ text: `Ticket na Web: ${ticket.webUrl}` });
   if (ticket.reopenCount) embed.addFields({ name: 'Histórico anterior', value: `Encerrado em ${new Date(ticket.closedAt).toISOString()}.\nReaberto por ${ticket.reopenedByName} (${ticket.reopenedBy}).\nTranscrição anterior anexada.` });
-  return { embeds: [embed], components: ticket.status === TICKET_STATUS.CLOSED ? [] : [row(button(`claim:${ticket.id}`, 'Assumir', ButtonStyle.Primary), button(`close:${ticket.id}`, 'Fechar', ButtonStyle.Danger), button(`ai:menu:${ticket.id}`, 'Assistente IA'))], allowedMentions: { parse: [] } };
+  const actions = [
+    ...(!ticket.assignedUserId ? [button(`claim:${ticket.id}`, 'Assumir', ButtonStyle.Primary)] : []),
+    button(`close:${ticket.id}`, 'Fechar', ButtonStyle.Danger),
+    button(`ai:menu:${ticket.id}`, 'Assistente IA'),
+  ];
+  return { embeds: [embed], components: ticket.status === TICKET_STATUS.CLOSED ? [] : [row(...actions)], allowedMentions: { parse: [] } };
 }
 function openedPayload(ticket) {
   return { embeds: [new EmbedBuilder().setTitle(`Ticket #${ticketNumber(ticket)} aberto`).setColor(0x176b57)
@@ -59,4 +73,4 @@ function closedPayload(ticket) {
     { name: 'Motivo', value: ticket.closing.reason }, { name: 'Resumo', value: ticket.closing.summary || 'Não informado' },
   )], components: [row(button(`reopen:${ticket.id}:${ticket.reopenCount}`, 'Reabrir', ButtonStyle.Success), button(`remove:${ticket.id}:${ticket.reopenCount}`, 'Remover canal', ButtonStyle.Danger))], allowedMentions: { parse: [] } };
 }
-module.exports = { setupView, panelPayload, categoryView, initialPayload, openedPayload, closedPayload, modal, row, button };
+module.exports = { setupView, panelPayload, categoryView, existingTicketView, initialPayload, openedPayload, closedPayload, modal, row, button };

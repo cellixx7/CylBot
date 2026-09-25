@@ -42,7 +42,7 @@ function createServices(client, config) {
   const openRouter = new OpenRouterService(config.openRouter);
   const oauthProvider = new DiscordOAuthProvider(config.auth);
   const announcementRepository = new JsonAnnouncementRepository();
-  const ticketAdapter = new DiscordTicketAdapter(client, config.tickets);
+  const ticketAdapter = new DiscordTicketAdapter(client, { ...config.tickets, webOrigin: config.auth.webOrigin });
   const ticketPermissions = new TicketPermissionService(ticketAdapter);
   const ticketTranscripts = new TicketTranscriptService({ adapter: ticketAdapter, repository: new TicketTranscriptRepository() });
   const ticketReconciliation = new TicketReconciliationService({ adapter: ticketAdapter, repository: ticketRepository });

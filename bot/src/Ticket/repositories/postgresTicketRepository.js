@@ -141,13 +141,13 @@ class PostgresTicketRepository {
     return row ? mapTicket(row, await this.readEvents(row.id)) : null;
   }
 
-  async createInTransaction(tx, input, event) {
+  async createInTransaction(tx, input, event, { allowAdditional = false } = {}) {
     const active = or(inArray(tickets.status, ['OPEN', 'CLAIMED', 'REOPENED']), isNotNull(tickets.reopening));
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${input.guildId}:${input.creatorUserId}`}))`);
     const [sameCategory] = await tx.select({ count: sql`count(*)::int` }).from(tickets).where(and(
       eq(tickets.guildId, input.guildId), eq(tickets.creatorUserId, input.creatorUserId), eq(tickets.categoryId, input.categoryId), active,
     ));
-    if (Number(sameCategory.count) > 0) throw new TicketLimitError('Você já possui um ticket ativo nesta categoria.');
+    if (!allowAdditional && Number(sameCategory.count) > 0) throw new TicketLimitError('Você já possui um ticket ativo nesta categoria.');
     const [activeTotal] = await tx.select({ count: sql`count(*)::int` }).from(tickets).where(and(
       eq(tickets.guildId, input.guildId), eq(tickets.creatorUserId, input.creatorUserId), active,
     ));
@@ -156,7 +156,7 @@ class PostgresTicketRepository {
       eq(tickets.guildId, input.guildId), eq(tickets.creatorUserId, input.creatorUserId),
       sql`(${tickets.createdAt} > now() - interval '60 seconds' OR ${tickets.reopenedAt} > now() - interval '60 seconds')`,
     ));
-    if (Number(recent.count) > 0) throw new TicketLimitError('Aguarde 60 segundos entre aberturas de tickets.');
+    if (!allowAdditional && Number(recent.count) > 0) throw new TicketLimitError('Aguarde 60 segundos entre aberturas de tickets.');
     const [sequence] = await tx.insert(ticketSequences).values({ guildId: input.guildId, nextNumber: 1 })
       .onConflictDoUpdate({ target: ticketSequences.guildId, set: { nextNumber: sql`${ticketSequences.nextNumber} + 1` } }).returning({ number: ticketSequences.nextNumber });
     const ticket = { ...input, sequence: sequence.number, id: input.id };
@@ -174,8 +174,8 @@ class PostgresTicketRepository {
     });
   }
 
-  async createWithEvent(input, event) {
-    return this.db.transaction(tx => this.createInTransaction(tx, input, event));
+  async createWithEvent(input, event, options) {
+    return this.db.transaction(tx => this.createInTransaction(tx, input, event, options));
   }
 
   async claimTicket(ticket, { userId, name, claimedAt, event }) {
@@ -196,6 +196,32 @@ class PostgresTicketRepository {
       .returning();
     if (!row) return null;
     return mapTicket(row, ticket.events || []);
+  }
+
+  async closeMissingChannel(ticket, closedAt) {
+    return this.db.transaction(async tx => {
+      const closing = {
+        actorUserId: null, reason: 'Canal removido externamente no Discord.',
+        summary: 'Encerrado automaticamente sem transcript porque o canal não existe mais.',
+        startedAt: closedAt, completed: true, channelMissing: true, transcriptUnavailable: true,
+      };
+      const [row] = await tx.update(tickets).set({
+        status: 'CLOSED', channelId: null, initialMessageId: null, closedAt: toDate(closedAt),
+        closeReason: closing.reason, resolutionSummary: closing.summary, closing, reopening: null,
+      }).where(and(
+        eq(tickets.guildId, ticket.guildId), eq(tickets.id, ticket.id), eq(tickets.channelId, ticket.channelId),
+        eq(tickets.initialized, true), isNull(tickets.closing), isNull(tickets.reopening),
+        inArray(tickets.status, ['OPEN', 'CLAIMED', 'REOPENED']),
+      )).returning();
+      if (!row) return null;
+      const eventRow = {
+        ticketId: row.id, type: 'TICKET_CLOSED', actorUserId: null,
+        metadata: { reason: closing.reason, cycle: row.reopenCount, source: 'discord_channel_missing' },
+        createdAt: toDate(closedAt),
+      };
+      await tx.insert(ticketEvents).values(eventRow);
+      return mapTicket(row, [...(ticket.events || []), eventRow]);
+    });
   }
 
   async save(ticket) {

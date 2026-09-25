@@ -7,6 +7,7 @@ const { TicketTranscriptRepository } = require('../../src/Ticket/repositories/ti
 const { TicketPermissionService } = require('../../src/Ticket/services/ticketPermissionService');
 const { TicketTranscriptService } = require('../../src/Ticket/services/ticketTranscriptService');
 const { TicketSetupService } = require('../../src/Ticket/services/ticketSetupService');
+const { TicketReconciliationService } = require('../../src/Ticket/services/ticketReconciliationService');
 const { TicketService } = require('../../src/Ticket/services/ticketService');
 const { DEFAULT_CATEGORIES } = require('../../src/Ticket/services/ticketConstants');
 const ids = { guild: '111111111111111111', otherGuild: '111111111111111112', user: '222222222222222222', staff: '333333333333333333', admin: '444444444444444444', role: '555555555555555555', panel: '666666666666666666', log: '777777777777777777', category: '888888888888888888' };
@@ -34,6 +35,12 @@ function ticketFixture(t, { configured = true } = {}) {
     async guildName() { return 'Servidor de teste'; },
     async validateSetup() { calls.push('validateSetup'); },
     async validateStructure() { calls.push('validateStructure'); },
+    async missingStructure() { return []; },
+    async disablePanel() { calls.push('disablePanel'); },
+    async ticketChannelExists(ticket) {
+      const channel = channels.get(ticket.channelId);
+      return Boolean(channel && channel.ticketId === ticket.id && channel.cycle === ticket.reopenCount);
+    },
     async ensureStructure(config, save) {
       calls.push(config.mode);
       for (const [key, value] of [['panelChannelId', ids.panel], ['logChannelId', ids.log], ['activeCategoryId', ids.category]]) {
@@ -52,7 +59,9 @@ function ticketFixture(t, { configured = true } = {}) {
     },
     async publishInitial(ticket, attachment) { calls.push(attachment ? 'initialWithTranscript' : 'initial'); if (attachment) assertBuffer(attachment); return `initial-${ticket.reopenCount}`; },
     async publishOpened() { calls.push('openedLog'); return 'opened-log'; },
+    async updateTicketAccess() { calls.push('updateTicketAccess'); },
     async updateInitial() { calls.push('updateInitial'); },
+    async scheduleChannelRemoval() { calls.push('scheduleChannelRemoval'); },
     async fetchMessages(guildId, channelId, { before, limit }) {
       calls.push('messages');
       const data = channels.get(channelId).messages.filter(m => !before || BigInt(m.id) < BigInt(before));
@@ -66,7 +75,8 @@ function ticketFixture(t, { configured = true } = {}) {
   };
   const permissions = new TicketPermissionService(adapter);
   const transcripts = new TicketTranscriptService({ adapter, repository: transcriptRepository });
-  const makeService = () => new TicketService({ repository, configs, adapter, permissions, transcripts, now });
+  const reconciliation = new TicketReconciliationService({ adapter, repository });
+  const makeService = () => new TicketService({ repository, configs, adapter, permissions, transcripts, reconciliation, now });
   const service = makeService();
   const setup = new TicketSetupService({ repository: configs, adapter, permissions, now });
   const input = { guildId: ids.guild, userId: ids.user, channelId: ids.panel, categoryId: 'support', subject: 'Ajuda', description: 'Descrição do atendimento' };
@@ -74,7 +84,7 @@ function ticketFixture(t, { configured = true } = {}) {
   const action = ticket => ({ guildId: ids.guild, userId: ids.staff, channelId: ticket.channelId, ticketId: ticket.id });
   const close = ticket => service.close({ ...action(ticket), reason: 'Resolvido', summary: 'Orientação enviada' });
   const logAction = ticket => ({ ...action(ticket), channelId: ids.log, cycle: ticket.reopenCount });
-  return { dir, repository, configs, transcriptRepository, adapter, channels, logs, actors, permissions, transcripts, service, setup, input, create, action, close, logAction, calls, makeService,
+  return { dir, repository, configs, transcriptRepository, adapter, channels, logs, actors, permissions, transcripts, reconciliation, service, setup, input, create, action, close, logAction, calls, makeService,
     advance(ms = 60_001) { time += ms; }, now };
 }
 function assertBuffer(value) { if (!Buffer.isBuffer(value) || !value.length) throw new Error('Transcript inválido'); }

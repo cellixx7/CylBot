@@ -39,6 +39,37 @@ class TicketReconciliationService {
     }
     return ticket;
   }
+
+  async reconcileActiveTickets(tickets, closedAt = Date.now()) {
+    const active = [];
+    for (const ticket of tickets) {
+      if (!ticket.initialized || ticket.closing || ticket.reopening || !['OPEN', 'CLAIMED', 'REOPENED'].includes(ticket.status)) {
+        active.push(ticket);
+        continue;
+      }
+      if (await this.adapter.ticketChannelExists(ticket)) {
+        active.push(ticket);
+        continue;
+      }
+      const closed = await this.repository.closeMissingChannel(ticket, closedAt);
+      logger.warn('ticket.channel_missing_closed', {
+        ...ticketLogContext(), guildId: ticket.guildId, ticketId: ticket.id,
+        channelId: ticket.channelId, reconciled: Boolean(closed),
+      });
+    }
+    return active;
+  }
+
+  async channelDeleted({ guildId, channelId }, closedAt = Date.now()) {
+    const ticket = await this.repository.findByChannelId(guildId, channelId);
+    if (!ticket || !ticket.initialized || ticket.closing || ticket.reopening
+      || !['OPEN', 'CLAIMED', 'REOPENED'].includes(ticket.status)) return null;
+    const closed = await this.repository.closeMissingChannel(ticket, closedAt);
+    logger.warn('ticket.channel_missing_closed', {
+      guildId, ticketId: ticket.id, channelId, reconciled: Boolean(closed), source: 'channelDelete',
+    });
+    return closed;
+  }
 }
 
 module.exports = { TicketReconciliationService };

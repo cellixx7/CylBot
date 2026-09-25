@@ -7,6 +7,7 @@ const interactionCreateEvent = require('./events/interactionCreate');
 const voiceStateUpdateEvent = require('./events/voiceStateUpdate');
 const messageCreateEvent = require('./events/messageCreate');
 const messageUpdateEvent = require('./events/messageUpdate');
+const channelDeleteEvent = require('./events/channelDelete');
 const { createServices } = require('./app/createServices');
 const { startApiServer } = require('./api/server');
 const { logger } = require('./lib/logger');
@@ -61,6 +62,7 @@ async function start() {
   client.on(messageCreateEvent.name, message => messageCreateEvent.execute(message, client));
   client.on(messageUpdateEvent.name, (oldMessage, newMessage) =>
     messageUpdateEvent.execute(oldMessage, newMessage, client));
+  client.on(channelDeleteEvent.name, channel => channelDeleteEvent.execute(channel, client));
 
   await client.login(config.discord.token);
 }

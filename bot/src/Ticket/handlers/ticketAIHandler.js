@@ -20,12 +20,12 @@ async function startTicketAIConfig(interaction) {
     // são carregadas no submit, após deferReply; abrir o formulário não grava nem chama provider.
     const config = DEFAULT_CONFIG;
     const form = modal('ai:config', 'IA de tickets', [
-      ['ai-level', 'Nível: 0 off, 1 sugestão, 2 auto, 3 limitado', 1],
+      ['ai-level', 'Nível e espera (min). Ex.: 2,15', 8],
       ['ai-tone', 'Tom', 80], ['ai-context', 'Contexto do servidor', 2000, true, false],
       ['ai-instructions', 'Instruções de suporte', 2000, true, false],
       ['ai-capabilities', 'Capacidades separadas por vírgula', 150],
     ]);
-    [String(config.enabled ? config.autonomyLevel : 0), config.tone, config.serverContext, config.supportInstructions, config.capabilities.join(',')]
+    [`${config.enabled ? config.autonomyLevel : 0},${Math.ceil(config.inactivityTimeoutSeconds / 60)}`, config.tone, config.serverContext, config.supportInstructions, config.capabilities.join(',')]
       .forEach((value, index) => { if (value) form.components[index].components[0].setValue(value); });
     await interaction.showModal(form);
   } catch (error) { await fail(interaction, error); }
@@ -39,12 +39,15 @@ async function handleTicketAIInteraction(interaction, services) {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const current = await services.ticketAI.getConfig(base);
       const value = key => interaction.fields.getTextInputValue(`ticket:ai-${key}`);
-      const level = value('level');
-      if (!/^[0-3]$/.test(level)) throw clientError(400, 'Autonomia deve ser de 0 a 3.');
-      await services.ticketAI.configure({ ...base, config: { ...current, enabled: level !== '0', autonomyLevel: Number(level),
+      const level = value('level').match(/^([0-3]),([1-9]\d{0,3})$/);
+      if (!level || Number(level[2]) > 1440) throw clientError(400, 'Use nível e espera em minutos, por exemplo: 2,15.');
+      await services.ticketAI.configure({ ...base, config: { ...current, enabled: level[1] !== '0', autonomyLevel: Number(level[1]),
+        inactivityTimeoutSeconds: Number(level[2]) * 60,
         tone: value('tone'), serverContext: value('context'), supportInstructions: value('instructions'),
         capabilities: value('capabilities').split(',').map(item => item.trim()).filter(Boolean) } });
-      await interaction.editReply({ content: 'Configuração de IA salva. A geração exige habilitação da guild no ambiente e PostgreSQL.', allowedMentions: { parse: [] } });
+      await interaction.editReply({ content: services.ticketAI.policy.hasAccess(base.guildId)
+        ? 'Configuração de IA salva e disponível para testes neste servidor.'
+        : 'Configuração de IA salva. Defina TICKET_AI_ENABLED=true para liberar a geração.', allowedMentions: { parse: [] } });
     } else {
       const match = interaction.customId.match(new RegExp(`^ticket:ai:(menu|suggest|pause|resume):(${UUID})$`));
       if (!match || !interaction.isButton()) throw clientError(400, 'Controle de IA inválido.');

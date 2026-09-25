@@ -12,21 +12,23 @@ async function ticketAIFixture(t) {
   const ticket = await core.create();
   let time = Date.now();
   const now = () => time;
-  const settings = { enabled: true, guildIds: [ids.guild], model: 'test-model', timeoutMs: 100 };
+  const settings = { enabled: true, guildIds: [ids.guild], allowAllGuilds: false, model: 'test-model', timeoutMs: 100 };
   let config = { ...DEFAULT_CONFIG, enabled: true, autonomyLevel: 2 };
   const states = new Map(); const runs = [];
   let tail = Promise.resolve();
   const repository = {
     async getConfig() { return structuredClone(config); },
     async saveConfig(guildId, value) { config = structuredClone(value); return config; },
-    async getState(guildId, id) { return structuredClone(states.get(id) || { paused: false, escalatedAt: null }); },
+    async getState(guildId, id) { return structuredClone(states.get(id) || { paused: false, escalatedAt: null,
+      followUpDueAt: null, awaitingClosureConfirmation: false, handoffReason: null }); },
     async locked(guildId, id, callback) {
       const before = tail; let release;
       tail = new Promise(resolve => { release = resolve; });
       await before;
       try {
         const current = await core.service.ticket(guildId, id);
-        if (!states.has(id)) states.set(id, { paused: false, escalatedAt: null });
+        if (!states.has(id)) states.set(id, { paused: false, escalatedAt: null,
+          followUpDueAt: null, awaitingClosureConfirmation: false, handoffReason: null });
         const state = states.get(id);
         return await callback({ ticket: current, config: structuredClone(config), state: structuredClone(state), tx: undefined,
           patch: async changes => Object.assign(state, changes),
@@ -45,6 +47,14 @@ async function ticketAIFixture(t) {
       Object.assign(runs.find(run => run.id === runId), values);
       const state = states.get(ticketId);
       if (state.leaseId === runId) Object.assign(state, { leaseId: null, leaseExpiresAt: null });
+    },
+    async claimDueFollowUps(at, limit = 20) {
+      const due = [...states.entries()].filter(([, state]) => !state.awaitingClosureConfirmation
+        && state.followUpDueAt && new Date(state.followUpDueAt).getTime() <= at).slice(0, limit);
+      return due.map(([ticketId, state]) => {
+        Object.assign(state, { followUpDueAt: null, awaitingClosureConfirmation: true });
+        return { guildId: ids.guild, ticketId, reason: state.handoffReason };
+      });
     },
   };
   const sent = []; const suggestions = []; const handoffs = [];
@@ -82,7 +92,7 @@ async function ticketAIFixture(t) {
       if (message.visibility === 'INTERNAL') suggestions.push(message.content); else sent.push(message.content);
       return { id: String(100000000000000010n + BigInt(sent.length + suggestions.length)), channelId: message.visibility === 'INTERNAL' ? ids.log : ticket.channelId };
     },
-    async aiHandoffStaff(ticket) { handoffs.push(ticket.id); },
+    async aiHandoffStaff(ticket, runId, reason) { handoffs.push({ ticketId: ticket.id, runId, reason }); },
   });
   const messageService = new TicketMessageService({ repository: messageRepository, tickets: core.service,
     permissions: core.permissions, adapter: core.adapter });

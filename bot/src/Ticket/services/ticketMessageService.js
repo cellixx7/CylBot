@@ -77,7 +77,7 @@ class TicketMessageService {
     const ticket = await this.tickets.repository.findByChannelId(input.guildId, input.channelId);
     if (!ticket) return null;
     if (!ticket.initialized || ticket.reopening || !ACTIVE_STATUSES.has(ticket.status)) return null;
-    const actor = await this.permissions.requireAction(TICKET_PERMISSION.VIEW, input.guildId, input.userId, ticket, ticket);
+    const actor = await this.permissions.requireAction(TICKET_PERMISSION.RESPOND, input.guildId, input.userId, ticket, ticket);
     const text = content(input.content);
     await this.syncDiscordHistory(ticket, { excludeDiscordMessageId: input.messageId });
     const authorType = this.authorType(actor, ticket);

@@ -2,7 +2,7 @@ const { CAPABILITIES } = require('./ticketAIContract');
 
 class TicketAIPolicyService {
   constructor(access) { this.access = access; }
-  hasAccess(guildId) { return Boolean(this.access.enabled && this.access.guildIds.includes(guildId)); }
+  hasAccess(guildId) { return Boolean(this.access.enabled && (this.access.allowAllGuilds || this.access.guildIds.includes(guildId))); }
   active(ticket) { return ['OPEN', 'REOPENED', 'CLAIMED'].includes(ticket.status) && ticket.initialized && ticket.channelId && !ticket.closing && !ticket.reopening; }
   canGenerate({ ticket, config, state, automatic }) {
     return Boolean(this.hasAccess(ticket.guildId) && config.enabled && config.autonomyLevel > 0 && !state.paused && !state.escalatedAt
@@ -16,6 +16,10 @@ class TicketAIPolicyService {
     if (proposal.action === 'NO_ACTION') return { mode: 'none', action: 'NO_ACTION', reason: proposal.reason };
     const capability = CAPABILITIES[proposal.action];
     if (!capability || !config.capabilities.includes(capability)) return { mode: 'deny', action: 'NO_ACTION', reason: 'policy_restriction' };
+    if (proposal.action === 'ESCALATE_TO_HUMAN') {
+      if (!config.humanEscalationEnabled) return { mode: 'suggest', action: proposal.action, reason: 'policy_restriction' };
+      return { mode: automatic ? 'execute' : 'suggest', action: 'ESCALATE_TO_HUMAN', reason: proposal.reason };
+    }
     if (proposal.requiresHuman || proposal.confidence < 0.6 || proposal.action === 'ESCALATE_TO_HUMAN') {
       if (!config.humanEscalationEnabled || !config.capabilities.includes('request_human')) return { mode: 'suggest', action: proposal.action, reason: 'policy_restriction' };
       return { mode: automatic && config.autonomyLevel >= 2 ? 'execute' : 'suggest', action: 'ESCALATE_TO_HUMAN',

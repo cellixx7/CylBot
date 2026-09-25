@@ -52,17 +52,27 @@ class TicketService {
   event(ticket, type, userId, metadata = {}) {
     ticket.events.push({ type, ticketId: ticket.id, actorUserId: userId, createdAt: this.now(), metadata });
   }
-  async limits(guildId, userId, categoryId, excludeId) {
+  async limits(guildId, userId, categoryId, excludeId, allowAdditional = false) {
     setTicketStage('app.limits');
     const tickets = this.repository.findByUser
       ? await this.repository.findByUser(guildId, userId)
       : (await this.repository.list(guildId)).filter(ticket => ticket.creatorUserId === userId);
-    const active = this.repository.findActiveByUser
+    let active = this.repository.findActiveByUser
       ? await this.repository.findActiveByUser(guildId, userId, excludeId)
       : tickets.filter(ticket => ticket.id !== excludeId && (ACTIVE_STATUSES.has(ticket.status) || ticket.reopening));
-    if (active.some(ticket => ticket.categoryId === categoryId)) throw clientError(409, 'Você já possui um ticket ativo nesta categoria.');
+    if (this.reconciliation?.reconcileActiveTickets) active = await this.reconciliation.reconcileActiveTickets(active, this.now());
+    if (!allowAdditional && active.some(ticket => ticket.categoryId === categoryId)) throw clientError(409, 'Você já possui um ticket ativo nesta categoria.');
     if (active.length >= 3) throw rateLimit('TICKET_ACTIVE_LIMIT', 'O limite é de três tickets ativos por usuário.');
-    if (tickets.some(ticket => this.now() - (ticket.reopenedAt || ticket.createdAt) < 60_000)) throw rateLimit('TICKET_OPEN_COOLDOWN', 'Aguarde 60 segundos entre aberturas de tickets.');
+    if (!allowAdditional && tickets.some(ticket => this.now() - (ticket.reopenedAt || ticket.createdAt) < 60_000)) throw rateLimit('TICKET_OPEN_COOLDOWN', 'Aguarde 60 segundos entre aberturas de tickets.');
+  }
+  async activeForUser({ guildId, userId, channelId }) {
+    await this.categories({ guildId, userId, channelId });
+    const active = this.repository.findActiveByUser
+      ? this.repository.findActiveByUser(guildId, userId)
+      : (await this.repository.list(guildId)).filter(ticket => ticket.creatorUserId === userId && ACTIVE_STATUSES.has(ticket.status));
+    const resolved = await active;
+    return this.reconciliation?.reconcileActiveTickets
+      ? this.reconciliation.reconcileActiveTickets(resolved, this.now()) : resolved;
   }
   async categories({ guildId, userId, channelId }) {
     await this.permissions.actor(guildId, userId);
@@ -70,7 +80,7 @@ class TicketService {
     if (channelId !== config.panelChannelId) throw clientError(403, 'Use o painel oficial de tickets.');
     return config.categories;
   }
-  async create({ guildId, userId, channelId, categoryId, subject, description }) {
+  async create({ guildId, userId, channelId, categoryId, subject, description, allowAdditional = false }) {
     return this.exclusive(guildId, async () => {
       const actor = await this.permissions.actor(guildId, userId);
       const config = await this.config(guildId);
@@ -82,7 +92,7 @@ class TicketService {
         ? await this.repository.findPending(guildId, userId, categoryId)
         : (await this.repository.list(guildId)).find(item => item.creatorUserId === userId && item.categoryId === categoryId && !item.initialized && item.status === S.OPEN);
       if (!ticket) {
-        await this.limits(guildId, userId, categoryId);
+        await this.limits(guildId, userId, categoryId, undefined, allowAdditional);
         setTicketStage('discord.validateStructure');
         await this.adapter.validateStructure(config);
         const ticketInput = { guildId, guildName: await this.adapter.guildName(guildId),
@@ -95,7 +105,7 @@ class TicketService {
         const createdEvent = { type: E.CREATED, ticketId: null, actorUserId: userId, createdAt: this.now(), metadata: {} };
         setTicketStage('repository.create');
         ticket = this.repository.createWithEvent
-          ? await this.repository.createWithEvent(ticketInput, createdEvent)
+          ? await this.repository.createWithEvent(ticketInput, createdEvent, { allowAdditional })
           : await this.repository.create(ticketInput);
       } else if (this.reconciliation) {
         setTicketContext(ticket);
@@ -145,6 +155,8 @@ class TicketService {
         await this.save(ticket);
       }
       // Falha visual não desfaz a atribuição persistida nem permite outro atendente assumir.
+      // O canal nasce sem escrita para o cargo; uma falha aqui mantem o acesso fechado.
+      try { await this.adapter.updateTicketAccess(ticket); } catch { logger.warn('ticket.permissions_update_failed', { guildId, ticketId, channelId }); }
       try { await this.adapter.updateInitial(ticket); } catch { logger.warn('ticket.message_update_failed', { guildId, ticketId, channelId }); }
       logger.info('ticket.claimed', { guildId, ticketId, staffUserId: userId, channelId });
       return ticket;
@@ -221,6 +233,12 @@ class TicketService {
         this.event(ticket, E.CLOSED, closing.actorUserId, { reason: closing.reason, cycle: ticket.reopenCount });
         await this.save(ticket);
         try { await this.adapter.updateInitial(ticket); } catch { logger.warn('ticket.message_update_failed', { guildId, ticketId, channelId }); }
+        try {
+          await this.adapter.scheduleChannelRemoval(ticket, async () => {
+            const current = await this.ticket(guildId, ticketId);
+            if (current.channelId === channelId) { current.channelId = null; await this.save(current); }
+          });
+        } catch { logger.warn('ticket.auto_delete_schedule_failed', { guildId, ticketId, channelId }); }
         logger.info('ticket.closed', { guildId, ticketId, userId, channelId });
         return ticket;
       } catch (error) {
@@ -263,7 +281,7 @@ class TicketService {
       this.channel(ticket, channelId, true);
       const actor = await this.permissions.requireAction(TICKET_PERMISSION.REOPEN, guildId, userId, ticket, ticket);
       setTicketStage('state.reopen');
-      if (Number(cycle) !== ticket.reopenCount || ticket.status !== S.CLOSED || !ticket.closing?.completed) throw clientError(409, 'Somente o último encerramento de um ticket fechado pode ser reaberto.');
+      if (Number(cycle) !== ticket.reopenCount || ticket.status !== S.CLOSED || !ticket.closing?.completed || !ticket.closing?.transcript) throw clientError(409, 'Somente o último encerramento com transcrição pode ser reaberto.');
       const config = await this.config(guildId);
       await this.permissions.actor(guildId, ticket.creatorUserId);
       const previous = ticket.archives.at(-1);

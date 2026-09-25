@@ -53,6 +53,14 @@ class DiscordTicketAdapter {
     if (!channel || channel.guildId !== guildId || channel.type !== type) throw clientError(400, 'Canal inválido ou de outro servidor.');
     return channel;
   }
+  async ticketChannelExists(ticket) {
+    if (!ticket.channelId) return false;
+    let channel = null;
+    try { channel = await (await this.guild(ticket.guildId)).channels.fetch(ticket.channelId, { force: true }); }
+    catch (error) { if (error.code === 10003) return false; throw error; }
+    return Boolean(channel && channel.guildId === ticket.guildId && channel.type === ChannelType.GuildText
+      && channel.topic === `cylbot-ticket:${ticket.id}:${ticket.reopenCount}`);
+  }
   async bot(guild) { return guild.members.fetchMe({ force: true }); }
   checkPermissions(channel, bot, permissions = BOT_PERMISSIONS) {
     if (!channel.permissionsFor(bot)?.has(permissions)) throw clientError(403, 'Confira as permissões do bot: canais/cargos, leitura/histórico, envio/anexos/embeds, reações e criação/envio em threads.');
@@ -92,6 +100,28 @@ class DiscordTicketAdapter {
     this.checkPermissions(await this.channel(guild.id, config.activeCategoryId, ChannelType.GuildCategory), bot);
     await this.validatePrivateLog(guild.id, config.logChannelId, config.supportRoleIds);
   }
+  async missingStructure(config) {
+    const guild = await this.guild(config.guildId);
+    const missing = [];
+    const expected = [
+      ['activeCategoryId', ChannelType.GuildCategory], ['panelChannelId', ChannelType.GuildText],
+      ['logChannelId', ChannelType.GuildText],
+    ];
+    if (config.mode === 'auto') expected.unshift(['publicCategoryId', ChannelType.GuildCategory]);
+    for (const [key, type] of expected) {
+      let channel = null;
+      if (config[key]) {
+        try { channel = await guild.channels.fetch(config[key], { force: true }); } catch (error) { if (error.code !== 10003) throw error; }
+      }
+      if (!channel || channel.type !== type) missing.push(key);
+    }
+    return missing;
+  }
+  async disablePanel(config) {
+    if (!config.panelChannelId || !config.panelMessageId) return;
+    const channel = await this.channel(config.guildId, config.panelChannelId);
+    await (await channel.messages.fetch(config.panelMessageId)).edit({ content: 'Sistema de tickets desativado neste servidor.', embeds: [], components: [], allowedMentions: { parse: [] } });
+  }
   overwrites(guildId, botId, supportRoleIds, creatorUserId, locked = false) {
     const ids = [...new Set([...supportRoleIds, ...(creatorUserId ? [creatorUserId] : [])])];
     return [
@@ -103,11 +133,42 @@ class DiscordTicketAdapter {
       })),
     ];
   }
+  ticketOverwrites(guildId, botId, supportRoleIds, creatorUserId, assignedUserId, locked = false) {
+    const participants = [...new Set([creatorUserId, assignedUserId].filter(Boolean))];
+    return [
+      { id: guildId, type: OverwriteType.Role, deny: [P.ViewChannel, ...NO_WRITE] },
+      { id: botId, type: OverwriteType.Member, allow: BOT_CHANNEL_ALLOW },
+      ...[...new Set(supportRoleIds)].filter(id => id !== botId).map(id => ({
+        id, type: OverwriteType.Role, allow: READ, deny: NO_WRITE
+      })),
+      ...participants.filter(id => id !== botId).map(id => ({
+        id, type: OverwriteType.Member,
+        allow: locked ? READ : [...READ, ...WRITE],
+        deny: locked ? NO_WRITE : [P.SendMessagesInThreads, P.CreatePublicThreads, P.CreatePrivateThreads]
+      })),
+    ];
+  }
   async ensureStructure(config, save) {
     if (config.mode === 'existing') return config;
     const guild = await this.guild(config.guildId);
     const bot = await this.bot(guild);
     const privateOverwrites = this.overwrites(guild.id, bot.id, config.supportRoleIds);
+    const expectedTypes = {
+      publicCategoryId: ChannelType.GuildCategory, activeCategoryId: ChannelType.GuildCategory,
+      panelChannelId: ChannelType.GuildText, logChannelId: ChannelType.GuildText,
+    };
+    let staleCheckpoint = false;
+    for (const [key, type] of Object.entries(expectedTypes)) {
+      if (!config[key]) continue;
+      let channel = null;
+      try { channel = await guild.channels.fetch(config[key], { force: true }); }
+      catch (error) { if (error.code !== 10003) throw error; }
+      if (channel?.type === type) continue;
+      config[key] = null;
+      if (key === 'panelChannelId') config.panelMessageId = null;
+      staleCheckpoint = true;
+    }
+    if (staleCheckpoint) await save(config);
     // IDs persistidos após cada recurso. Recursos existentes nunca são apagados pelo setup.
     for (const [key, options] of [
       ['publicCategoryId', {
@@ -123,7 +184,8 @@ class DiscordTicketAdapter {
       if (key === 'panelChannelId') options.parent = config.publicCategoryId;
       if (key === 'logChannelId') options.parent = config.activeCategoryId;
       const channel = await guild.channels.create({ ...options, reason: 'Configuração de tickets solicitada por administrador' });
-      config[key] = channel.id; save(config);
+      config[key] = channel.id;
+      await save(config);
     }
     return config;
   }
@@ -135,7 +197,7 @@ class DiscordTicketAdapter {
     const topic = `cylbot-ticket:${ticket.id}:${ticket.reopenCount}`;
     const channels = await guild.channels.fetch();
     const existing = channels.find(channel => channel?.type === ChannelType.GuildText && channel.topic === topic);
-    const overwrites = this.overwrites(guild.id, bot.id, ticket.supportRoleIds, ticket.creatorUserId);
+    const overwrites = this.ticketOverwrites(guild.id, bot.id, ticket.supportRoleIds, ticket.creatorUserId, ticket.assignedUserId);
     this.checkPermissions(await this.channel(guild.id, config.activeCategoryId, ChannelType.GuildCategory), bot);
     const channel = existing || await guild.channels.create({
       name: `ticket-${ticketNumber(ticket)}`, type: ChannelType.GuildText,
@@ -147,13 +209,46 @@ class DiscordTicketAdapter {
   }
   attachment(ticket, data) { return new AttachmentBuilder(data, { name: `ticket-${ticketNumber(ticket)}-ciclo-${ticket.closing ? ticket.reopenCount : ticket.reopenCount - 1}.html` }); }
   async publishInitial(ticket, previousTranscript) {
-    const payload = initialPayload(ticket);
+    const payload = initialPayload({ ...ticket, webUrl: this.ticketUrl(ticket) });
     if (previousTranscript) payload.files = [this.attachment(ticket, previousTranscript)];
-    return (await this.send(await this.channel(ticket.guildId, ticket.channelId), payload, `initial:${ticket.id}:${ticket.reopenCount}`)).id;
+    payload.content = `<@${ticket.creatorUserId}>`;
+    return (await this.send(await this.channel(ticket.guildId, ticket.channelId), payload, `initial:${ticket.id}:${ticket.reopenCount}`, [ticket.creatorUserId])).id;
   }
   async updateInitial(ticket) {
     const channel = await this.channel(ticket.guildId, ticket.channelId);
-    await (await channel.messages.fetch(ticket.initialMessageId)).edit(initialPayload(ticket));
+    await (await channel.messages.fetch(ticket.initialMessageId)).edit(initialPayload({ ...ticket, webUrl: this.ticketUrl(ticket) }));
+  }
+  ticketUrl(ticket) { return `${this.config.webOrigin || 'http://localhost:5173'}/#/dashboard/${ticket.guildId}/tickets/${ticket.id}`; }
+  removalText(ticket, seconds) {
+    const url = this.ticketUrl(ticket);
+    return `Este canal será apagado em \`${seconds}s\`. Você pode acessar o histórico no site <${url}>, também enviaremos na sua DM.`;
+  }
+  async scheduleChannelRemoval(ticket, onRemoved) {
+    const channel = await this.channel(ticket.guildId, ticket.channelId);
+    const notice = await this.send(channel, { content: this.removalText(ticket, 30) }, `auto-delete:${ticket.id}:${ticket.reopenCount}`);
+    try { await (await channel.guild.members.fetch(ticket.creatorUserId)).send({ content: this.removalText(ticket, 30), allowedMentions: { parse: [] } }); }
+    catch { logger.warn('ticket.dm_failed', { guildId: ticket.guildId, ticketId: ticket.id }); }
+    let seconds = 30;
+    const timer = setInterval(async () => {
+      seconds--;
+      try {
+        if (seconds > 0) return await notice.edit({ content: this.removalText(ticket, seconds), allowedMentions: { parse: [] } });
+        clearInterval(timer);
+        await this.removeChannel(ticket, notice.id);
+        await onRemoved();
+      } catch (error) {
+        clearInterval(timer);
+        logger.warn('ticket.auto_delete_failed', { guildId: ticket.guildId, ticketId: ticket.id, errorCode: error?.code });
+      }
+    }, 1000);
+    timer.unref?.();
+  }
+  async updateTicketAccess(ticket) {
+    const channel = await this.channel(ticket.guildId, ticket.channelId);
+    const bot = await this.bot(channel.guild);
+    await channel.permissionOverwrites.set(this.ticketOverwrites(
+      ticket.guildId, bot.id, ticket.supportRoleIds, ticket.creatorUserId, ticket.assignedUserId
+    ));
   }
   async publishOpened(ticket) {
     const channel = await this.validatePrivateLog(ticket.guildId, ticket.logChannelId, ticket.supportRoleIds);
@@ -171,14 +266,17 @@ class DiscordTicketAdapter {
   }
   async lockChannel(ticket) {
     const channel = await this.channel(ticket.guildId, ticket.channelId);
-    await channel.permissionOverwrites.set(this.overwrites(ticket.guildId, (await this.bot(channel.guild)).id, ticket.supportRoleIds, ticket.creatorUserId, true));
+    await channel.permissionOverwrites.set(this.ticketOverwrites(
+      ticket.guildId, (await this.bot(channel.guild)).id, ticket.supportRoleIds,
+      ticket.creatorUserId, ticket.assignedUserId, true
+    ));
   }
   async verifyClosedLog(ticket) {
     const channel = await this.validatePrivateLog(ticket.guildId, ticket.logChannelId, ticket.supportRoleIds);
     const message = await channel.messages.fetch(ticket.closing.logMessageId);
     if (message.author.id !== this.client.user.id || !message.attachments.some(attachment => attachment.name === `ticket-${ticketNumber(ticket)}-ciclo-${ticket.reopenCount}.html`)) throw clientError(409, 'Log final ou transcrição ausente. O canal foi preservado.');
   }
-  async removeChannel(ticket) {
+  async removeChannel(ticket, expectedLatestMessageId) {
     if (!ticket.channelId) throw clientError(409, 'O ticket não possui um canal para remover.');
     let channel;
     try { channel = await (await this.guild(ticket.guildId)).channels.fetch(ticket.channelId, { force: true }); }
@@ -193,7 +291,8 @@ class DiscordTicketAdapter {
       throw Object.assign(clientError(409, 'O canal não corresponde a este ticket e ciclo. Nenhum canal foi removido.'), { code: 'TICKET_CHANNEL_MISMATCH' });
     }
     await this.lockChannel(ticket);
-    if (await this.latestMessageId(ticket) !== ticket.closing.transcript.lastMessageId) throw clientError(409, 'Há mensagens posteriores à transcrição. O canal foi preservado para revisão manual.');
+    expectedLatestMessageId ||= ticket.closing.transcript.lastMessageId;
+    if (await this.latestMessageId(ticket) !== expectedLatestMessageId) throw clientError(409, 'Há mensagens posteriores à transcrição. O canal foi preservado para revisão manual.');
     await channel.delete(`Ticket #${ticketNumber(ticket)} encerrado e transcrito`);
     return true;
   }
@@ -353,9 +452,11 @@ class DiscordTicketAdapter {
     }
   }
 
-  async aiHandoffStaff(ticket, runId) {
+  async aiHandoffStaff(ticket, runId, reason = 'user_requested_human') {
     const log = await this.validatePrivateLog(ticket.guildId, ticket.logChannelId, ticket.supportRoleIds);
-    await this.send(log, { content: `Atendimento humano solicitado no ticket #${ticketNumber(ticket)}: <#${ticket.channelId}>. IA pausada.` }, `ticket-ai-human-log:${runId}`);
+    const reasons = { user_requested_human: 'solicitação do usuário', unsupported_request: 'pedido fora da capacidade segura da IA',
+      low_confidence: 'baixa confiança na resposta', sensitive_action_required: 'ação sensível exige equipe', repeated_failure: 'falhas automáticas repetidas' };
+    await this.send(log, { content: `Atendimento humano solicitado no ticket #${ticketNumber(ticket)}: <#${ticket.channelId}>. IA pausada. Motivo: ${reasons[reason] || 'limitação da IA'}.` }, `ticket-ai-human-log:${runId}`);
   }
 }
 module.exports = { DiscordTicketAdapter, BOT_PERMISSIONS };

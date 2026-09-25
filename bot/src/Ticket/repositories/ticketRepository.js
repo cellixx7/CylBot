@@ -23,6 +23,22 @@ class TicketRepository {
     this.store.write(data);
     return structuredClone(ticket);
   }
+  closeMissingChannel(ticket, closedAt) {
+    const current = this.get(ticket.guildId, ticket.id);
+    if (!current || current.channelId !== ticket.channelId || !current.initialized || current.closing || current.reopening
+      || !['OPEN', 'CLAIMED', 'REOPENED'].includes(current.status)) return null;
+    const reason = 'Canal removido externamente no Discord.';
+    current.status = 'CLOSED';
+    current.channelId = null;
+    current.initialMessageId = null;
+    current.closedAt = closedAt;
+    current.closing = { actorUserId: null, reason,
+      summary: 'Encerrado automaticamente sem transcript porque o canal não existe mais.',
+      startedAt: closedAt, completed: true, channelMissing: true, transcriptUnavailable: true };
+    current.events.push({ type: 'TICKET_CLOSED', ticketId: current.id, actorUserId: null, createdAt: closedAt,
+      metadata: { reason, cycle: current.reopenCount, source: 'discord_channel_missing' } });
+    return this.save(current);
+  }
   save(ticket) {
     const data = this.store.read();
     if (!data[ticket.guildId]?.tickets?.[ticket.id]) throw new Error('Ticket não encontrado no armazenamento.');

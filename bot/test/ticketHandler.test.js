@@ -13,6 +13,7 @@ const { setTicketContext } = require('../src/Ticket/lib/ticketDiagnostics');
 function interaction(customId, { userId = ids.user, channelId = ids.panel, kind = 'button', fields = {}, values } = {}) {
   const result = {};
   return { result, customId, guildId: ids.guild, channelId, user: { id: userId, bot: false }, values,
+    message: { async edit(payload) { result.messageEdit = payload; } },
     isButton: () => kind === 'button', isModalSubmit: () => kind === 'modal', isChatInputCommand: () => false,
     isStringSelectMenu: () => kind === 'string', isRoleSelectMenu: () => kind === 'role', isChannelSelectMenu: () => kind === 'channel',
     fields: { getTextInputValue: key => fields[key] || '' },
@@ -20,6 +21,7 @@ function interaction(customId, { userId = ids.user, channelId = ids.panel, kind 
     async deferReply(payload) { result.defer = payload; this.deferred = true; },
     async deferUpdate() { this.deferred = true; },
     async editReply(payload) { result.edit = payload; },
+    async update(payload) { result.update = payload; this.replied = true; },
     async followUp(payload) { result.error = payload; },
     async showModal(payload) { result.modal = payload.toJSON(); },
   };
@@ -184,10 +186,24 @@ test('registry despacha ticket; painel → categoria → modal → canal usa ser
   const category = interaction('ticket:category', { kind: 'string', values: ['support'] });
   await event.execute(category, bot);
   assert.equal(category.result.modal.custom_id, 'ticket:open:support');
+  assert.equal(category.result.messageEdit.components.length, 0);
   const form = interaction('ticket:open:support', { kind: 'modal', fields: { 'ticket:subject': 'Assunto', 'ticket:description': 'Descrição' } });
   await event.execute(form, bot);
   assert.match(form.result.edit.content, /Ticket #000001 aberto/);
   assert.equal(f.repository.list(ids.guild).length, 1);
+
+  const repeated = interaction('ticket:create');
+  await event.execute(repeated, bot);
+  assert.match(repeated.result.edit.content, new RegExp(`<#${f.repository.list(ids.guild)[0].channelId}>`));
+  const another = interaction('ticket:existing:new');
+  await event.execute(another, bot);
+  assert.equal(another.result.update.components[0].toJSON().components[0].custom_id, 'ticket:category:new');
+  const secondCategory = interaction('ticket:category:new', { kind: 'string', values: ['support'] });
+  await event.execute(secondCategory, bot);
+  assert.equal(secondCategory.result.modal.custom_id, 'ticket:open:support:new');
+  const secondForm = interaction('ticket:open:support:new', { kind: 'modal', fields: { 'ticket:subject': 'Outro assunto', 'ticket:description': 'Outra necessidade' } });
+  await event.execute(secondForm, bot);
+  assert.equal(f.repository.list(ids.guild).length, 2);
 });
 
 test('handler passa por claim, modal de fechamento, log, confirmação de remoção e reabertura', async t => {
@@ -230,7 +246,7 @@ test('custom IDs inválidos, outro contexto e tipos errados não executam açõe
 test('wizard expõe componentes válidos com namespace, selects tipados e até cinco categorias', async t => {
   const f = ticketFixture(t, { configured: false });
   const session = await f.setup.begin({ guildId: ids.guild, userId: ids.admin });
-  for (const step of ['start','role','structure','panel','log','category','categories','confirm']) {
+  for (const step of ['resume','start','role','structure','panel','log','category','categories','confirm']) {
     const view = setupView({ ...session, step });
     for (const actionRow of view.components) for (const component of actionRow.toJSON().components) {
       assert(component.custom_id.startsWith('ticket:'));
@@ -239,9 +255,31 @@ test('wizard expõe componentes válidos com namespace, selects tipados e até c
   }
   for (const component of panelPayload().components[0].toJSON().components) assert(component.custom_id.startsWith('ticket:'));
   const ticket = await (ticketFixture(t)).create();
+  const openActions = initialPayload(ticket).components[0].toJSON().components;
+  assert(openActions.some(component => component.custom_id.startsWith('ticket:claim:')));
+  ticket.assignedUserId = ids.staff;
+  const claimedActions = initialPayload(ticket).components[0].toJSON().components;
+  assert.equal(claimedActions.some(component => component.custom_id.startsWith('ticket:claim:')), false);
   ticket.closing = { reason: 'Fim', summary: '', startedAt: f.now() };
   for (const payload of [initialPayload(ticket), closedPayload(ticket)]) {
     assert.deepEqual(payload.allowedMentions, { parse: [] });
     payload.embeds[0].toJSON();
   }
+});
+
+test('seletor abre o modal mesmo quando a mensagem efemera original ja foi removida', async t => {
+  const f = ticketFixture(t);
+  const logs = [];
+  t.mock.method(logger, 'warn', (event, data) => logs.push({ event, data }));
+  const selected = interaction('ticket:category', { kind: 'string', values: ['support'] });
+  selected.message.edit = async () => {
+    throw Object.assign(new Error('Unknown Message'), { name: 'DiscordAPIError[10008]', code: 10008, status: 404 });
+  };
+  await handleTicketInteraction(selected, services(f));
+  assert.equal(selected.result.modal.custom_id, 'ticket:open:support');
+  assert.equal(selected.result.error, undefined);
+  const warning = logs.find(log => log.event === 'ticket.source_message_update_failed');
+  assert.equal(warning.data.action, 'category');
+  assert.equal(warning.data.stage, 'interaction.source_message');
+  assert.equal(warning.data.errorCode, 10008);
 });

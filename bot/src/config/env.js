@@ -74,6 +74,7 @@ function loadEnv(source, { requireDiscord = true, requireSpotifyAuth = false } =
   }
   const databaseUrl = optional(source, 'DATABASE_URL');
   const openRouterModel = optional(source, 'OPENROUTER_MODEL') || 'openai/gpt-4.1-mini';
+  const ticketAIGuildIds = (optional(source, 'TICKET_AI_GUILD_IDS') || '').split(',').map(id => id.trim()).filter(Boolean);
   if (environment === 'production' && !databaseUrl) {
     throw new Error('DATABASE_URL is required in production.');
   }
@@ -93,8 +94,10 @@ function loadEnv(source, { requireDiscord = true, requireSpotifyAuth = false } =
     database: { url: databaseUrl },
     tickets: { messageContentEnabled: optional(source, 'TICKETS_MESSAGE_CONTENT_ENABLED') === 'true' },
     ticketAI: {
-      enabled: optional(source, 'TICKET_AI_ENABLED') === 'true',
-      guildIds: (optional(source, 'TICKET_AI_GUILD_IDS') || '').split(',').map(id => id.trim()).filter(Boolean),
+      enabled: optional(source, 'TICKET_AI_ENABLED') === 'true'
+        || (environment !== 'production' && Boolean(databaseUrl && optional(source, 'OPENROUTER_API_KEY'))),
+      guildIds: ticketAIGuildIds,
+      allowAllGuilds: environment !== 'production' && ticketAIGuildIds.length === 0,
       model: optional(source, 'TICKET_AI_MODEL') || openRouterModel,
       timeoutMs: integer(source, 'TICKET_AI_TIMEOUT_MS', 20000, 30000),
     },

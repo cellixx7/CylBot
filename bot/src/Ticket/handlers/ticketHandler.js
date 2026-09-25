@@ -1,7 +1,7 @@
 const { MessageFlags, ButtonStyle } = require('discord.js');
 const { clientError, isClientError } = require('../../api/http/errors');
 const { logger } = require('../../lib/logger');
-const { setupView, categoryView, modal, row, button } = require('../lib/ticketComponents');
+const { setupView, categoryView, existingTicketView, modal, row, button } = require('../lib/ticketComponents');
 const { ticketNumber } = require('../services/ticketConstants');
 const { interactionDetails, runTicketOperation, setTicketContext, setTicketStage, ticketLogContext, errorDetails } = require('../lib/ticketDiagnostics');
 const UUID = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';
@@ -42,7 +42,7 @@ async function executeTicketInteraction(interaction, services) {
     const input = context(interaction);
     const customId = interaction.customId;
     let match;
-    if ((match = customId.match(new RegExp(`^ticket:setup:(start|cancel|role|auto|existing|panel|log|category|defaults|custom|confirm):(${UUID})$`)))) {
+    if ((match = customId.match(new RegExp(`^ticket:setup:(start|restart|continue|cancel|disable|deactivate|role|auto|existing|panel|log|category|defaults|custom|confirm):(${UUID})$`)))) {
       const [, action, sessionId] = match;
       const selection = ['role', 'panel', 'log', 'category'].includes(action);
       const validKind = selection ? ({ role: interaction.isRoleSelectMenu?.(), panel: interaction.isChannelSelectMenu?.(), log: interaction.isChannelSelectMenu?.(), category: interaction.isChannelSelectMenu?.() }[action])
@@ -55,7 +55,10 @@ async function executeTicketInteraction(interaction, services) {
       } else {
         if (interaction.isModalSubmit()) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         else await interaction.deferUpdate();
-        if (action === 'confirm') {
+        if (action === 'deactivate') {
+          await services.ticketSetup.disable(input);
+          await interaction.editReply({ content: 'Sistema de tickets desativado. Canais, tickets e históricos foram preservados.', embeds: [], components: [], allowedMentions: { parse: [] } });
+        } else if (action === 'confirm') {
           const config = await services.ticketSetup.confirm({ ...input, sessionId });
           await interaction.editReply({ content: `Sistema configurado. Painel: <#${config.panelChannelId}>. Logs privados: <#${config.logChannelId}>.`, embeds: [], components: [], allowedMentions: { parse: [] } });
         } else {
@@ -66,16 +69,28 @@ async function executeTicketInteraction(interaction, services) {
       }
     } else if (customId === 'ticket:create' && interaction.isButton()) {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      await interaction.editReply(categoryView(await services.tickets.categories(input)));
-    } else if (customId === 'ticket:category' && interaction.isStringSelectMenu?.()) {
+      const active = await services.tickets.activeForUser(input);
+      await interaction.editReply(active.length ? existingTicketView(active) : categoryView(await services.tickets.categories(input)));
+    } else if (customId === 'ticket:existing:continue' && interaction.isButton()) {
+      await interaction.update({ content: 'Continue o atendimento no ticket que já está aberto.', components: [], allowedMentions: { parse: [] } });
+    } else if (customId === 'ticket:existing:new' && interaction.isButton()) {
+      await interaction.update(categoryView(await services.tickets.categories(input), true));
+    } else if ((customId === 'ticket:category' || customId === 'ticket:category:new') && interaction.isStringSelectMenu?.()) {
       const categoryId = interaction.values?.[0];
       const categories = await services.tickets.categories(input);
       if (!categories.some(category => category.id === categoryId)) throw clientError(400, 'Categoria de ticket inválida.');
-      await interaction.showModal(modal(`open:${categoryId}`, 'Abrir ticket', [['subject', 'Assunto', 100], ['description', 'Descrição', 2000, true]]));
-    } else if ((match = customId.match(/^ticket:open:([a-z0-9-]{1,40})$/)) && interaction.isModalSubmit()) {
+      setTicketStage('interaction.modal');
+      await interaction.showModal(modal(`open:${categoryId}${customId.endsWith(':new') ? ':new' : ''}`, 'Abrir ticket', [['subject', 'Assunto', 100], ['description', 'Descrição', 2000, true]]));
+      setTicketStage('interaction.source_message');
+      try {
+        await interaction.message?.edit({ content: 'Categoria selecionada. Preencha os dados do ticket.', components: [], allowedMentions: { parse: [] } });
+      } catch (error) {
+        logger.warn('ticket.source_message_update_failed', { ...ticketLogContext(), ...errorDetails(error) });
+      }
+    } else if ((match = customId.match(/^ticket:open:([a-z0-9-]{1,40})(:new)?$/)) && interaction.isModalSubmit()) {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const ticket = await services.tickets.create({ ...input, categoryId: match[1],
-        subject: interaction.fields.getTextInputValue('ticket:subject'), description: interaction.fields.getTextInputValue('ticket:description') });
+        subject: interaction.fields.getTextInputValue('ticket:subject'), description: interaction.fields.getTextInputValue('ticket:description'), allowAdditional: Boolean(match[2]) });
       setTicketContext(ticket); setTicketStage('interaction.response');
       await interaction.editReply({ content: `Ticket #${ticketNumber(ticket)} aberto: <#${ticket.channelId}>.`, allowedMentions: { parse: [] } });
     } else if ((match = customId.match(new RegExp(`^ticket:(claim|close|finish):(${UUID})$`)))) {

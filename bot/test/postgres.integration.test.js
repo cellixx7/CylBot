@@ -34,6 +34,14 @@ run('PostgreSQL mantém sequência, claim concorrente e primeiro fechamento com 
     const freshRepository = new PostgresTicketRepository(database);
     const persisted = await freshRepository.get(guildId, created[0].id);
     assert.equal(persisted.id, created[0].id);
+    const missingChannel = created[1];
+    missingChannel.channelId = 'deleted-channel';
+    await freshRepository.save(missingChannel);
+    const reconciled = await freshRepository.closeMissingChannel(missingChannel, Date.now());
+    assert.equal(reconciled.status, S.CLOSED);
+    assert.equal(reconciled.channelId, null);
+    assert.equal(reconciled.closing.channelMissing, true);
+    assert.equal(reconciled.events.at(-1).metadata.source, 'discord_channel_missing');
     const results = await Promise.all([
       freshRepository.claimTicket(persisted, { userId: 'staff-1', name: 'Staff 1', claimedAt: Date.now(), event: { type: E.CLAIMED, actorUserId: 'staff-1', createdAt: Date.now(), metadata: {} } }),
       freshRepository.claimTicket(persisted, { userId: 'staff-2', name: 'Staff 2', claimedAt: Date.now(), event: { type: E.CLAIMED, actorUserId: 'staff-2', createdAt: Date.now(), metadata: {} } }),

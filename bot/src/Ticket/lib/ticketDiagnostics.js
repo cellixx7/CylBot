@@ -16,10 +16,11 @@ function interactionDetails(customId) {
     || (match = customId?.match(new RegExp(`^ticket:(remove|delete|reopen):(${UUID}):\\d{1,6}$`)))) {
     return { action: match[1] === 'finish' ? 'close' : match[1], customIdAction: `ticket:${match[1]}`, ticketId: match[2] };
   }
-  if ((match = customId?.match(new RegExp(`^ticket:setup:(start|cancel|role|auto|existing|panel|log|category|defaults|custom|confirm):${UUID}$`)))) {
+  if ((match = customId?.match(new RegExp(`^ticket:setup:(start|restart|continue|cancel|disable|deactivate|role|auto|existing|panel|log|category|defaults|custom|confirm):${UUID}$`)))) {
     return { action: `setup.${match[1]}`, customIdAction: `ticket:setup:${match[1]}` };
   }
-  if (/^ticket:(create|category)$/.test(customId) || /^ticket:open:[a-z0-9-]{1,40}$/.test(customId)) {
+  if (/^ticket:(create|category(?::new)?|existing:(?:continue|new))$/.test(customId)
+    || /^ticket:open:[a-z0-9-]{1,40}(?::new)?$/.test(customId)) {
     const action = customId.split(':')[1];
     return { action, customIdAction: `ticket:${action}` };
   }

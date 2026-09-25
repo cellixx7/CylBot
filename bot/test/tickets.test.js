@@ -154,6 +154,7 @@ test('claim revalida staff, rejeita owner comum, segunda atribuição, outra gui
   assert.equal(claimed.status, S.CLAIMED);
   assert.equal(claimed.assignedUserId, ids.staff);
   assert.equal(claimed.claimedAt, f.now());
+  assert.equal(f.calls.includes('updateTicketAccess'), true);
   assert.equal(f.calls.includes('updateInitial'), true);
   await assert.rejects(f.service.claim(f.action(ticket)), /já está sendo atendido/);
 });
@@ -175,6 +176,7 @@ test('fechamento salva transcript e motivo, publica log, bloqueia e só permite 
   assert.equal(f.calls.includes('delete'), false);
   assert.equal(closed.events.at(-1).type, E.CLOSED);
   assert.equal(f.calls.includes('updateInitial'), true);
+  assert.equal(f.calls.includes('scheduleChannelRemoval'), true);
   assert.equal(closed.archives.length, 1);
   const html = f.transcripts.read(closed.closing.transcript).toString();
   assert(html.includes('&lt;script&gt;'));
@@ -287,4 +289,29 @@ test('reabertura interrompida retoma o novo canal reservado e respeita limite do
   const reopened = await f.makeService().reopen(f.logAction(ticket));
   assert.equal(reopened.channelId, channelId);
   assert.equal(reopened.reopenCount, 1);
+});
+
+test('ticket ativo com canal apagado e encerrado automaticamente e deixa de bloquear nova abertura', async t => {
+  const f = ticketFixture(t);
+  const ticket = await f.create();
+  f.channels.delete(ticket.channelId);
+
+  assert.deepEqual(await f.service.activeForUser(f.input), []);
+  const closed = f.repository.get(ids.guild, ticket.id);
+  assert.equal(closed.status, S.CLOSED);
+  assert.equal(closed.channelId, null);
+  assert.equal(closed.closing.completed, true);
+  assert.equal(closed.closing.channelMissing, true);
+  assert.equal(closed.closing.transcript, undefined);
+  assert.equal(closed.events.at(-1).type, E.CLOSED);
+  assert.equal(closed.events.at(-1).metadata.source, 'discord_channel_missing');
+  await assert.rejects(f.service.reopen(f.logAction(closed)), /transcri/);
+
+  f.advance();
+  const replacement = await f.create();
+  assert.equal(replacement.status, S.OPEN);
+  assert.notEqual(replacement.id, ticket.id);
+  const eventClosed = await f.reconciliation.channelDeleted({ guildId: ids.guild, channelId: replacement.channelId }, f.now());
+  assert.equal(eventClosed.status, S.CLOSED);
+  assert.equal(eventClosed.channelId, null);
 });

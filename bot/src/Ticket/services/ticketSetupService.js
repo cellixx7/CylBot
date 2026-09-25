@@ -12,12 +12,31 @@ class TicketSetupService {
   }
   async begin({ guildId, userId }) {
     await this.permissions.requireAction(TICKET_PERMISSION.CONFIGURE, guildId, userId);
-    const existing = await this.repository.get(guildId);
-    if (existing?.ready) throw clientError(409, 'Tickets já configurados neste servidor. O painel existente continua ativo.');
+    let existing = await this.repository.get(guildId);
+    let repairStep;
+    let repairKeys = [];
+    if (existing?.ready) {
+      const missing = this.adapter.missingStructure ? await this.adapter.missingStructure(existing) : [];
+      if (!missing.length) repairStep = 'manage';
+      else {
+        repairKeys = missing;
+        existing = { ...existing, ready: false };
+        for (const key of missing) existing[key] = null;
+        if (missing.includes('panelChannelId')) existing.panelMessageId = null;
+        await this.repository.save(existing);
+        repairStep = existing.mode === 'auto' ? 'confirm'
+          : ({ panelChannelId: 'panel', logChannelId: 'log', activeCategoryId: 'category' }[missing[0]]);
+      }
+    }
     for (const [id, session] of this.sessions) if (session.expiresAt <= this.now() || (session.guildId === guildId && session.userId === userId)) this.sessions.delete(id);
     if (this.sessions.size >= 1000) throw clientError(429, 'Muitas configurações em andamento. Tente novamente mais tarde.');
     const session = { id: randomUUID(), guildId, userId, expiresAt: this.now() + 15 * 60_000,
-      step: existing ? 'confirm' : 'start', mode: 'auto', supportRoleIds: [], categories: structuredClone(DEFAULT_CATEGORIES), ...existing };
+      step: 'start', mode: 'auto', supportRoleIds: [], categories: structuredClone(DEFAULT_CATEGORIES), ...existing, repairKeys };
+    if (repairStep === 'manage') session.step = 'manage';
+    else if (existing) {
+      session.step = 'resume';
+      session.resumeStep = repairStep || 'confirm';
+    }
     this.sessions.set(session.id, session);
     logger.info('ticket.setup_started', { guildId, userId });
     return structuredClone(session);
@@ -33,9 +52,25 @@ class TicketSetupService {
     const session = await this.session(input);
     const { action, values = [] } = input;
     if (action === 'cancel') { this.sessions.delete(session.id); return null; }
-    if (await this.repository.get(input.guildId)) throw clientError(409, 'Existe uma publicação pendente. Confirme para retomar a configuração salva.');
     const next = structuredClone(session);
-    if (action === 'start' && session.step === 'start') next.step = 'role';
+    if (action === 'disable' && session.step === 'manage') next.step = 'disable-confirm';
+    else if (action === 'continue' && session.step === 'resume') next.step = session.resumeStep || 'confirm';
+    else if (action === 'restart' && session.step === 'resume') {
+      next.step = 'start';
+      next.resumeStep = null;
+      next.mode = 'auto';
+      next.supportRoleIds = [];
+      next.categories = structuredClone(DEFAULT_CATEGORIES);
+      next.repairKeys = [];
+      if (session.mode !== 'auto') {
+        next.panelChannelId = null;
+        next.logChannelId = null;
+        next.activeCategoryId = null;
+        next.publicCategoryId = null;
+        next.panelMessageId = null;
+      }
+    }
+    else if (action === 'start' && session.step === 'start') next.step = 'role';
     else if (action === 'role' && session.step === 'role') {
       if (values.length !== 1 || !/^\d{17,20}$/.test(values[0]) || values[0] === input.guildId) throw clientError(400, 'Selecione um cargo de suporte válido, diferente de @everyone.');
       next.supportRoleIds = values; next.step = 'structure';
@@ -44,7 +79,12 @@ class TicketSetupService {
     else if (['panel', 'log', 'category'].includes(action) && session.step === action) {
       if (values.length !== 1 || !/^\d{17,20}$/.test(values[0])) throw clientError(400, 'Selecione um canal válido.');
       const keys = { panel: 'panelChannelId', log: 'logChannelId', category: 'activeCategoryId' };
-      next[keys[action]] = values[0]; next.step = { panel: 'log', log: 'category', category: 'categories' }[action];
+      next[keys[action]] = values[0];
+      if (next.repairKeys?.length) {
+        next.repairKeys = next.repairKeys.filter(key => key !== keys[action]);
+        next.step = next.repairKeys.length
+          ? ({ panelChannelId: 'panel', logChannelId: 'log', activeCategoryId: 'category' }[next.repairKeys[0]]) : 'confirm';
+      } else next.step = { panel: 'log', log: 'category', category: 'categories' }[action];
     } else if (action === 'defaults' && session.step === 'categories') next.step = 'confirm';
     else if (action === 'custom' && session.step === 'categories') {
       const lines = String(input.categories || '').trim().split('\n').filter(line => line.trim());
@@ -60,6 +100,18 @@ class TicketSetupService {
     this.sessions.set(next.id, next);
     return structuredClone(next);
   }
+  async disable({ guildId, userId }) {
+    await this.permissions.requireAction(TICKET_PERMISSION.CONFIGURE, guildId, userId);
+    const config = await this.repository.get(guildId);
+    if (!config?.ready) throw clientError(409, 'O sistema de tickets já está desativado.');
+    await this.adapter.disablePanel(config);
+    config.ready = false;
+    config.panelMessageId = null;
+    await this.repository.save(config);
+    for (const [id, session] of this.sessions) if (session.guildId === guildId) this.sessions.delete(id);
+    logger.info('ticket.setup_disabled', { guildId, userId });
+    return config;
+  }
   async confirm(input) {
     if (this.busy.has(input.guildId)) throw clientError(409, 'A configuração está sendo publicada. Aguarde.');
     this.busy.add(input.guildId);
@@ -74,6 +126,9 @@ class TicketSetupService {
         activeCategoryId: session.activeCategoryId || null, publicCategoryId: null,
         panelMessageId: null, ready: false, createdBy: input.userId, createdAt: this.now(),
       };
+      Object.assign(config, { mode: session.mode, supportRoleIds: session.supportRoleIds, categories: session.categories,
+        panelChannelId: session.panelChannelId || null, logChannelId: session.logChannelId || null,
+        activeCategoryId: session.activeCategoryId || null });
       await this.adapter.validateSetup(config);
       await this.repository.save(config);
       config = await this.adapter.ensureStructure(config, updated => this.repository.save(updated));

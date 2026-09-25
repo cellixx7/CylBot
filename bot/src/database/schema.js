@@ -187,15 +187,20 @@ const ticketAIConfigs = pgTable('ticket_ai_configs', {
   supportInstructions: text('support_instructions').notNull().default(''),
   capabilities: text('capabilities').array().notNull().default(['reply', 'ask_clarifying_question', 'summarize', 'request_human', 'suggest_close']),
   humanEscalationEnabled: boolean('human_escalation_enabled').notNull().default(true),
+  inactivityTimeoutSeconds: integer('inactivity_timeout_seconds').notNull().default(900),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, table => ({ levelCheck: check('ticket_ai_autonomy_level_check', sql`${table.autonomyLevel} between 0 and 3`) }));
+}, table => ({ levelCheck: check('ticket_ai_autonomy_level_check', sql`${table.autonomyLevel} between 0 and 3`),
+  inactivityCheck: check('ticket_ai_inactivity_timeout_check', sql`${table.inactivityTimeoutSeconds} between 5 and 86400`) }));
 
 const ticketAITicketStates = pgTable('ticket_ai_ticket_states', {
   ticketId: uuid('ticket_id').primaryKey().references(() => tickets.id, { onDelete: 'cascade' }),
   guildId: text('guild_id').notNull(),
   paused: boolean('paused').notNull().default(false),
   escalatedAt: timestamp('escalated_at', { withTimezone: true }),
+  followUpDueAt: timestamp('follow_up_due_at', { withTimezone: true }),
+  awaitingClosureConfirmation: boolean('awaiting_closure_confirmation').notNull().default(false),
+  handoffReason: text('handoff_reason'),
   lastRunAt: timestamp('last_run_at', { withTimezone: true }),
   lastMessageId: text('last_message_id'),
   leaseId: uuid('lease_id'),

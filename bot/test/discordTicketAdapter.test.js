@@ -103,6 +103,16 @@ test('log com allow explícito a terceiro é rejeitado mesmo com deny de @everyo
   await assert.rejects(f.adapter.validatePrivateLog(ids.guild, ids.log, [ids.role]), /somente/);
 });
 
+test('encaminhamento da IA registra motivo seguro no log privado sem conteúdo do usuário', async () => {
+  const f = setup();
+  const ticket = { id: 'ticket-sintetico', sequence: 7, guildId: ids.guild, channelId: ids.panel,
+    logChannelId: ids.log, supportRoleIds: [ids.role] };
+  await f.adapter.aiHandoffStaff(ticket, 'run-sintetico', 'sensitive_action_required');
+  const content = f.channels.get(ids.log).sent.content;
+  assert.match(content, /Motivo: ação sensível exige equipe/);
+  assert.doesNotMatch(content, /pergunta|mensagem do usuário/i);
+});
+
 test('publicar transcript revalida privacidade do log antes de enviar o anexo', async () => {
   const f = setup();
   const channel = f.channels.get(ids.log);
@@ -139,14 +149,28 @@ test('canal privado permite somente criador/suporte/bot, bloqueio remove escrita
   assert.equal(options.parent, ids.category);
   const overwritten = new Map(options.permissionOverwrites.map(value => [value.id, value]));
   assert(new PermissionsBitField(overwritten.get(ids.guild).deny).has(P.ViewChannel));
-  for (const id of [ids.user, ids.role, botId]) assert(new PermissionsBitField(overwritten.get(id).allow).has([P.ViewChannel, P.SendMessages]));
+  for (const id of [ids.user, botId]) assert(new PermissionsBitField(overwritten.get(id).allow).has([P.ViewChannel, P.SendMessages]));
+  assert(new PermissionsBitField(overwritten.get(ids.role).allow).has(P.ViewChannel));
+  assert(new PermissionsBitField(overwritten.get(ids.role).deny).has(P.SendMessages));
   assert.equal(new PermissionsBitField(overwritten.get(botId).allow).has(P.ManageRoles), false);
+  Object.assign(ticket, { description: 'Descrição', categoryName: 'Suporte', creatorName: 'Criador', subject: 'Assunto', status: 'OPEN' });
+  await f.adapter.publishInitial(ticket);
+  const initial = f.channels.get(ticket.channelId).sent;
+  assert.equal(initial.content, `<@${ids.user}>`);
+  assert.deepEqual(initial.allowedMentions, { parse: [], users: [ids.user] });
+  assert.match(initial.embeds[0].toJSON().footer.text, /localhost:5173/);
   assert.equal(await f.adapter.createTicketChannel(ticket, f.config), ticket.channelId);
   assert.equal(f.created.length, 1);
+  ticket.assignedUserId = ids.staff;
+  await f.adapter.updateTicketAccess(ticket);
+  const claimed = f.channels.get(ticket.channelId).permissionOverwrites.cache;
+  assert(claimed.get(ids.staff).allow.has([P.ViewChannel, P.SendMessages]));
+  assert(claimed.get(ids.role).deny.has(P.SendMessages));
   await f.adapter.lockChannel(ticket);
   const locked = f.channels.get(ticket.channelId).permissionOverwrites.cache;
   assert(locked.get(ids.user).deny.has(P.SendMessages));
   assert(locked.get(ids.role).deny.has(P.SendMessagesInThreads));
+  assert(locked.get(ids.staff).deny.has(P.SendMessages));
   assert(locked.get(botId).allow.has(P.ManageChannels));
 });
 
@@ -238,4 +262,38 @@ test('adapter allows only validated ticket participants as Discord mentions', as
   await f.adapter.publishTicketMessage(ticket, { id: 'mention-safe', authorName: 'Member', authorType: 'USER', visibility: 'PUBLIC',
     content: `Oi <@${ids.user}> <@${ids.staff}> <@666666666666666666> @everyone @here <@&${ids.role}>` });
   assert.deepEqual(f.channels.get(ticket.channelId).sent.allowedMentions, { parse: [], users: [ids.user, ids.staff] });
+});
+
+test('estrutura automatica recria checkpoints de canais apagados e aguarda cada persistencia', async () => {
+  const f = setup();
+  const config = {
+    guildId: ids.guild, setupId: 'setup', mode: 'auto', supportRoleIds: [ids.role],
+    publicCategoryId: '100000000000000001', activeCategoryId: '100000000000000002',
+    panelChannelId: '100000000000000003', logChannelId: '100000000000000004',
+    panelMessageId: '100000000000000005',
+  };
+  let pending = false;
+  const snapshots = [];
+  const save = async current => {
+    assert.equal(pending, false);
+    pending = true;
+    await Promise.resolve();
+    snapshots.push(structuredClone(current));
+    pending = false;
+  };
+  const result = await f.adapter.ensureStructure(config, save);
+  assert.equal(f.created.length, 4);
+  assert.equal(snapshots.length, 5);
+  assert.equal(snapshots[0].publicCategoryId, null);
+  assert.equal(snapshots[0].panelMessageId, null);
+  assert.equal(f.created[2].parent, result.publicCategoryId);
+  assert.equal(f.created[3].parent, result.activeCategoryId);
+  assert(f.channels.has(result.panelChannelId));
+  assert(f.channels.has(result.logChannelId));
+});
+
+test('checagem de estrutura exige categoria publica somente no modo automatico', async () => {
+  const f = setup();
+  assert.deepEqual(await f.adapter.missingStructure(f.config), []);
+  assert.deepEqual(await f.adapter.missingStructure({ ...f.config, mode: 'auto' }), ['publicCategoryId']);
 });

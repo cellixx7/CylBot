@@ -30,9 +30,15 @@ test('timeout aborta requisição do provider sem chamar OpenRouter real', async
 test('config centraliza modelo, opt-in e timeout com default seguro', () => {
   const base = loadEnv({}, { requireDiscord: false });
   assert.equal(base.ticketAI.enabled, false); assert.deepEqual(base.ticketAI.guildIds, []);
+  assert.equal(base.ticketAI.allowAllGuilds, true);
   assert.equal(base.ticketAI.model, base.openRouter.model);
   const explicit = loadEnv({ OPENROUTER_MODEL: 'shared-model', TICKET_AI_MODEL: 'special-model', TICKET_AI_GUILD_IDS: '123, 456', TICKET_AI_ENABLED: 'true' }, { requireDiscord: false });
   assert.equal(explicit.ticketAI.model, 'special-model'); assert.equal(explicit.ticketAI.enabled, true);
+  assert.equal(explicit.ticketAI.allowAllGuilds, false);
   assert.deepEqual(explicit.ticketAI.guildIds, ['123', '456']);
+  const local = loadEnv({ DATABASE_URL: 'postgresql://test:test@localhost/test', OPENROUTER_API_KEY: 'synthetic' }, { requireDiscord: false });
+  assert.equal(local.ticketAI.enabled, true); assert.deepEqual(local.ticketAI.guildIds, []); assert.equal(local.ticketAI.allowAllGuilds, true);
+  const production = loadEnv({ NODE_ENV: 'production', DATABASE_URL: 'postgresql://test:test@localhost/test', OPENROUTER_API_KEY: 'synthetic', TICKET_AI_ENABLED: 'true' }, { requireDiscord: false });
+  assert.equal(production.ticketAI.allowAllGuilds, false);
   assert.throws(() => loadEnv({ TICKET_AI_TIMEOUT_MS: '30001' }, { requireDiscord: false }));
 });

@@ -2,13 +2,14 @@ require('./helpers/isolatedConfig');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { ticketAIFixture, ids } = require('./helpers/ticketAIFixture');
-const { validateConfig, validateOutput, DEFAULT_CONFIG, humanRequested } = require('../src/Ticket/services/ticketAIContract');
+const { validateConfig, validateOutput, normalizeHandoff, AI_HANDOFF_MESSAGE, DEFAULT_CONFIG, humanRequested } = require('../src/Ticket/services/ticketAIContract');
 const { logger } = require('../src/lib/logger');
 
 test('config valida níveis, tipos, allowlist e campos extras; admin é revalidado', async t => {
   const f = await ticketAIFixture(t);
   for (const config of [{ autonomyLevel: 4 }, { autonomyLevel: '2' }, { enabled: 'true' }, { capabilities: ['delete'] },
-    { serverContext: 'x'.repeat(2001) }, { token: 'secret' }, { humanEscalationEnabled: 1 }]) assert.throws(() => validateConfig(config));
+    { serverContext: 'x'.repeat(2001) }, { token: 'secret' }, { humanEscalationEnabled: 1 },
+    { inactivityTimeoutSeconds: 4 }, { inactivityTimeoutSeconds: 86401 }, { inactivityTimeoutSeconds: '900' }]) assert.throws(() => validateConfig(config));
   for (const level of [0, 1, 2, 3]) assert.equal(validateConfig({ autonomyLevel: level }).autonomyLevel, level);
   await assert.rejects(f.ai.configure({ guildId: ids.guild, userId: ids.user, config: {} }), { statusCode: 403 });
   await assert.rejects(f.ai.getConfig({ guildId: ids.otherGuild, userId: ids.admin }), { statusCode: 403 });
@@ -24,6 +25,17 @@ test('output exige JSON puro, campos exatos, ação conhecida, confiança e limi
     JSON.stringify({ ...good, tool: 'sql' }), JSON.stringify({ ...good, reason: 'execute_sql' })]) assert.throws(() => validateOutput(value));
 });
 
+test('resposta de incapacidade e normalizada para encaminhamento humano seguro', () => {
+  const proposal = normalizeHandoff({ message: 'Eu não tenho capacidade para fazer isso, deseja falar com uma pessoa?',
+    action: 'REPLY', confidence: 0.9, reason: 'user_question_answered', requiresHuman: false });
+  assert.equal(proposal.action, 'ESCALATE_TO_HUMAN');
+  assert.equal(proposal.requiresHuman, true);
+  assert.equal(proposal.message, AI_HANDOFF_MESSAGE);
+  for (const reason of ['unsupported_request', 'repeated_failure']) {
+    assert.equal(normalizeHandoff({ ...proposal, action: 'REPLY', message: 'Não resolvido', reason }).action, 'ESCALATE_TO_HUMAN');
+  }
+});
+
 for (const level of [0, 1, 2, 3]) test(`autonomia ${level} aplica policy em mensagens do usuário`, async t => {
   const f = await ticketAIFixture(t); await f.configure({ autonomyLevel: level });
   await f.send();
@@ -37,7 +49,7 @@ test('enabled off, entitlement ausente, CLOSED, claim e pausa bloqueiam geraçã
     const f = await ticketAIFixture(t);
     if (kind === 'off') await f.configure({ enabled: false });
     if (kind === 'entitlement') f.settings.enabled = false;
-    if (kind === 'guild') f.settings.guildIds = [];
+    if (kind === 'guild') f.settings.guildIds = [ids.otherGuild];
     if (kind === 'closed') await f.core.close(f.ticket);
     if (kind === 'claimed') await f.core.service.claim(f.core.action(f.ticket));
     if (kind === 'paused') await f.pause(true);
@@ -84,6 +96,75 @@ test('pedido de humano persiste escalation/pausa mesmo com IA off e ignora provi
   await f.makeService().onMessage({ ...f.input, content: 'quero atendente' });
   assert.equal(f.handoffs.length, 1);
   assert.equal(f.core.repository.get(ids.guild, f.ticket.id).status, 'OPEN');
+});
+
+test('IA que declara incapacidade informa o usuário, pausa e encaminha mesmo na autonomia 1', async t => {
+  const f = await ticketAIFixture(t);
+  await f.configure({ autonomyLevel: 1 });
+  Object.assign(f.proposal, { message: 'Eu não tenho capacidade para fazer isso, deseja falar com uma pessoa?',
+    action: 'REPLY', confidence: 0.95, reason: 'user_question_answered', requiresHuman: false });
+  const result = await f.send();
+  assert.equal(result.decision.action, 'ESCALATE_TO_HUMAN');
+  assert.equal(result.status, 'completed');
+  assert.equal(f.sent.at(-1), AI_HANDOFF_MESSAGE);
+  assert.equal(f.handoffs.length, 1);
+  assert.equal((await f.repository.getState(ids.guild, f.ticket.id)).paused, true);
+  f.advance();
+  await f.send({ messageId: 'depois-do-handoff' });
+  assert.equal(f.requests.length, 1);
+});
+
+test('incapacidade registra motivo e após a espera explica alternativas sem fechar o ticket', async t => {
+  const f = await ticketAIFixture(t);
+  await f.configure({ inactivityTimeoutSeconds: 15 });
+  Object.assign(f.proposal, { message: 'Não consigo executar essa ação.', action: 'ESCALATE_TO_HUMAN',
+    confidence: 0.9, reason: 'sensitive_action_required', requiresHuman: true });
+  await f.send();
+  const state = await f.repository.getState(ids.guild, f.ticket.id);
+  assert.equal(state.handoffReason, 'sensitive_action_required');
+  assert.equal(new Date(state.followUpDueAt).getTime() - new Date(state.escalatedAt).getTime(), 15000);
+  assert.equal(f.handoffs[0].reason, 'sensitive_action_required');
+  f.advance(16000);
+  await f.ai.processInactivity();
+  assert.match(f.sent.at(-1), /ação reservada à equipe/);
+  assert.match(f.sent.at(-1), /Como alternativa/);
+  assert.match(f.sent.at(-1), /Você precisa de mais alguma coisa/);
+  assert.equal((await f.repository.getState(ids.guild, f.ticket.id)).awaitingClosureConfirmation, true);
+  assert.equal(f.core.repository.get(ids.guild, f.ticket.id).status, 'OPEN');
+});
+
+test('acompanhamento não se intromete depois que uma pessoa assume o ticket', async t => {
+  const f = await ticketAIFixture(t);
+  await f.configure({ inactivityTimeoutSeconds: 5 });
+  await f.send({ content: 'quero atendente' });
+  await f.core.service.claim(f.core.action(f.ticket));
+  f.advance(6000);
+  await f.ai.processInactivity();
+  assert.equal(f.sent.length, 1);
+  assert.equal((await f.repository.getState(ids.guild, f.ticket.id)).awaitingClosureConfirmation, false);
+});
+
+test('resposta após acompanhamento retoma a IA; somente negativa explícita encerra', async t => {
+  const continuing = await ticketAIFixture(t);
+  await continuing.configure({ inactivityTimeoutSeconds: 15 });
+  await continuing.send({ content: 'quero falar com uma pessoa' });
+  continuing.advance(16000);
+  await continuing.ai.processInactivity();
+  await continuing.send({ content: 'sim, tenho outra dúvida', messageId: 'continuar' });
+  assert.equal(continuing.core.repository.get(ids.guild, continuing.ticket.id).status, 'OPEN');
+  assert.equal((await continuing.repository.getState(ids.guild, continuing.ticket.id)).paused, false);
+  assert.equal(continuing.requests.length, 1);
+
+  const closing = await ticketAIFixture(t);
+  await closing.configure({ inactivityTimeoutSeconds: 5 });
+  await closing.send({ content: 'quero atendente' });
+  closing.advance(6000);
+  await closing.ai.processInactivity();
+  const result = await closing.send({ content: 'não, pode encerrar', messageId: 'encerrar' });
+  assert.equal(result.status, 'closed');
+  assert.equal(closing.sent.at(-1), 'Tudo certo. Vou encerrar o ticket agora.');
+  assert.equal(closing.core.repository.get(ids.guild, closing.ticket.id).status, 'CLOSED');
+  assert(closing.runs.some(run => run.reason === 'user_confirmed_closure'));
 });
 
 test('staff pause/resume persiste no repository e usuário comum não pode sobrescrever', async t => {
