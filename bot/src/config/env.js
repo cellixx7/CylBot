@@ -1,4 +1,5 @@
 const dotenv = require('dotenv');
+const path = require('node:path');
 
 function optional(source, name) {
   const value = source[name];
@@ -117,8 +118,15 @@ function loadEnv(source, { requireDiscord = true, requireSpotifyAuth = false } =
 let runtimeConfig;
 function getConfig(options = {}) {
   if (!runtimeConfig) {
-    // Mantém a resolução de .env pelo diretório de execução, como antes.
-    dotenv.config();
+    // Resolve sempre bot/.env, inclusive ao executar scripts pela raiz.
+    const result = dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+    if (result.error && result.error.code !== 'ENOENT') {
+      throw new Error('Não foi possível ler bot/.env. Verifique as permissões do arquivo.');
+    }
+    // A URL local tem prioridade sobre uma DATABASE_URL herdada do terminal.
+    // As demais variáveis mantêm a precedência do ambiente de execução.
+    const localDatabaseUrl = optional(result.parsed || {}, 'DATABASE_URL');
+    if (localDatabaseUrl) process.env.DATABASE_URL = localDatabaseUrl;
     runtimeConfig = loadEnv(process.env, { requireDiscord: false });
   }
   // Importar um módulo/testar o provider não exige credenciais Discord.

@@ -4,9 +4,10 @@ const { ticketNumber } = require('./ticketConstants');
 const { createHash } = require('node:crypto');
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 function safeAttachmentUrl(value) {
+  if (typeof value !== 'string' || /[\u0000-\u0020\u007f\\]/.test(value)) return null;
   try {
     const url = new URL(value);
-    if (url.protocol === 'https:' && !url.username && !url.password && ['cdn.discordapp.com', 'media.discordapp.net'].includes(url.hostname)) return url.href;
+    if (url.protocol === 'https:' && !url.username && !url.password && !url.port && ['cdn.discordapp.com', 'media.discordapp.net'].includes(url.hostname)) return url.href;
   } catch {}
   return null;
 }
@@ -53,7 +54,7 @@ class TicketTranscriptService {
       const url = safeAttachmentUrl(attachment.url);
       return url ? `<p><a rel="noreferrer noopener" href="${escape(url)}">${escape(attachment.name)}</a> (${escape(attachment.size)} bytes)</p>` : `<p>Anexo: ${escape(attachment.name)} (link indisponível)</p>`;
     }).join('')}</article>`).join('\n');
-    const html = `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><title>Ticket #${ticketNumber(ticket)}</title><style>body{max-width:960px;margin:2rem auto;padding:1rem;font:16px system-ui;background:#f4f5f7;color:#20232a}article{background:white;padding:1rem;margin:1rem 0;border:1px solid #ddd}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}time{color:#555}</style><h1>Ticket #${ticketNumber(ticket)}</h1><pre>${escape([
+    const html = `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><title>Ticket #${escape(ticketNumber(ticket))}</title><style>body{max-width:960px;margin:2rem auto;padding:1rem;font:16px system-ui;background:#f4f5f7;color:#20232a}article{background:white;padding:1rem;margin:1rem 0;border:1px solid #ddd}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}time{color:#555}</style><h1>Ticket #${escape(ticketNumber(ticket))}</h1><pre>${escape([
       `ID: ${ticket.id}`, `Servidor: ${ticket.guildName} (${ticket.guildId})`, `Categoria: ${ticket.categoryName}`,
       `Criador: ${ticket.creatorName} (${ticket.creatorUserId})`, `Atendente: ${ticket.assignedName || 'Nenhum'} (${ticket.assignedUserId || '—'})`,
       `Criado: ${new Date(ticket.createdAt).toISOString()}`, `Assumido: ${ticket.claimedAt ? new Date(ticket.claimedAt).toISOString() : '—'}`,
@@ -61,9 +62,10 @@ class TicketTranscriptService {
       `Assunto: ${ticket.subject}`, `Descrição: ${ticket.description}`, `Motivo: ${closure.reason}`, `Resumo: ${closure.summary || '—'}`,
     ].join('\n'))}</pre>${rows}<footer>${canonical ? 'Conversa canônica persistida pelo CylBot.' : 'Fallback legado: captura das mensagens disponíveis neste canal.'} Mensagens apagadas antes da persistência não são recuperáveis. Links de anexos podem expirar.</footer></html>`;
     if (Buffer.byteLength(html) > this.maxBytes) throw clientError(400, 'Transcrição excede o limite de arquivo; o canal foi preservado.');
+    // Resolva o checkpoint remoto antes de criar um arquivo que ainda não tem referência.
+    const lastDiscordMessage = canonical ? await this.adapter.latestMessageId(ticket) : messages.at(-1)?.id;
     const key = this.repository.save(ticket, html);
     logger.info('ticket.transcript.generated', { guildId: ticket.guildId, ticketId: ticket.id, channelId: ticket.channelId, messageCount: messages.length });
-    const lastDiscordMessage = canonical ? await this.adapter.latestMessageId(ticket) : messages.at(-1)?.id;
     return { key, sha256: createHash('sha256').update(html).digest('hex'), lastMessageId: lastDiscordMessage || null,
       messageCount: messages.length, source: canonical ? 'MESSAGE_CORE' : 'DISCORD_LEGACY' };
   }

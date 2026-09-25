@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  bot:
+    name: Bot tests and migrations
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: bot/package-lock.json
+
+      - name: Install bot dependencies
+        run: npm ci
+        working-directory: bot
+
+      - name: Run bot tests
+        run: npm test
+        working-directory: bot
+
+      - name: Run integration smoke tests
+        run: npm run smoke
+        working-directory: bot
+
+      - name: Check database migrations
+        run: npm run db:status
+        working-directory: bot
+
+  web:
+    name: Frontend tests and build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Run frontend tests
+        run: npm test
+        working-directory: web
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: web

@@ -10,6 +10,37 @@ const OpenRouterService = require('../src/services/openRouterService');
 
 const discord = { DISCORD_TOKEN: 'test-token', DISCORD_CLIENT_ID: 'test-client' };
 
+test('getConfig resolve bot/.env fora do cwd e prioriza sua DATABASE_URL', t => {
+  const root = tempDirectory(t, 'cylbot-env-path-');
+  const fixtureBot = path.join(root, 'bot');
+  const fixtureConfig = path.join(fixtureBot, 'src/config/env.js');
+  fs.mkdirSync(path.dirname(fixtureConfig), { recursive: true });
+  fs.copyFileSync(path.join(__dirname, '../src/config/env.js'), fixtureConfig);
+  fs.writeFileSync(path.join(root, '.env'), 'DATABASE_URL=postgresql://cwd:wrong@localhost/other\n');
+  const localUrl = 'postgresql://local:fixture-password@localhost/project';
+  const inheritedUrl = 'postgresql://inherited:fixture-password@localhost/deployment';
+  fs.writeFileSync(path.join(fixtureBot, '.env'), `DATABASE_URL=${localUrl}\nAPI_PORT=4000\n`);
+  function check(expectedUrl) {
+    const script = `
+      const { getConfig } = require(${JSON.stringify(fixtureConfig)});
+      const config = getConfig({ requireDiscord: false });
+      if (config.database.url !== ${JSON.stringify(expectedUrl)}) throw new Error('DATABASE_URL precedence failed');
+      if (config.api.port !== 4100) throw new Error('Unrelated environment override failed');
+    `;
+    const result = spawnSync(process.execPath, ['-e', script], {
+      cwd: root,
+      env: { NODE_PATH: path.join(__dirname, '../node_modules'), DATABASE_URL: inheritedUrl, API_PORT: '4100' },
+      encoding: 'utf8', timeout: 5000,
+    });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, '');
+  }
+  check(localUrl);
+  fs.unlinkSync(path.join(fixtureBot, '.env'));
+  check(inheritedUrl);
+});
+
 test('Discord exige token e client ID com erros sem valores sensíveis', () => {
   assert.throws(() => loadEnv({}), /DISCORD_TOKEN.*não foi definida/);
   assert.throws(() => loadEnv({ DISCORD_TOKEN: 'confidential' }), /DISCORD_CLIENT_ID.*não foi definida/);
@@ -105,7 +136,10 @@ test('entrypoints falham antes de iniciar operações externas sem credenciais',
   for (const [script, variable] of [
     ['src/index.js', 'DISCORD_TOKEN'], ['scripts/deploy-commands.js', 'DISCORD_TOKEN'], ['scripts/spotify-auth.js', 'SPOTIFY_CLIENT_ID'],
   ]) {
-    const result = spawnSync(process.execPath, [path.join(__dirname, '..', script)], { cwd, env: {}, encoding: 'utf8', timeout: 5000 });
+    // Valores explicitamente vazios isolam os entrypoints das credenciais locais.
+    const env = { DISCORD_TOKEN: '', DISCORD_CLIENT_ID: '', DISCORD_OAUTH_CLIENT_SECRET: '',
+      SPOTIFY_CLIENT_ID: '', SPOTIFY_CLIENT_SECRET: '' };
+    const result = spawnSync(process.execPath, [path.join(__dirname, '..', script)], { cwd, env, encoding: 'utf8', timeout: 5000 });
     assert.equal(result.error, undefined);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, new RegExp(variable));

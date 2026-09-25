@@ -90,6 +90,12 @@ Discord / Web / IA → TicketMessageService → PostgresTicketMessageRepository
 
 `ticket_messages` é a conversa canônica. O adapter Discord publica e ingere, mas não determina autoria nem histórico. Routes de conversa validam membership OAuth e depois `VIEW/RESPOND`; configuração administrativa preserva ManageGuild. Tickets antigos sem mensagens canônicas usam fallback controlado do transcript para o histórico Discord. Detalhes em [Message Core](ticket-messages.md).
 
+### Segurança dos transcripts (Issue #3)
+
+`TicketTranscriptService` continua responsável por HTML escapado, allowlist de URLs CDN HTTPS, limites e SHA-256. `TicketTranscriptRepository` preserva as chaves/caminho legado (`bot/src/data/ticket-transcripts/`), rejeita referências/links de filesystem inválidos e publica arquivos privados por temporário exclusivo + hardlink sem sobrescrita. O diretório é dado de runtime ignorado pelo Git, não um conjunto de fixtures nem conteúdo público. Os testes usam dados sintéticos e diretórios temporários.
+
+Não há expiração nem coleta automática: excluir capturas pode quebrar checkpoints/reabertura, e cópias no Discord/backups são independentes. A política, o resultado da auditoria dos quatro HTMLs anteriormente versionados, os limites de ACL/filesystem e a revisão antes de commit estão em [Privacidade e retenção de transcripts](tickets.md#privacidade-e-retenção-de-transcripts). A revisão não altera rotas, DTOs, permissões Discord, formato das referências ou conteúdo histórico dos arquivos existentes.
+
 ## Origens por ambiente
 
 Somente `config/env.js` detecta Codespaces e deriva `auth.webOrigin`, `allowedOrigins`, `secure` e `redirectUri`. Valores explícitos de WEB_ORIGIN/callback prevalecem; sem eles, Codespaces usa nome e domínio de forwarding do processo, e o ambiente local usa `http://localhost:5173`.

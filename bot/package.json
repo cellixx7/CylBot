@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/index.js",
     "test": "node --test test/*.test.js",
+    "smoke": "node --test test/smoke.test.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate.js",
     "db:status": "drizzle-kit check",

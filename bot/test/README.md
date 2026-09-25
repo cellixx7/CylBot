@@ -41,9 +41,20 @@ A partir da raiz do repositório, com dependências instaladas:
 
 ```bash
 npm --prefix bot test
+npm --prefix bot run smoke
 npm --prefix web run build
 git diff --check
 ```
+
+O smoke test é uma verificação rápida e sem rede real. Ele valida a configuração
+dos providers e os contratos locais de Discord/OAuth, OpenRouter e Spotify. Para
+evitar custo, rate limit e dependência de contas no CI, ele usa respostas fake e
+não chama Discord, OpenRouter ou Spotify.
+
+As integrações reais continuam sendo verificadas manualmente: login OAuth do
+Discord, identidade do bot em um servidor de teste, renovação de token Spotify e
+uma geração explícita no OpenRouter. Essas verificações exigem credenciais locais
+e nunca devem ser habilitadas no workflow padrão.
 
 Dentro de `bot/`:
 

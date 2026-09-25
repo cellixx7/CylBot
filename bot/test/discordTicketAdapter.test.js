@@ -103,6 +103,16 @@ test('log com allow explícito a terceiro é rejeitado mesmo com deny de @everyo
   await assert.rejects(f.adapter.validatePrivateLog(ids.guild, ids.log, [ids.role]), /somente/);
 });
 
+test('publicar transcript revalida privacidade do log antes de enviar o anexo', async () => {
+  const f = setup();
+  const channel = f.channels.get(ids.log);
+  await f.adapter.validatePrivateLog(ids.guild, ids.log, [ids.role]);
+  await channel.permissionOverwrites.set([...channel.rawOverwrites, { id: ids.user, allow: [P.ViewChannel] }]);
+  const ticket = { guildId: ids.guild, logChannelId: ids.log, supportRoleIds: [ids.role] };
+  await assert.rejects(f.adapter.publishClosed(ticket, Buffer.from('transcript sintético')), /somente/);
+  assert.equal(channel.sent, undefined);
+});
+
 test('estrutura automática cria duas categorias, painel público e log privado com checkpoints; existente não cria canais', async () => {
   const f = setup(); let saves = 0;
   const config = { guildId: ids.guild, setupId: 'setup', mode: 'auto', supportRoleIds: [ids.role] };

@@ -75,7 +75,7 @@ Para executar o frontend junto do bot, siga o [guia de instalação e ativação
 
 Antes do setup, habilite Message Content Intent no Developer Portal, defina `TICKETS_MESSAGE_CONTENT_ENABLED=true` em `.env` e reinicie. Atualize os comandos pelo script existente quando quiser disponibilizar `/ticket` no Discord. Nenhum registro real é executado pela suíte de testes.
 
-Dados do fallback ficam em `data/tickets.json`, `data/ticket-config.json` e `data/ticket-transcripts/`. Preserve a pasta `data/` em backups. Permissões completas, recuperação de falhas, limites e operação estão no [guia de tickets](../docs/tickets.md).
+O caminho efetivo do fallback é `src/data/tickets.json` e `src/data/ticket-config.json`; os transcripts ficam em `src/data/ticket-transcripts/` (relativos a `bot/`). Preserve esses dados em backups privados. Transcripts são ignorados pelo Git e não têm expiração automática; consulte a [política de privacidade, retenção e revisão antes de commit](../docs/tickets.md#privacidade-e-retenção-de-transcripts). Permissões completas, recuperação de falhas, limites e operação estão no [guia de tickets](../docs/tickets.md).
 
 ## IA de tickets
 

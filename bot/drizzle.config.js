@@ -6,7 +6,7 @@ module.exports = {
   out: './src/database/migrations',
   dialect: 'postgresql',
   dbCredentials: {
-    url: config.database.url || 'postgresql://cylbot:cylbot_dev@localhost:5432/cylbot',
+    url: config.database.url,
   },
   strict: true,
   verbose: true,

@@ -53,7 +53,7 @@ Estados centralizados: `OPEN`, `CLAIMED`, `CLOSED`, `REOPENED`. `closing` e `reo
 
 Eventos persistidos: `TICKET_CREATED`, `TICKET_CLAIMED`, `TICKET_CLOSED`, `TICKET_REOPENED`, com `type`, `ticketId`, `actorUserId`, `createdAt`, `metadata`. Eventos descrevem transições; transcript descreve mensagens. `archives` mantém cada ciclo encerrado, canal antigo, motivo/resumo, referência da captura e mensagem de log.
 
-Os repositories encapsulam persistência. PostgreSQL usa transações, advisory lock por guild/usuário, constraint única `(guild_id, public_number)` e atualização condicional para claim. O fallback JSON usa arquivo temporário e rename e pressupõe um processo. A sequência nunca usa `channelId`; reservas interrompidas podem deixar lacunas. Transcripts HTML continuam em `bot/data/ticket-transcripts/`, fora do banco, com hash SHA-256 e limites de tamanho.
+Os repositories encapsulam persistência. PostgreSQL usa transações, advisory lock por guild/usuário, constraint única `(guild_id, public_number)` e atualização condicional para claim. O fallback JSON usa arquivo temporário e rename e pressupõe um processo. A sequência nunca usa `channelId`; reservas interrompidas podem deixar lacunas. O diretório efetivo dos transcripts HTML é `bot/src/data/ticket-transcripts/`, fora do banco, com hash SHA-256 e limites de tamanho. Esse caminho legado foi preservado para manter válidas as referências existentes, que contêm somente a chave do arquivo.
 
 ## Abertura e claim
 
@@ -90,11 +90,54 @@ Capturas são imutáveis, com SHA-256 verificado antes de anexar/reabrir/remover
 
 ## Reabertura
 
+As regras de privacidade e retenção das capturas estão na seção [Privacidade e retenção de transcripts](#privacidade-e-retenção-de-transcripts).
+
 O botão do log inclui ticketId/ciclo e só funciona para staff/admin no canal de log correspondente. O repository é a fonte de identidade; não se consulta o canal antigo para reconstruir o ticket. É necessário que o criador ainda pertença à guild e que a configuração/roles continuem válidos.
 
 O service verifica CLOSED e captura anterior, reserva uma reabertura, cria novo canal privado, publica a mensagem com referência ao fechamento/reabertura e anexa o HTML anterior. Mantém UUID/sequência/criador/histórico, incrementa `reopenCount`, atualiza channelId e limpa responsável/claimedAt. A reabertura pendente também pode ser retomada após falha/reinício sem alocar outra identidade. Botões de ciclos antigos não alteram o ciclo atual.
 
 Se o canal antigo ainda existir, fica bloqueado e preservado; a reabertura cria um novo. Para evitar acumular canais antigos, use Remover canal antes de Reabrir. Não há exclusão automática de canais antigos ao reabrir.
+
+## Privacidade e retenção de transcripts
+
+### Dados e destinatários
+
+Trate todo HTML gerado como documento privado de atendimento, mesmo em uma guild de teste. Ele contém nomes, IDs Discord, datas, assunto, descrição, motivo/resumo e mensagens. Os links de anexos podem incluir parâmetros assinados; não devem aparecer em logs ou commits. Escaping evita interpretar conteúdo como HTML, mas **não anonimiza** dados pessoais nem elimina segredos escritos pelos participantes.
+
+O Message Core fornece somente mensagens `PUBLIC` para a captura; mensagens `INTERNAL` não são exportadas. O fallback legado captura as mensagens disponíveis no canal privado do ticket. A aplicação não adiciona credenciais/configuração/objetos internos do SDK ao HTML. Não há remoção automática de dados sensíveis digitados no atendimento: orientar os participantes e revisar antes de compartilhar.
+
+O anexo final é enviado ao canal privado de logs, com permissões revalidadas no momento da publicação. Na reabertura, o HTML anterior é anexado ao **novo canal privado**, ficando disponível também ao criador do ticket, além de suporte/bot e administradores. Este comportamento existente foi preservado. Downloads e cópias já realizadas não são revogados por alterações posteriores de permissão. O acesso às cópias Discord e aos backups deve ser revisado separadamente.
+
+Não existe rota HTTP pública para esses arquivos. Não copie o diretório para `web/public`, `web/dist`, buckets públicos ou diretórios servidos pelo proxy; não amplie `server.fs.allow` do Vite para abranger dados privados. O UUID/nome do arquivo e seu hash são referências de integridade, **não mecanismos de autorização**.
+
+### Armazenamento e integridade
+
+- O runtime cria `bot/src/data/ticket-transcripts/` quando necessário. `.gitignore` cobre todo esse diretório, inclusive temporários. Testes geram capturas sintéticas em diretórios temporários próprios; nenhum teste precisa dos HTMLs de runtime.
+- Novos diretórios/arquivos solicitam modos POSIX `0700`/`0600`. Não são alteradas automaticamente as permissões de diretórios antigos. No Windows, restrinja as ACLs à conta do serviço e aos administradores responsáveis; os bits POSIX não garantem esse isolamento. Proteja também os diretórios pais e o volume de backup.
+- As chaves seguem `UUID-ciclo-UUID.html`. A leitura rejeita traversal, links simbólicos no diretório final/arquivo, arquivos não regulares, múltiplos hardlinks e substituições detectáveis entre a inspeção e a abertura. Os diretórios pais precisam ser confiáveis; estas verificações não isolam o processo de um administrador local malicioso.
+- A gravação cria um temporário exclusivo, grava e sincroniza os bytes e publica o nome final por hardlink sem sobrescrita. Depois remove somente o temporário criado pela própria operação. É necessário um filesystem com hardlinks (como NTFS/ext4); não há fallback silencioso para sobrescrita em volumes incompatíveis. Referências e HTML permanecem no formato existente.
+- A limpeza ocorre também em falhas de escrita, sincronização ou publicação. Uma colisão nunca autoriza apagar o temporário de outra operação. Queda abrupta, falta de permissão na limpeza ou falha posterior ao salvar o HTML podem deixar temporários/capturas sem referência; isso exige inventário manual. Um arquivo com hardlink temporário remanescente será recusado na leitura até revisão. Não se promete durabilidade transacional entre filesystem, banco e Discord.
+- O SHA-256 continua obrigatório na leitura pelo service. Capturas anteriores não são regravadas, inclusive quando muda o renderer. Para novas capturas, título, textos e atributos são escapados; links aceitam apenas HTTPS, sem credenciais/portas alternativas, nos hosts exatos `cdn.discordapp.com` e `media.discordapp.net`. Parâmetros assinados são preservados. CSP/referrer continuam restritivos; não há JavaScript nem download automático dos anexos.
+
+### Política de retenção e revisão manual
+
+**A política atual não tem expiração automática: a retenção é indefinida até decisão explícita do operador.** A Issue #3 não institui um prazo arbitrário nem exclui dados por idade. Isso evita quebrar leitura, reabertura, checkpoints de fechamento e a validação exigida antes de remover canais.
+
+Antes de qualquer limpeza, o responsável deve definir e registrar prazo/finalidade e revisar separadamente: arquivos locais, referências em `closing.transcript` e em todos os `archives[].transcript`, operações interrompidas, mensagens/anexos de logs Discord e backups. Não considere um arquivo órfão apenas por ser antigo ou por não constar no último encerramento. Se o banco estiver indisponível ou o inventário for incompleto, adie a limpeza. Excluir só o arquivo local pode impedir a reabertura e não remove suas cópias externas.
+
+Não há coleta automática de temporários deixados por uma queda de processo. Inspecione propriedade e existência de escritor ativo antes de removê-los; preserve capturas e evidências em caso de dúvida. Esta revisão não fornece nem executa um comando de exclusão em massa.
+
+### Revisão antes de commit e resultado da auditoria (#3)
+
+Foram encontrados quatro HTMLs no histórico: um introduzido em `d9a4478` e três em `bc34a28`. Eles contêm metadados identificáveis e conversas que não correspondem às fixtures sintéticas. Mesmo que tenham sido produzidos durante testes manuais, foram classificados como **potencialmente reais**, não como fixtures reutilizáveis. Não foram encontrados links externos nesses quatro arquivos nem correspondências com as credenciais locais verificadas; isso não prova ausência de qualquer segredo em texto livre.
+
+Eles foram retirados somente do índice com `git rm --cached`, preservando os bytes locais, os hashes e os commits anteriores. Nenhum transcript foi substituído por conteúdo fictício no caminho de runtime, o que invalidaria hashes/referências. **A remoção do índice não apaga a exposição histórica**: o responsável pelo repositório precisa avaliar acesso, clones, artefatos de CI e eventual remediação do histórico em tarefa separada e explicitamente autorizada.
+
+Antes de cada commit, confira `git status --short`, `git diff --cached --stat` e `git diff --cached --name-only --diff-filter=ACMR`. Não use `git add -f` em dados de runtime. Revise localmente qualquer fixture nova: nomes, IDs, mensagens, URLs, timestamps e credenciais devem ser inventados, sem copiar atendimentos reais. `.gitignore` não protege contra inclusão forçada, cópias fora do diretório ou dados já presentes no histórico.
+
+Logs de geração usam somente IDs operacionais e contagem de mensagens; falhas de fechamento usam a classificação sanitizada de erro. Não registrar HTML, nomes, assunto, descrição, motivo/resumo, conteúdo de mensagens, URLs assinadas ou erro bruto do filesystem/SDK. Os próprios IDs operacionais continuam identificáveis e exigem controle de acesso aos logs.
+
+Validação automatizada: `node --test bot/test/ticketTranscript.test.js bot/test/ticketTranscriptSecurity.test.js bot/test/discordTicketAdapter.test.js bot/test/tickets.test.js bot/test/ticketMessages.test.js`. Confira também a suíte completa. Validação manual: ACLs do volume real e backups, permissões reais do canal de logs, download/abertura do HTML em navegador e acesso à captura anterior após reabertura numa guild de teste com dados sintéticos. Não reutilize os arquivos identificáveis do histórico como exemplos.
 
 ## Arquitetura e pontos de extensão
 

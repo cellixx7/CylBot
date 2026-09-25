@@ -3,3 +3,5 @@
 npm-debug.log*
 web/dist/
 bot/data/
+# Runtime privado: HTMLs e temporários de transcripts; fixtures usam diretórios temporários.
+bot/src/data/ticket-transcripts/
