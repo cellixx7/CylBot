@@ -53,7 +53,9 @@ Para iniciar novamente, execute `npm start` dentro de `bot/`. Repita `npm run co
 
 ## PostgreSQL
 
-Com `DATABASE_URL` ausente, o fallback JSON mantém o desenvolvimento e os testes locais compatíveis. Em `NODE_ENV=production`, a configuração falha explicitamente sem `DATABASE_URL`. Com a URL definida, o composition root cria um único pool `pg`, verifica readiness antes de iniciar Discord/API e encerra o pool em `SIGINT`/`SIGTERM`.
+Com `DATABASE_URL` ausente, o fallback JSON mantém o desenvolvimento e os testes locais compatíveis. Em `NODE_ENV=production`, a configuração falha explicitamente sem `DATABASE_URL`. Com a URL definida, o composition root cria um único pool `pg`, verifica o banco antes de iniciar a API/Discord e encerra o pool em `SIGINT`/`SIGTERM`.
+
+A API usa `API_HOST` explícito quando fornecido; sem ele, escuta em `127.0.0.1` no desenvolvimento e em `0.0.0.0` na produção. A porta segue `API_PORT`, depois `PORT` injetada pelo ambiente, e por fim `3001`. `GET /api/health` é liveness e não consulta dependências; `GET /api/ready` é readiness e exige PostgreSQL quando configurado e um cliente Discord pronto.
 
 Na raiz do projeto, o ambiente local é:
 
@@ -63,11 +65,27 @@ cd bot
 npm run db:migrate
 ```
 
+Se houver um `data/announcements.json` legado a levar para a mesma base, faça backup e execute uma única vez `npm run db:import-announcements` depois da migration. O comando é explícito e idempotente por substituição de cada catálogo de guild; não roda no startup e não é necessário quando não há JSON legado.
+
 O schema cria `users`, tabelas do Core de tickets, `ticket_ai_configs`, `ticket_ai_ticket_states`, `ticket_ai_runs` e `ticket_messages`. A sequência por guild é incrementada dentro da transação de criação, e `(guild_id, public_number)` possui constraint única. Ticket, canal Discord e conversa são entidades separadas; PostgreSQL é a fonte de verdade da conversa multicanal. Sessões OAuth e sessões temporárias do Texta_AI continuam em memória; reiniciar o backend exige novo login.
 
 Em Codespaces, mantenha o Postgres no mesmo ambiente Docker e use `localhost` na `DATABASE_URL`. Em hospedagem futura, substitua somente a URL por uma conexão PostgreSQL fornecida pelo provedor e rode `npm run db:migrate` antes de `npm start`. Não são persistidos access tokens ou refresh tokens do Discord.
 
 Para executar o frontend junto do bot, siga o [guia de instalação e ativação da raiz](../README.md#ativacao).
+
+### Operação e recuperação BE1.2
+
+Quando `DATABASE_URL` existe, a persistência de produção usa PostgreSQL para usuários, configuração de tickets, tickets, eventos, mensagens canônicas, IA e categorias de anúncios. Sem essa variável, o desenvolvimento continua usando os repositórios JSON existentes; isso inclui `data/announcements.json`, sem tentar abrir uma conexão.
+
+Antes de iniciar uma instância com banco, execute `npm run db:status` e depois `npm run db:migrate` dentro de `bot/`. As migrations são versionadas em `src/database/migrations/`; não edite migrations já aplicadas. A migration BE1.2 adiciona `announcement_categories` e o campo `ticket_messages.cycle`, mantendo mensagens de ciclos de reabertura isoladas.
+
+O pool PostgreSQL é único por processo, limitado a 10 conexões, com timeout de conexão de 10 segundos e idle timeout de 30 segundos. TLS não é forçado pelo código: `sslmode`/opções continuam vindo da URL do provedor, enquanto a URL local do `compose.yaml` permanece compatível. O readiness (`GET /api/ready`) verifica o banco configurado e o cliente Discord; liveness (`GET /api/health`) não depende deles.
+
+Categorias de anúncios são substituídas atomicamente por guild dentro de transação e ficam em PostgreSQL em produção. Não há importação automática do JSON: faça backup e uma migração de conteúdo controlada antes de ativar produção se houver categorias locais que precisem ser preservadas. Em desenvolvimento sem banco, o JSON continua sendo a fonte de verdade local.
+
+Mensagens canônicas ficam em `ticket_messages`; o HTML do transcript é um cache opcional. A referência persistida mantém SHA-256, ciclo e metadata suficiente para regeneração; o arquivo local em `data/ticket-transcripts/` não é a única fonte de verdade. Mensagens criadas após uma reabertura recebem o novo `cycle`, e a consulta do transcript filtra exatamente esse ciclo. Registros históricos anteriores à migration recebem `cycle = 0`; ciclos antigos já misturados não podem ser separados retroativamente sem uma fonte externa confiável.
+
+Para backup, use o `pg_dump` do PostgreSQL e preserve o arquivo de configuração/segredos fora do repositório. Um exemplo local é `pg_dump --format=custom --file=cylbot.backup localhost -U cylbot cylbot`; valide a restauração em uma instância separada antes de qualquer recovery. O diretório de HTML pode ser copiado como cache/defesa adicional, mas não substitui o backup PostgreSQL.
 
 ## Tickets via Discord
 
@@ -200,7 +218,7 @@ No envio pelo Discord, o handler verifica as permissões efetivas do membro no c
 
 **Web/API autenticada:** toda operação de anúncios exige participação na guild, bot instalado e owner/Administrator/ManageGuild. A identidade vem do cookie de sessão; campos `owner`, `trustedLocal`, `canManage` ou permissões enviados no body não autorizam nada. Prévias usam `web:<userId>` e não podem ser revisadas/enviadas por outro usuário. O bypass local foi removido inclusive do helper de permissões.
 
-A API permanece vinculada a `127.0.0.1`. Isso não protege um proxy ou túnel que a exponha: o Vite está configurado para escutar em `0.0.0.0` e encaminha `/api`. Não exponha o frontend, portas encaminhadas ou a API a usuários não confiáveis. CORS não substitui autenticação. As APIs de ferramentas agora verificam sessão, Origin e autorização conforme a operação; CORS sozinho continua não sendo um mecanismo de autorização.
+A API fica em loopback no desenvolvimento e pode escutar em `0.0.0.0` na produção por configuração. Isso não substitui firewall, proxy ou autenticação: CORS não é autorização. O Vite encaminha `/api` no desenvolvimento; frontend estático pode ser hospedado separadamente, mas GitHub Pages não executa Node.js, mantém conexão com o Gateway Discord nem fornece um processo persistente para API/bot. O backend e o bot precisam de um worker/container persistente, com PostgreSQL gerenciado ou equivalente.
 
 
 ## Configuração de ambiente
@@ -208,7 +226,7 @@ A API permanece vinculada a `127.0.0.1`. Isso não protege um proxy ou túnel qu
 `src/config/env.js` é o único ponto de leitura de `process.env` e carregamento de `.env`. Execute o bot e auxiliares dentro de `bot/`, como nas instruções acima. Não publique o `.env` nem imprima o objeto de configuração.
 
 - **Obrigatórias no bot e registro de comandos:** `DISCORD_TOKEN` e `DISCORD_CLIENT_ID`.
-- **API:** `API_PORT`, inteiro entre 1 e 65535; default `3001`.
+- **API:** `API_HOST` é opcional; default `127.0.0.1` em desenvolvimento e `0.0.0.0` em produção. A porta é `API_PORT` > `PORT` > `3001`, sempre um inteiro entre 1 e 65535.
 - **Logs:** `LOG_LEVEL`, um de `debug`, `info`, `warn` ou `error`; default `info`.
 - **IA opcional:** `OPENROUTER_API_KEY`. Sem chave o bot inicia, mas geração de textos exige configurá-la. `OPENROUTER_MODEL` usa `openai/gpt-4.1-mini`; `OPENROUTER_MAX_TOKENS` usa 800 e mantém o teto de 800.
 - **Spotify opcional:** presença Spotify exige `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REFRESH_TOKEN` e `SPOTIFY_PLAYLIST_ID`. Sem o conjunto completo, permanece o comportamento de presence sem Spotify.

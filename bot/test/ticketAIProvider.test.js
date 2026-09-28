@@ -27,6 +27,19 @@ test('timeout aborta requisição do provider sem chamar OpenRouter real', async
   finally { clearTimeout(keepAlive); }
 });
 
+test('geração web passa timeout e abort ao cliente OpenRouter', async () => {
+  const provider = new OpenRouterService({ apiKey: 'synthetic', model: 'test-model', maxTokens: 100 });
+  let options;
+  provider.client = { chat: { completions: { create: async (body, requestOptions) => {
+    options = requestOptions;
+    return { model: 'test-model', choices: [{ message: { content: '{"content":"ok"}' } }] };
+  } } } };
+  await provider.generate({ outputType: 'content', idea: 'ideia', targetCharacters: 10 });
+  assert.equal(options.timeout, 30_000);
+  assert.equal(options.maxRetries, 0);
+  assert(options.signal instanceof AbortSignal);
+});
+
 test('config centraliza modelo, opt-in e timeout com default seguro', () => {
   const base = loadEnv({}, { requireDiscord: false });
   assert.equal(base.ticketAI.enabled, false); assert.deepEqual(base.ticketAI.guildIds, []);

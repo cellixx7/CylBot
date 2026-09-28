@@ -9,6 +9,7 @@
     "smoke": "node --test test/smoke.test.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate.js",
+    "db:import-announcements": "node scripts/importAnnouncements.js",
     "db:status": "drizzle-kit check",
     "commands:register": "node scripts/deploy-commands.js",
     "deploy": "node scripts/deploy-commands.js",

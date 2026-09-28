@@ -37,6 +37,9 @@ run('PostgreSQL Message Core preserva idempotência, paginação, delivery, rest
     assert.equal(page.messages.length, 2); assert(page.nextBefore);
     const older = await repository.listPage(ticketId, { limit: 2, before: page.nextBefore, visibilities: ['PUBLIC'] });
     assert.equal(older.messages.length, 1);
+    await repository.create({ ...base, origin: 'WEB', clientMessageId: 'client-cycle-1', cycle: 1, createdAt: new Date('2026-01-04T00:00:00Z') });
+    assert.equal((await repository.listForTranscript(ticketId, { cycle: 0 })).length, 3);
+    assert.equal((await repository.listForTranscript(ticketId, { cycle: 1 })).length, 1);
     const firstAttempt = await repository.startDelivery(guildId, first.message.id); assert(firstAttempt);
     assert.equal((await repository.markFailed(guildId, first.message.id, firstAttempt.deliveryAttempts, 'DISCORD_DOWN')).deliveryStatus, 'FAILED');
     const secondAttempt = await repository.startDelivery(guildId, first.message.id); assert(secondAttempt);

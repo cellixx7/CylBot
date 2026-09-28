@@ -57,6 +57,7 @@ async function exchangeCode(code) {
       code,
       redirect_uri: REDIRECT_URI,
     }),
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!response.ok) {
@@ -130,10 +131,10 @@ server.on('error', (error) => {
   process.exitCode = 1;
 });
 
-server.listen(8888, '0.0.0.0', () => {
+server.listen(8888, '127.0.0.1', () => {
   console.log('Script de configuração inicial do Spotify.');
   console.log(`Redirect URI usada: ${REDIRECT_URI}`);
-  console.log('Servidor local ouvindo em 0.0.0.0:8888');
+  console.log('Servidor local ouvindo em 127.0.0.1:8888');
   console.log('\nAbra esta URL para autorizar o acesso:');
   console.log(authorizationUrl.toString());
 

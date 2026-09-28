@@ -44,6 +44,7 @@ function mapTicket(row, events) {
     archives: row.archives || [],
     closing: row.closing,
     reopening: row.reopening,
+    createdByCycle: row.createdByCycle,
     events: events.map(mapEvent),
   };
 }
@@ -82,6 +83,7 @@ function valuesFromTicket(ticket) {
     archives: ticket.archives || [],
     closing: ticket.closing || null,
     reopening: ticket.reopening || null,
+    createdByCycle: ticket.createdByCycle ?? ticket.reopenCount ?? 0,
   };
 }
 
@@ -219,6 +221,34 @@ class PostgresTicketRepository {
         metadata: { reason: closing.reason, cycle: row.reopenCount, source: 'discord_channel_missing' },
         createdAt: toDate(closedAt),
       };
+      await tx.insert(ticketEvents).values(eventRow);
+      return mapTicket(row, [...(ticket.events || []), eventRow]);
+    });
+  }
+
+  async recoverMissingChannel(ticket, closedAt) {
+    if (!ticket.closing && ticket.status !== 'CLOSED') return this.closeMissingChannel(ticket, closedAt);
+    return this.db.transaction(async tx => {
+      if (ticket.status === 'CLOSED' && ticket.closing?.completed) {
+        const [row] = await tx.update(tickets).set({ channelId: null, initialMessageId: null })
+          .where(and(eq(tickets.guildId, ticket.guildId), eq(tickets.id, ticket.id), eq(tickets.channelId, ticket.channelId), eq(tickets.status, 'CLOSED'))).returning();
+        return row ? mapTicket(row, ticket.events || []) : null;
+      }
+      const previous = ticket.closing;
+      const closing = { ...previous, completed: true, channelMissing: true,
+        transcriptUnavailable: !previous.transcript, channelLocked: false };
+      const reason = closing.reason || 'Canal removido externamente.';
+      const archives = [...(ticket.archives || []), { cycle: ticket.reopenCount, channelId: ticket.channelId, closedAt,
+        reason, summary: closing.summary || 'Encerrado automaticamente.', transcript: closing.transcript || null,
+        transcriptSnapshot: closing.transcriptSnapshot || null, logMessageId: closing.logMessageId || null }];
+      const [row] = await tx.update(tickets).set({ status: 'CLOSED', channelId: null, initialMessageId: null,
+        closedAt: toDate(closedAt), closeReason: reason, resolutionSummary: closing.summary || null,
+        closing, archives, reopening: null }).where(and(
+          eq(tickets.guildId, ticket.guildId), eq(tickets.id, ticket.id), eq(tickets.channelId, ticket.channelId),
+          eq(tickets.initialized, true), isNull(tickets.reopening), inArray(tickets.status, ['OPEN', 'CLAIMED', 'REOPENED']))).returning();
+      if (!row) return null;
+      const eventRow = { ticketId: row.id, type: 'TICKET_CLOSED', actorUserId: closing.actorUserId || null,
+        metadata: { reason, cycle: row.reopenCount, source: 'discord_channel_missing' }, createdAt: toDate(closedAt) };
       await tx.insert(ticketEvents).values(eventRow);
       return mapTicket(row, [...(ticket.events || []), eventRow]);
     });

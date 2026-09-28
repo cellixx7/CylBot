@@ -106,6 +106,17 @@ test('callback sem code e autorização negada consomem state e retornam erro ge
   assert.equal(calls.length, 0);
 });
 
+test('callback rejeita parâmetros OAuth de controle duplicados', async t => {
+  const { auth, calls } = setup(t);
+  for (const parameter of ['error=access_denied&error=server_error', 'error_description=one&error_description=two']) {
+    const start = await begin(auth);
+    const res = await request(auth, 'GET', `/api/auth/discord/callback?state=${start.state}&${parameter}`, start.cookies);
+    assert.match(res.headers.Location, /authError=login_failed$/);
+    assert.equal(auth.states.has(start.state), true);
+  }
+  assert.deepEqual(calls, []);
+});
+
 test('callback válido cria sessão, cookie opaco e me retorna exclusivamente perfil público', async t => {
   const { auth, config, logs } = setup(t);
   const res = await login(auth);

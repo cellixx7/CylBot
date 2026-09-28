@@ -88,13 +88,21 @@ Discord / Web / IA → TicketMessageService → PostgresTicketMessageRepository
                               └→ DiscordTicketAdapter
 ```
 
-`ticket_messages` é a conversa canônica. O adapter Discord publica e ingere, mas não determina autoria nem histórico. Routes de conversa validam membership OAuth e depois `VIEW/RESPOND`; configuração administrativa preserva ManageGuild. Tickets antigos sem mensagens canônicas usam fallback controlado do transcript para o histórico Discord. Detalhes em [Message Core](ticket-messages.md).
+`ticket_messages` é a conversa canônica. O adapter Discord publica e ingere, mas não determina autoria nem histórico. Cada mensagem também carrega `cycle`; o transcript filtra o ciclo de fechamento/reabertura exato. Routes de conversa validam membership OAuth e depois `VIEW/RESPOND`; configuração administrativa preserva ManageGuild. Tickets antigos sem mensagens canônicas usam fallback controlado do transcript para o histórico Discord. Detalhes em [Message Core](ticket-messages.md).
 
 ### Segurança dos transcripts (Issue #3)
 
 `TicketTranscriptService` continua responsável por HTML escapado, allowlist de URLs CDN HTTPS, limites e SHA-256. `TicketTranscriptRepository` preserva as chaves/caminho legado (`bot/src/data/ticket-transcripts/`), rejeita referências/links de filesystem inválidos e publica arquivos privados por temporário exclusivo + hardlink sem sobrescrita. O diretório é dado de runtime ignorado pelo Git, não um conjunto de fixtures nem conteúdo público. Os testes usam dados sintéticos e diretórios temporários.
 
-Não há expiração nem coleta automática: excluir capturas pode quebrar checkpoints/reabertura, e cópias no Discord/backups são independentes. A política, o resultado da auditoria dos quatro HTMLs anteriormente versionados, os limites de ACL/filesystem e a revisão antes de commit estão em [Privacidade e retenção de transcripts](tickets.md#privacidade-e-retenção-de-transcripts). A revisão não altera rotas, DTOs, permissões Discord, formato das referências ou conteúdo histórico dos arquivos existentes.
+O HTML agora é cache/snapshot opcional: a referência mantém SHA-256 e o metadata do ciclo fica persistido no checkpoint `closing`/`archives`. Se o arquivo local desaparecer, o serviço tenta regenerar somente a partir das mensagens PostgreSQL do mesmo ticket/ciclo e valida o hash; corrupção de arquivo existente continua sendo rejeitada. Referências legadas sem metadata canônico não são reconstruídas usando o ticket atual, para não misturar ciclos. Não há expiração nem coleta automática: cópias no Discord/backups são independentes. A política, o resultado da auditoria dos quatro HTMLs anteriormente versionados, os limites de ACL/filesystem e a revisão antes de commit estão em [Privacidade e retenção de transcripts](tickets.md#privacidade-e-retenção-de-transcripts).
+
+### BE1.2: persistência e recuperação
+
+Com `DATABASE_URL`, `createServices` usa `PostgresAnnouncementRepository` para categorias de anúncios e os repositories PostgreSQL para o Core. Sem banco, mantém `JsonAnnouncementRepository` e os arquivos JSON locais. A troca de categorias usa uma transação completa por guild; não há acoplamento a Redis, fila, object storage ou provedor específico.
+
+As constraints atuais cobrem identidade, sequência por guild, estados/enums, conteúdo e tentativas de entrega, contagens não negativas, autonomia/timeout da IA e o ciclo de mensagens. Índices cobrem guild, canal, status, ticket+ciclo+ordenação temporal, delivery, deduplicação Discord/Web e consultas da IA. O pool único é limitado a 10 conexões, com timeout de conexão/ociosidade; o `DATABASE_URL` continua responsável por TLS do ambiente hospedado.
+
+Operação local: `docker compose up -d`, `npm --prefix bot run db:status`, `npm --prefix bot run db:migrate`. Backup de produção deve ser `pg_dump`/snapshot gerenciado validado por restore em ambiente separado. O diretório de transcripts pode ser preservado como cache, mas PostgreSQL é a autoridade para mensagens, checkpoints, categorias e metadata de recuperação.
 
 ## Origens por ambiente
 
@@ -173,7 +181,7 @@ bot/src/api/
 - `http/json.js`: lê JSON com o limite existente e serializa respostas.
 - `http/errors.js`: cria erros controlados com `statusCode`.
 - `http/cors.js`: mantém a origem permitida `http://localhost:5173`, métodos e headers atuais.
-- `healthRoutes.js`: responde `GET /api/health` com `{ ok: true }`.
+- `healthRoutes.js`: responde `GET /api/health` como liveness sem consultar dependências e `GET /api/ready` como readiness, validando o banco configurado e o estado pronto do cliente Discord.
 - `aiRoutes.js`: lê `POST /api/ai/generate` e chama TextaAIService pelo contexto, fornecendo as opções que preservam o contrato HTTP.
 - `discordRoutes.js`: valida `POST /api/discord/send`, monta a mensagem e publica com `allowedMentions: { parse: [] }`.
 - `announcementRoutes.js`: atende os POSTs de categorias, padrões, geração/revisão e envio, preservando validação de guild, drafts e contexto local confiável criado no backend.
@@ -211,12 +219,14 @@ A reorganização inicial preservou os contratos. O hardening posterior exige se
 
 ## Persistência de anúncios
 
+Em desenvolvimento sem `DATABASE_URL`, o diagrama abaixo representa o caminho JSON compatível com o legado. Com `DATABASE_URL`, `createServices` injeta `PostgresAnnouncementRepository`: as mesmas regras do `AnnouncementService` são preservadas, mas as operações de leitura/gravação são assíncronas e a lista da guild é substituída em uma transação PostgreSQL. O JSON não é importado automaticamente.
+
 ```text
 AnnouncementHandler / announcementRoutes
                  ↓
         AnnouncementService
                  ↓
-     JsonAnnouncementRepository
+     PostgresAnnouncementRepository / JsonAnnouncementRepository
                  ↓
    bot/data/announcements.json
 ```

@@ -20,7 +20,7 @@ test('getConfig resolve bot/.env fora do cwd e prioriza sua DATABASE_URL', t => 
   const localUrl = 'postgresql://local:fixture-password@localhost/project';
   const inheritedUrl = 'postgresql://inherited:fixture-password@localhost/deployment';
   fs.writeFileSync(path.join(fixtureBot, '.env'), `DATABASE_URL=${localUrl}\nAPI_PORT=4000\n`);
-  function check(expectedUrl) {
+  function check(expectedUrl, extra = {}) {
     const script = `
       const { getConfig } = require(${JSON.stringify(fixtureConfig)});
       const config = getConfig({ requireDiscord: false });
@@ -29,7 +29,7 @@ test('getConfig resolve bot/.env fora do cwd e prioriza sua DATABASE_URL', t => 
     `;
     const result = spawnSync(process.execPath, ['-e', script], {
       cwd: root,
-      env: { NODE_PATH: path.join(__dirname, '../node_modules'), DATABASE_URL: inheritedUrl, API_PORT: '4100' },
+      env: { NODE_PATH: path.join(__dirname, '../node_modules'), DATABASE_URL: inheritedUrl, API_PORT: '4100', ...extra },
       encoding: 'utf8', timeout: 5000,
     });
     assert.equal(result.error, undefined);
@@ -37,6 +37,7 @@ test('getConfig resolve bot/.env fora do cwd e prioriza sua DATABASE_URL', t => 
     assert.equal(result.stdout, '');
   }
   check(localUrl);
+  check(inheritedUrl, { NODE_ENV: 'production' });
   fs.unlinkSync(path.join(fixtureBot, '.env'));
   check(inheritedUrl);
 });
@@ -56,12 +57,25 @@ test('Discord exige token e client ID com erros sem valores sensíveis', () => {
 test('porta aplica default e converte inteiros válidos', () => {
   assert.equal(loadEnv(discord).api.port, 3001);
   assert.equal(loadEnv({ ...discord, API_PORT: ' 4000 ' }).api.port, 4000);
+  assert.equal(loadEnv({ ...discord, PORT: ' 4100 ' }).api.port, 4100);
+  assert.equal(loadEnv({ ...discord, PORT: '4100', API_PORT: '4200' }).api.port, 4200);
   for (const port of ['1', '65535']) assert.equal(loadEnv({ ...discord, API_PORT: port }).api.port, Number(port));
 });
 
 test('porta rejeita NaN, sufixos, frações e valores fora da faixa', () => {
   for (const port of ['abc', '3001abc', '1.5', '0', '-1', '65536', '1e3', 'Infinity']) {
     assert.throws(() => loadEnv({ ...discord, API_PORT: port }), /API_PORT/);
+  }
+});
+
+test('host HTTP diferencia desenvolvimento/produção, aceita override e rejeita valores absurdos', () => {
+  assert.equal(loadEnv(discord).api.host, '127.0.0.1');
+  assert.equal(loadEnv({ ...discord, NODE_ENV: 'production', DATABASE_URL: 'postgresql://db/app' }).api.host, '0.0.0.0');
+  for (const host of ['127.0.0.1', '0.0.0.0', '::1', 'api.example.test']) {
+    assert.equal(loadEnv({ ...discord, API_HOST: host }).api.host, host);
+  }
+  for (const host of ['*', 'http://127.0.0.1', 'bad host', '127.0.0.1:3001', 'a..example']) {
+    assert.throws(() => loadEnv({ ...discord, API_HOST: host }), /API_HOST/);
   }
 });
 

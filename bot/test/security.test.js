@@ -219,6 +219,14 @@ test('health e OPTIONS públicos, CORS explícito e headers básicos em sucesso/
   }
 });
 
+test('HSTS só é enviado quando a configuração indica produção HTTPS', async t => {
+  const f = setup(t);
+  f.services.auth.config.production = true;
+  f.services.auth.config.secure = true;
+  const response = await f.request('/api/health', { method: 'GET', authenticated: false });
+  assert.equal(response.headers['Strict-Transport-Security'], 'max-age=31536000; includeSubDomains');
+});
+
 test('erro SDK com statusCode não expõe mensagem, tokens, body ou stack em resposta/log', async t => {
   const f = setup(t);
   f.services.textaAI.generate = async () => { throw Object.assign(new Error(`${secret} refresh-private Authorization: private`), { statusCode: 400, body: 'raw SDK' }); };
@@ -234,4 +242,14 @@ test('body limitado por bytes aceita UTF8 fracionado e descarta excesso/objetos 
   assert.deepEqual(await readJson(Readable.from([bytes.subarray(0,12),bytes.subarray(12)])), { idea: 'Olá' });
   await assert.rejects(readJson(Readable.from([JSON.stringify({ idea: 'é'.repeat(11000) }), 'x'.repeat(20000)])), error => error.statusCode === 413);
   for (const body of ['null','[]','"text"','{']) await assert.rejects(readJson(Readable.from([body])), error => error.statusCode === 400);
+});
+
+test('body JSON rejeita Content-Type incompatível e aceita parâmetros JSON', async t => {
+  const f = setup(t);
+  const rejected = await f.request('/api/ai/generate', { headers: { 'content-type': 'text/plain' } });
+  assert.equal(rejected.status, 415);
+  assert.equal(f.counts.ai, 0);
+  const accepted = await f.request('/api/ai/generate', { headers: { 'content-type': 'application/json; charset=utf-8' } });
+  assert.equal(accepted.status, 200);
+  assert.equal(f.counts.ai, 1);
 });

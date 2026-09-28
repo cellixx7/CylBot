@@ -43,7 +43,7 @@ class TicketReconciliationService {
   async reconcileActiveTickets(tickets, closedAt = Date.now()) {
     const active = [];
     for (const ticket of tickets) {
-      if (!ticket.initialized || ticket.closing || ticket.reopening || !['OPEN', 'CLAIMED', 'REOPENED'].includes(ticket.status)) {
+      if (!ticket.initialized || ticket.reopening || (!ticket.closing && !['OPEN', 'CLAIMED', 'REOPENED'].includes(ticket.status))) {
         active.push(ticket);
         continue;
       }
@@ -51,7 +51,9 @@ class TicketReconciliationService {
         active.push(ticket);
         continue;
       }
-      const closed = await this.repository.closeMissingChannel(ticket, closedAt);
+      const closed = await (this.repository.recoverMissingChannel
+        ? this.repository.recoverMissingChannel(ticket, closedAt)
+        : this.repository.closeMissingChannel(ticket, closedAt));
       logger.warn('ticket.channel_missing_closed', {
         ...ticketLogContext(), guildId: ticket.guildId, ticketId: ticket.id,
         channelId: ticket.channelId, reconciled: Boolean(closed),
@@ -62,9 +64,11 @@ class TicketReconciliationService {
 
   async channelDeleted({ guildId, channelId }, closedAt = Date.now()) {
     const ticket = await this.repository.findByChannelId(guildId, channelId);
-    if (!ticket || !ticket.initialized || ticket.closing || ticket.reopening
-      || !['OPEN', 'CLAIMED', 'REOPENED'].includes(ticket.status)) return null;
-    const closed = await this.repository.closeMissingChannel(ticket, closedAt);
+    if (!ticket || !ticket.initialized || ticket.reopening
+      || (!ticket.closing && ticket.status !== 'CLOSED' && !['OPEN', 'CLAIMED', 'REOPENED'].includes(ticket.status))) return null;
+    const closed = await (this.repository.recoverMissingChannel
+      ? this.repository.recoverMissingChannel(ticket, closedAt)
+      : this.repository.closeMissingChannel(ticket, closedAt));
     logger.warn('ticket.channel_missing_closed', {
       guildId, ticketId: ticket.id, channelId, reconciled: Boolean(closed), source: 'channelDelete',
     });

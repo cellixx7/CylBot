@@ -2,11 +2,14 @@ const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, M
 const { assertCanManageAnnouncements } = require('../services/announcementPermissions');
 const row = (...components) => new ActionRowBuilder().addComponents(...components);
 const button = (id, label, primary = false) => new ButtonBuilder().setCustomId(`ann:${id}`).setLabel(label).setStyle(primary ? ButtonStyle.Success : ButtonStyle.Secondary);
+const categoryPickerFromCategories = categories => ({ content: 'Escolha uma categoria ou use Adicionar para criar uma categoria do servidor.', embeds: [], components: [
+  row(new StringSelectMenuBuilder().setCustomId('ann:choose').setPlaceholder('Categoria do anúncio').addOptions(categories.map(c => ({ label: c.name, value: c.id })))),
+  row(button('add', 'Adicionar')),
+] });
 function categoryPicker(guildId, announcements) {
-  return { content: 'Escolha uma categoria ou use Adicionar para criar uma categoria do servidor.', embeds: [], components: [
-    row(new StringSelectMenuBuilder().setCustomId('ann:choose').setPlaceholder('Categoria do anúncio').addOptions(announcements.categories(guildId).map(c => ({ label: c.name, value: c.id })))),
-    row(button('add', 'Adicionar')),
-  ] };
+  const categories = announcements.categories(guildId);
+  if (categories && typeof categories.then === 'function') return categories.then(categoryPickerFromCategories);
+  return categoryPickerFromCategories(categories);
 }
 function modal(id, title, fields) {
   return new ModalBuilder().setCustomId(`ann:${id}`).setTitle(title).addComponents(fields.map(([key, label, value, max, paragraph, required = true]) => {
@@ -25,28 +28,30 @@ async function handleAnnouncementInteraction(i, announcements = i.client?.servic
     const [, action, id] = i.customId.split(':');
     const authorization = { member: i.member, permissions: i.memberPermissions };
     if (['add', 'edit', 'save'].includes(action)) assertCanManageAnnouncements(authorization);
-    const category = () => {
-      const c = announcements.categories(i.guildId).find(c => c.id === id);
+    const category = async () => {
+      const categories = await announcements.categories(i.guildId);
+      const c = categories.find(c => c.id === id);
       if (!c) throw new Error('Categoria não encontrada.');
       return c;
     };
     if (action === 'choose') {
-      const c = announcements.categories(i.guildId).find(c => c.id === i.values[0]);
+      const categories = await announcements.categories(i.guildId);
+      const c = categories.find(c => c.id === i.values[0]);
       if (!c) throw new Error('Categoria não encontrada.');
       await i.update({ content: `Categoria: **${c.name}**. Os padrões são compartilhados com o servidor.`, components: [row(button(`write:${c.id}`, 'Criar anúncio', true), button(`edit:${c.id}`, 'Editar padrão'), button('back', 'Categorias'))] });
-    } else if (action === 'back') await i.update(categoryPicker(i.guildId, announcements));
+    } else if (action === 'back') await i.update(await categoryPicker(i.guildId, announcements));
     else if (action === 'add' || action === 'edit') {
-      const c = action === 'edit' ? category() : {};
+      const c = action === 'edit' ? await category() : {};
       await i.showModal(modal(`save:${c.id || 'new'}`, 'Padrão do servidor', [
         ['name', 'Nome da categoria', c.name, 100], ['title', 'Título do anúncio', c.title, 256],
         ['description', 'Descrição padrão (opcional)', c.description, 2000, true, false], ['image', 'URL HTTPS da imagem (opcional)', c.image, 1000, false, false],
       ]));
     } else if (action === 'save') {
       const input = Object.fromEntries(['name', 'title', 'description', 'image'].map(key => [key, i.fields.getTextInputValue(key)]));
-      announcements.save(i.guildId, { ...input, id: id === 'new' ? undefined : id }, authorization);
-      await i.reply({ ...categoryPicker(i.guildId, announcements), ephemeral: true });
+      await announcements.save(i.guildId, { ...input, id: id === 'new' ? undefined : id }, authorization);
+      await i.reply({ ...(await categoryPicker(i.guildId, announcements)), ephemeral: true });
     } else if (action === 'write') {
-      const c = category();
+      const c = await category();
       await i.showModal(modal(`generate:${id}`, 'Descrição do anúncio', [['description', 'O que deseja anunciar?', c.description, 2000, true]]));
     } else if (action === 'context') {
       announcements.get(id, i.user.id, i.guildId);

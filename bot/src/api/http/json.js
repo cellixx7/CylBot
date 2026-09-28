@@ -2,6 +2,11 @@ const { clientError } = require('./errors');
 
 function readJson(request) {
   return new Promise((resolve, reject) => {
+    const contentType = request.headers?.['content-type'];
+    if (contentType && !/^application\/(?:json|[a-z0-9.+-]+\+json)(?:\s*;|$)/i.test(contentType.trim())) {
+      reject(clientError(415, 'Content-Type deve ser application/json.'));
+      return;
+    }
     let size = 0;
     let chunks = [];
     let rejected = false;

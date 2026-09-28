@@ -72,3 +72,17 @@ test('nova captura não sobrescreve versão anterior referenciada por um checkpo
   assert.deepEqual(f.transcripts.read(previous), oldBytes);
   assert(f.transcripts.read(next).toString().includes('Nova mensagem'));
 });
+
+test('regenera o HTML a partir do Message Core quando o cache local desaparece e preserva o ciclo', async t => {
+  const f = ticketFixture(t); const ticket = await f.create();
+  ticket.closing = { startedAt: f.now(), reason: 'Fim', summary: '' };
+  const calls = [];
+  const canonical = [{ id: 'message-cycle-1', authorDiscordId: ids.user, authorName: 'Criador', authorType: 'USER', content: 'Mensagem canônica', createdAt: new Date(f.now()) }];
+  f.transcripts.messages = { repository: {}, async forTranscript(value) { calls.push(value.reopenCount); return canonical; } };
+  const reference = await f.transcripts.generate(ticket);
+  const expected = f.transcripts.read(reference);
+  fs.unlinkSync(f.transcriptRepository.file(reference.key));
+  const regenerated = await f.transcripts.read(reference, reference.snapshot);
+  assert.deepEqual(regenerated, expected);
+  assert.deepEqual(calls, [0, 0]);
+});

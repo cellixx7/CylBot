@@ -4,6 +4,7 @@ const TextaAISessionManager = require('../services/textaAISessionManager');
 const { AnnouncementService } = require('../services/announcementService');
 const { AnnouncementDraftManager } = require('../services/announcementDraftManager');
 const { JsonAnnouncementRepository } = require('../repositories/jsonAnnouncementRepository');
+const { PostgresAnnouncementRepository } = require('../repositories/postgresAnnouncementRepository');
 const { DiscordOAuthProvider } = require('../providers/discordOAuthProvider');
 const { AuthService } = require('../services/authService');
 const { AuthSessionManager } = require('../services/authSessionManager');
@@ -41,7 +42,7 @@ function createServices(client, config) {
   const ticketConfigs = database ? new PostgresTicketConfigRepository(database) : new TicketConfigRepository();
   const openRouter = new OpenRouterService(config.openRouter);
   const oauthProvider = new DiscordOAuthProvider(config.auth);
-  const announcementRepository = new JsonAnnouncementRepository();
+  const announcementRepository = database ? new PostgresAnnouncementRepository(database) : new JsonAnnouncementRepository();
   const ticketAdapter = new DiscordTicketAdapter(client, { ...config.tickets, webOrigin: config.auth.webOrigin });
   const ticketPermissions = new TicketPermissionService(ticketAdapter);
   const ticketTranscripts = new TicketTranscriptService({ adapter: ticketAdapter, repository: new TicketTranscriptRepository() });
@@ -50,6 +51,7 @@ function createServices(client, config) {
     permissions: ticketPermissions, adapter: ticketAdapter, transcripts: ticketTranscripts, reconciliation: ticketReconciliation });
   const messageRepository = database ? new PostgresTicketMessageRepository(database) : null;
   const ticketMessages = new TicketMessageService({ repository: messageRepository, tickets, permissions: ticketPermissions, adapter: ticketAdapter });
+  tickets.messages = ticketMessages;
   ticketTranscripts.messages = ticketMessages;
   const aiRepository = database ? new PostgresTicketAIRepository(database) : null;
   const aiSettings = config.ticketAI || { enabled: false, guildIds: [], model: config.openRouter.model, timeoutMs: 20000 };

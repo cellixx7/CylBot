@@ -23,9 +23,12 @@ test('state machine aceita apenas as transições de negócio', () => {
   }
 });
 
-test('health diferencia banco indisponível sem expor detalhes de conexão', async () => {
+test('readiness diferencia banco indisponível sem expor detalhes de conexão', async () => {
   const response = { writeHead(status, headers) { this.status = status; this.headers = headers; }, end(body) { this.body = JSON.parse(body); } };
-  await healthRoute.handle({ method: 'GET', url: '/api/health' }, response, { services: { database: { ping: async () => { throw new Error('postgres://secret'); } } } });
+  await healthRoute.handle({ method: 'GET', url: '/api/ready' }, response, {
+    client: { isReady: () => true },
+    services: { database: { ping: async () => { throw new Error('postgres://secret'); } } },
+  });
   assert.equal(response.status, 503);
   assert.deepEqual(response.body, { ok: false, database: 'unavailable' });
   assert.equal(JSON.stringify(response.body).includes('secret'), false);

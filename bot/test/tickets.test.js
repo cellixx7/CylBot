@@ -315,3 +315,44 @@ test('ticket ativo com canal apagado e encerrado automaticamente e deixa de bloq
   assert.equal(eventClosed.status, S.CLOSED);
   assert.equal(eventClosed.channelId, null);
 });
+
+test('reconciliation finaliza closing parcial e limpa canal fechado removido', async t => {
+  const f = ticketFixture(t);
+  const ticket = await f.create();
+  ticket.closing = { actorUserId: ids.staff, reason: 'Resolvido', summary: 'Resumo', startedAt: f.now(), transcript: null };
+  f.repository.save(ticket);
+  f.channels.delete(ticket.channelId);
+  const recovered = await f.reconciliation.channelDeleted({ guildId: ids.guild, channelId: ticket.channelId }, f.now());
+  assert.equal(recovered.status, S.CLOSED);
+  assert.equal(recovered.channelId, null);
+  assert.equal(recovered.closing.completed, true);
+  assert.equal(recovered.closing.channelMissing, true);
+  assert.equal(recovered.archives.length, 1);
+
+  f.advance();
+  const closed = await f.close(await f.create({ categoryId: 'report' }));
+  const closedChannelId = closed.channelId;
+  f.channels.delete(closedChannelId);
+  const cleaned = await f.reconciliation.channelDeleted({ guildId: ids.guild, channelId: closedChannelId }, f.now());
+  assert.equal(cleaned.status, S.CLOSED);
+  assert.equal(cleaned.channelId, null);
+  assert.equal(cleaned.events.filter(event => event.type === E.CLOSED).length, 1);
+});
+
+test('abertura pending recria canal ausente sem trocar identidade', async t => {
+  const f = ticketFixture(t);
+  f.adapter.channel = async (guildId, channelId) => {
+    if (!f.channels.has(channelId)) throw Object.assign(new Error('Unknown Channel'), { code: 10003 });
+    return f.channels.get(channelId);
+  };
+  const original = f.adapter.publishInitial;
+  f.adapter.publishInitial = async () => { throw new Error('Discord failure'); };
+  await assert.rejects(f.create());
+  const pending = f.repository.list(ids.guild)[0];
+  f.channels.delete(pending.channelId);
+  f.adapter.publishInitial = original;
+  const resumed = await f.makeService().create(f.input);
+  assert.equal(resumed.id, pending.id);
+  assert.equal(resumed.sequence, pending.sequence);
+  assert.equal(f.channels.size, 1);
+});

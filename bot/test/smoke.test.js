@@ -8,6 +8,7 @@ const { DiscordOAuthProvider } = require('../src/providers/discordOAuthProvider'
 function smokeConfig() {
   return loadEnv({
     NODE_ENV: 'test',
+    DISCORD_TOKEN: 'discord-token',
     DISCORD_CLIENT_ID: '123456789012345678',
     DISCORD_OAUTH_CLIENT_SECRET: 'discord-secret',
     DISCORD_OAUTH_REDIRECT_URI: 'https://example.test/api/auth/discord/callback',

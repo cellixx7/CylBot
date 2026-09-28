@@ -6,6 +6,11 @@ const { AnnouncementDraftManager } = require('./announcementDraftManager');
 const { assertCanManageAnnouncements } = require('./announcementPermissions');
 
 const fail = message => clientError(400, message);
+const isPromise = value => value && typeof value.then === 'function';
+const defaultAnnouncementCategories = () => [
+  ['Aviso', 'Aviso'], ['Manuten\u00e7\u00e3o', 'Manuten\u00e7\u00e3o'],
+  ['Evento', 'Evento'], ['Notifica\u00e7\u00e3o', 'Notifica\u00e7\u00e3o'],
+].map(([name, title], i) => ({ id: `default-${i}`, name, title, description: '', image: '' }));
 function text(value, max, required = false) {
   if (typeof value !== 'string' || value.trim().length > max || (required && !value.trim())) throw fail('Preencha os campos respeitando os limites indicados.');
   return value.trim();
@@ -24,7 +29,9 @@ class AnnouncementService {
     this.draftManager = draftManager;
   }
   categories(guildId) {
-    return this.repository.getCategories(guildId) || ['Aviso', 'Manutenção', 'Evento', 'Notificação'].map((name, i) => ({ id: `default-${i}`, name, title: name, description: '', image: '' }));
+    const value = this.repository.getCategories(guildId);
+    if (isPromise(value)) return value.then(categories => categories || defaultAnnouncementCategories());
+    return value || defaultAnnouncementCategories();
   }
   save(guildId, input, context) {
     assertCanManageAnnouncements(context);
@@ -33,6 +40,12 @@ class AnnouncementService {
       id: input.id || crypto.randomUUID(), name: text(input.name, 100, true),
       title: text(input.title, 256, true), description: text(input.description || '', 2000), image: text(input.image || '', 1000),
     };
+    if (isPromise(categories) && category.image) {
+      let url;
+      try { url = new URL(category.image); } catch { throw fail('Informe uma URL de imagem válida.'); }
+      if (url.protocol !== 'https:') throw fail('A imagem deve usar uma URL HTTPS.');
+    }
+    if (isPromise(categories)) return categories.then(items => this.saveResolved(guildId, items, category, Boolean(input.id)));
     if (category.image) {
       let url;
       try { url = new URL(category.image); } catch { throw fail('Informe uma URL de imagem válida.'); }
@@ -46,11 +59,21 @@ class AnnouncementService {
     this.repository.saveCategories(guildId, categories);
     return category;
   }
+  async saveResolved(guildId, categories, category, updating) {
+    const index = categories.findIndex(c => c.id === category.id);
+    if (updating && index < 0) throw fail('Categoria não encontrada.');
+    if (categories.some(c => c.id !== category.id && c.name.toLocaleLowerCase() === category.name.toLocaleLowerCase())) throw fail('Já existe uma categoria com esse nome.');
+    if (index < 0 && categories.length >= 25) throw fail('O servidor já possui 25 categorias.');
+    if (index < 0) categories.push(category); else categories[index] = category;
+    await this.repository.saveCategories(guildId, categories);
+    return category;
+  }
   async generate({ guildId, guildName, owner, channelId, categoryId, description, draftId, context }) {
     let previous;
     if (draftId) previous = this.get(draftId, owner, guildId);
     if (previous) this.draftManager.assertAvailable(previous);
-    const category = previous?.category || this.categories(guildId).find(c => c.id === categoryId);
+    const categories = previous?.category ? null : await this.categories(guildId);
+    const category = previous?.category || categories.find(c => c.id === categoryId);
     if (!category) throw fail('Categoria não encontrada.');
     const idea = previous?.idea || text(description || category.description, 2000, true);
     const extra = text(context || '', 2000);

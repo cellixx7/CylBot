@@ -29,7 +29,7 @@ function createRequestHandler(context) {
     const routeContext = { ...context, requestId };
     response.setHeader('X-Request-Id', requestId);
     setCorsHeaders(response, authConfig, request);
-    setSecurityHeaders(response);
+    setSecurityHeaders(response, { hsts: authConfig.production && authConfig.secure });
 
     if (request.method === 'OPTIONS') {
       response.writeHead(204).end();
@@ -86,12 +86,12 @@ function createRequestHandler(context) {
   };
 }
 
-function startApiServer(client, services, { port }) {
+function startApiServer(client, services, { host = '127.0.0.1', port }) {
   const context = { client, services };
   const server = http.createServer(createRequestHandler(context));
 
-  server.listen(port, '127.0.0.1', () => {
-    logger.info('api.started', { module: 'api', host: '127.0.0.1', port });
+  server.listen(port, host, () => {
+    logger.info('api.started', { module: 'api', host, port });
   });
 
   server.on('error', (error) => {
@@ -101,4 +101,20 @@ function startApiServer(client, services, { port }) {
   return server;
 }
 
-module.exports = { startApiServer, createRequestHandler };
+function waitForServerListening(server) {
+  if (server.listening) return Promise.resolve(server);
+  return new Promise((resolve, reject) => {
+    const onListening = () => {
+      server.off('error', onError);
+      resolve(server);
+    };
+    const onError = error => {
+      server.off('listening', onListening);
+      reject(error);
+    };
+    server.once('listening', onListening);
+    server.once('error', onError);
+  });
+}
+
+module.exports = { startApiServer, waitForServerListening, createRequestHandler };

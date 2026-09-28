@@ -1,5 +1,6 @@
 const dotenv = require('dotenv');
 const path = require('node:path');
+const net = require('node:net');
 
 function optional(source, name) {
   const value = source[name];
@@ -24,6 +25,19 @@ function integer(source, name, fallback, max = Number.MAX_SAFE_INTEGER) {
     throw new Error(`${name} deve ser um inteiro entre 1 e ${max}.`);
   }
   return parsed;
+}
+
+function apiHost(source, environment) {
+  const value = optional(source, 'API_HOST');
+  if (value === undefined) return environment === 'production' ? '0.0.0.0' : '127.0.0.1';
+  const validHostname = value.length <= 253 &&
+    !/[\s/\\?#@]/.test(value) &&
+    /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/i.test(value) &&
+    !value.includes('..');
+  if (!validHostname && net.isIP(value) === 0) {
+    throw new Error('API_HOST deve ser um hostname ou endereço IP válido, sem URL, espaços ou curingas.');
+  }
+  return value;
 }
 
 function validateRequired(config, { requireDiscord = false, requireSpotifyAuth = false } = {}) {
@@ -73,6 +87,8 @@ function loadEnv(source, { requireDiscord = true, requireSpotifyAuth = false } =
     throw new Error('LOG_LEVEL deve ser debug, info, warn ou error.');
   }
   const databaseUrl = optional(source, 'DATABASE_URL');
+  const openRouterApiKey = optional(source, 'OPENROUTER_API_KEY');
+  const apiPort = integer(source, 'API_PORT', undefined, 65535);
   const openRouterModel = optional(source, 'OPENROUTER_MODEL') || 'openai/gpt-4.1-mini';
   const ticketAIGuildIds = (optional(source, 'TICKET_AI_GUILD_IDS') || '').split(',').map(id => id.trim()).filter(Boolean);
   if (environment === 'production' && !databaseUrl) {
@@ -82,7 +98,7 @@ function loadEnv(source, { requireDiscord = true, requireSpotifyAuth = false } =
     auth: {
       enabled: Boolean(oauthSecret), clientId: oauthClientId, clientSecret: oauthSecret,
       redirectUri: oauthRedirectUri, webOrigin, allowedOrigins,
-      secure: webOrigin.startsWith('https:'),
+      secure: webOrigin.startsWith('https:'), production: environment === 'production',
       sessionTtlSeconds: integer(source, 'SESSION_TTL_SECONDS', 28800, 2592000),
     },
     logging: { level: logLevel },
@@ -90,19 +106,22 @@ function loadEnv(source, { requireDiscord = true, requireSpotifyAuth = false } =
       token: optional(source, 'DISCORD_TOKEN'),
       clientId: oauthClientId,
     },
-    api: { port: integer(source, 'API_PORT', 3001, 65535) },
+    api: {
+      host: apiHost(source, environment),
+      port: apiPort ?? integer(source, 'PORT', 3001, 65535),
+    },
     database: { url: databaseUrl },
     tickets: { messageContentEnabled: optional(source, 'TICKETS_MESSAGE_CONTENT_ENABLED') === 'true' },
     ticketAI: {
       enabled: optional(source, 'TICKET_AI_ENABLED') === 'true'
-        || (environment !== 'production' && Boolean(databaseUrl && optional(source, 'OPENROUTER_API_KEY'))),
+        || (environment !== 'production' && Boolean(databaseUrl && openRouterApiKey)),
       guildIds: ticketAIGuildIds,
       allowAllGuilds: environment !== 'production' && ticketAIGuildIds.length === 0,
       model: optional(source, 'TICKET_AI_MODEL') || openRouterModel,
       timeoutMs: integer(source, 'TICKET_AI_TIMEOUT_MS', 20000, 30000),
     },
     openRouter: {
-      apiKey: optional(source, 'OPENROUTER_API_KEY'),
+      apiKey: openRouterApiKey,
       model: openRouterModel,
       maxTokens: Math.min(integer(source, 'OPENROUTER_MAX_TOKENS', 800), 800),
     },
@@ -122,14 +141,28 @@ let runtimeConfig;
 function getConfig(options = {}) {
   if (!runtimeConfig) {
     // Resolve sempre bot/.env, inclusive ao executar scripts pela raiz.
+    const inheritedEnvironment = Object.fromEntries(Object.entries(process.env));
     const result = dotenv.config({ path: path.resolve(__dirname, '../../.env') });
     if (result.error && result.error.code !== 'ENOENT') {
       throw new Error('Não foi possível ler bot/.env. Verifique as permissões do arquivo.');
     }
-    // A URL local tem prioridade sobre uma DATABASE_URL herdada do terminal.
-    // As demais variáveis mantêm a precedência do ambiente de execução.
+    // Valores explicitamente fornecidos pelo processo, inclusive vazios usados
+    // por testes/deploy, mantêm precedência sobre o arquivo local. Em DEV,
+    // DATABASE_URL do bot/.env preserva a compatibilidade local; em production,
+    // a URL explicitamente injetada pelo ambiente tem prioridade.
+    for (const name of Object.keys(inheritedEnvironment)) {
+      if (name !== 'DATABASE_URL' && Object.hasOwn(result.parsed || {}, name)) {
+        process.env[name] = inheritedEnvironment[name];
+      }
+    }
     const localDatabaseUrl = optional(result.parsed || {}, 'DATABASE_URL');
-    if (localDatabaseUrl) process.env.DATABASE_URL = localDatabaseUrl;
+    const production = optional(inheritedEnvironment, 'NODE_ENV') === 'production' ||
+      optional(result.parsed || {}, 'NODE_ENV') === 'production';
+    if (localDatabaseUrl && !(production && Object.hasOwn(inheritedEnvironment, 'DATABASE_URL'))) {
+      process.env.DATABASE_URL = localDatabaseUrl;
+    } else if (production && Object.hasOwn(inheritedEnvironment, 'DATABASE_URL')) {
+      process.env.DATABASE_URL = inheritedEnvironment.DATABASE_URL;
+    }
     runtimeConfig = loadEnv(process.env, { requireDiscord: false });
   }
   // Importar um módulo/testar o provider não exige credenciais Discord.

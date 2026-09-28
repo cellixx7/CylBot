@@ -101,6 +101,7 @@ class TicketService {
           createdAt: this.now(), claimedAt: null, closedAt: null, reopenCount: 0,
           channelId: null, initialMessageId: null, openingLogId: null, logChannelId: config.logChannelId,
           supportRoleIds: [...config.supportRoleIds], initialized: false, events: [], archives: [], closing: null, reopening: null,
+          createdByCycle: 0,
         };
         const createdEvent = { type: E.CREATED, ticketId: null, actorUserId: userId, createdAt: this.now(), metadata: {} };
         setTicketStage('repository.create');
@@ -110,7 +111,13 @@ class TicketService {
       } else if (this.reconciliation) {
         setTicketContext(ticket);
         setTicketStage('reconciliation.channel');
-        await this.reconciliation.assertTicketChannel(ticket);
+        try {
+          await this.reconciliation.assertTicketChannel(ticket);
+        } catch (error) {
+          if (ticket.initialized || error.cause?.code !== 10003) throw error;
+          ticket.channelId = null; ticket.initialMessageId = null; ticket.openingLogId = null;
+          await this.save(ticket);
+        }
       }
       setTicketContext(ticket);
       if (!ticket.channelId) {
@@ -192,16 +199,21 @@ class TicketService {
       logger.info('ticket.close.started', { guildId, ticketId, userId, channelId });
       try {
         const closing = ticket.closing;
+        if (!closing.transcript && this.messages?.repository && this.messages.syncDiscordHistory) {
+          setTicketStage('messages.syncDiscordHistory');
+          await this.messages.syncDiscordHistory(ticket);
+        }
         if (!closing.transcript) {
           setTicketStage('transcript.generate');
           closing.transcript = await this.transcripts.generate(ticket);
+          closing.transcriptSnapshot = closing.transcript.snapshot;
           closing.transcriptGenerated = true;
           closing.transcriptPersisted = true;
           await this.save(ticket);
         }
         if (!closing.logMessageId) {
           setTicketStage('transcript.read');
-          const transcript = this.transcripts.read(closing.transcript);
+          const transcript = await this.transcripts.read(closing.transcript, closing.transcriptSnapshot);
           setTicketStage('discord.publishClosed');
           closing.logMessageId = await this.adapter.publishClosed(ticket, transcript);
           closing.logPublished = true;
@@ -217,11 +229,12 @@ class TicketService {
         if (await this.adapter.latestMessageId(ticket) !== closing.transcript.lastMessageId) {
           setTicketStage('transcript.generate');
           closing.transcript = await this.transcripts.generate(ticket);
+          closing.transcriptSnapshot = closing.transcript.snapshot;
           await this.save(ticket);
         }
         // Também em retries: o arquivo local pode ter sido atualizado antes de uma falha no log.
         setTicketStage('transcript.read');
-        const transcript = this.transcripts.read(closing.transcript);
+        const transcript = await this.transcripts.read(closing.transcript, closing.transcriptSnapshot);
         setTicketStage('discord.publishClosed');
         closing.logMessageId = await this.adapter.publishClosed(ticket, transcript);
         closing.logPublished = true;
@@ -229,7 +242,8 @@ class TicketService {
         setTicketStage('state.close');
         transition(ticket, S.CLOSED); ticket.closedAt = this.now(); closing.completed = true;
         ticket.archives.push({ cycle: ticket.reopenCount, channelId: ticket.channelId, closedAt: ticket.closedAt,
-          reason: closing.reason, summary: closing.summary, transcript: closing.transcript, logMessageId: closing.logMessageId });
+          reason: closing.reason, summary: closing.summary, transcript: closing.transcript,
+          transcriptSnapshot: closing.transcriptSnapshot, logMessageId: closing.logMessageId });
         this.event(ticket, E.CLOSED, closing.actorUserId, { reason: closing.reason, cycle: ticket.reopenCount });
         await this.save(ticket);
         try { await this.adapter.updateInitial(ticket); } catch { logger.warn('ticket.message_update_failed', { guildId, ticketId, channelId }); }
@@ -263,7 +277,7 @@ class TicketService {
       }
       const targetChannelId = ticket.channelId;
       setTicketStage('transcript.read');
-      this.transcripts.read(ticket.closing.transcript);
+      await this.transcripts.read(ticket.closing.transcript, ticket.closing.transcriptSnapshot);
       setTicketStage('discord.verifyClosedLog');
       await this.adapter.verifyClosedLog(ticket);
       setTicketStage('discord.removeChannel');
@@ -286,7 +300,7 @@ class TicketService {
       await this.permissions.actor(guildId, ticket.creatorUserId);
       const previous = ticket.archives.at(-1);
       setTicketStage('transcript.read');
-      const attachment = this.transcripts.read(previous.transcript);
+      const attachment = await this.transcripts.read(previous.transcript, previous.transcriptSnapshot);
       if (!ticket.reopening) {
         await this.limits(guildId, ticket.creatorUserId, ticket.categoryId, ticket.id);
         if (this.now() - ticket.closedAt < 60_000) throw rateLimit('TICKET_REOPEN_COOLDOWN', 'Aguarde 60 segundos após o encerramento para reabrir.');
@@ -297,7 +311,16 @@ class TicketService {
         await this.save(ticket);
       }
       const pending = ticket.reopening;
+      if (pending.channelId && typeof this.adapter.channel === 'function') {
+        try { await this.adapter.channel(guildId, pending.channelId); }
+        catch (error) {
+          if (error?.code !== 10003) throw error;
+          pending.channelId = null; pending.initialMessageId = null;
+          await this.save(ticket);
+        }
+      }
       const reopened = { ...ticket, status: S.REOPENED, reopenCount: pending.cycle,
+        createdByCycle: pending.cycle,
         assignedUserId: null, assignedName: null, claimedAt: null, closing: null,
         reopenedBy: pending.actorUserId, reopenedByName: pending.actorName, reopenedAt: pending.startedAt,
         channelId: pending.channelId, initialMessageId: pending.initialMessageId };

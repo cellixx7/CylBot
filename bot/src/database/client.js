@@ -4,7 +4,9 @@ const schema = require('./schema');
 
 function createDatabase(url) {
   if (!url) return null;
-  const pool = new Pool({ connectionString: url });
+  // Keep the pool bounded for a single bot instance. TLS/sslmode remains controlled by
+  // the provider URL, which keeps local Postgres compatible with hosted Postgres.
+  const pool = new Pool({ connectionString: url, max: 10, connectionTimeoutMillis: 10_000, idleTimeoutMillis: 30_000 });
   const db = drizzle(pool, { schema });
   return {
     db,

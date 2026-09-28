@@ -29,7 +29,9 @@ async function handle(request, response, { services, requestId }) {
     response.setHeader('Set-Cookie', cleared);
     try {
       const state = url.searchParams.get('state');
-      if (!state || state !== readCookie(request, STATE_COOKIE) || url.searchParams.getAll('state').length !== 1 || url.searchParams.getAll('code').length > 1) {
+      if (!state || state !== readCookie(request, STATE_COOKIE) || url.searchParams.getAll('state').length !== 1
+        || url.searchParams.getAll('code').length > 1 || url.searchParams.getAll('error').length > 1
+        || url.searchParams.getAll('error_description').length > 1) {
         throw clientError(400, 'Callback inválido.');
       }
       const session = await auth.complete({ state, binding: readCookie(request, BINDING_COOKIE),

@@ -63,6 +63,18 @@ test('health, CORS, OPTIONS e fallback mantêm os contratos', async () => {
   assert.equal(options.body, undefined);
 });
 
+test('readiness exige Discord pronto e não altera a liveness', async () => {
+  const ready = await request({}, 'GET', '/api/ready');
+  assert.equal(ready.status, 200);
+  assert.deepEqual(ready.body, { ok: true });
+  const unavailable = await request({ client: { isReady: () => false } }, 'GET', '/api/ready');
+  assert.equal(unavailable.status, 503);
+  assert.deepEqual(unavailable.body, { ok: false, discord: 'unavailable' });
+  const health = await request({ client: { isReady: () => false } }, 'GET', '/api/health');
+  assert.equal(health.status, 200);
+  assert.deepEqual(health.body, { ok: true });
+});
+
 test('métodos incorretos não executam operações nem acessam dependências', async () => {
   for (const [method, url] of [
     ['POST', '/api/health'], ['GET', '/api/ai/generate'], ['GET', '/api/discord/send'],

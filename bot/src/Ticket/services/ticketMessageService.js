@@ -43,7 +43,7 @@ class TicketMessageService {
 
   async syncDiscordHistory(ticket, { excludeDiscordMessageId } = {}) {
     this.requireStorage();
-    if (await this.repository.hasLegacySyncBoundary(ticket.id)) return { imported: 0, skipped: true };
+    if (await this.repository.hasLegacySyncBoundary(ticket.id, ticket.reopenCount || 0)) return { imported: 0, skipped: true };
     const history = [];
     let before;
     while (history.length <= 5000) {
@@ -61,7 +61,7 @@ class TicketMessageService {
       const text = String(item.content || item.embeds?.join('\n') || '').trim().slice(0, 2000);
       if (!text) continue;
       const authorType = item.authorId === ticket.creatorUserId ? A.USER : item.authorBot ? A.SYSTEM : A.STAFF;
-      imports.push({ ticketId: ticket.id, guildId: ticket.guildId,
+      imports.push({ ticketId: ticket.id, guildId: ticket.guildId, cycle: ticket.reopenCount || 0,
         authorDiscordId: item.authorId, authorName: item.authorName || authorType, authorAvatarUrl: safeAvatarUrl(item.authorAvatarUrl), authorType,
         origin: O.DISCORD, visibility: V.PUBLIC, content: text, discordMessageId: item.id,
         discordChannelId: ticket.channelId, deliveryStatus: D.SENT, deliveryAttempts: 0, createdAt: new Date(item.createdAt) });
@@ -81,7 +81,7 @@ class TicketMessageService {
     const text = content(input.content);
     await this.syncDiscordHistory(ticket, { excludeDiscordMessageId: input.messageId });
     const authorType = this.authorType(actor, ticket);
-    const result = await this.repository.create({ ticketId: ticket.id, guildId: ticket.guildId,
+    const result = await this.repository.create({ ticketId: ticket.id, guildId: ticket.guildId, cycle: ticket.reopenCount || 0,
       authorDiscordId: actor.id, authorName: actor.name, authorAvatarUrl: safeAvatarUrl(input.authorAvatarUrl) || safeAvatarUrl(actor.avatarUrl), authorType, origin: O.DISCORD, visibility: V.PUBLIC,
       content: text, discordMessageId: input.messageId, discordChannelId: input.channelId,
       deliveryStatus: D.SENT, deliveryAttempts: 0, createdAt: input.createdAt ? new Date(input.createdAt) : new Date() });
@@ -105,7 +105,7 @@ class TicketMessageService {
       return this.deliver(ticket, existing);
     }
     const result = await this.repository.create({
-      ticketId: ticket.id, guildId, authorDiscordId: actor.id,
+      ticketId: ticket.id, guildId, cycle: ticket.reopenCount || 0, authorDiscordId: actor.id,
       authorName: actor.name, authorAvatarUrl: safeAvatarUrl(actor.avatarUrl), authorType: this.authorType(actor, ticket), origin: O.WEB, visibility: V.PUBLIC,
       content: text, clientMessageId: clientId, deliveryStatus: D.PENDING
     });
@@ -239,7 +239,7 @@ class TicketMessageService {
 
   async reserveAIMessage({ ticket, config, proposal, runId, internal = false, db }) {
     this.requireStorage();
-    const result = await this.repository.create({ ticketId: ticket.id, guildId: ticket.guildId,
+    const result = await this.repository.create({ ticketId: ticket.id, guildId: ticket.guildId, cycle: ticket.reopenCount || 0,
       authorName: config.assistantName || 'CylBot', authorType: A.AI, origin: O.AI,
       visibility: internal ? V.INTERNAL : V.PUBLIC, content: content(proposal.message, 1600),
       clientMessageId: `ai:${runId}`, deliveryStatus: D.PENDING }, db);
@@ -248,7 +248,7 @@ class TicketMessageService {
 
   async createSystemMessage(ticket, { id = randomUUID(), content: text, visibility = V.PUBLIC }) {
     this.requireStorage();
-    const result = await this.repository.create({ id, ticketId: ticket.id, guildId: ticket.guildId,
+    const result = await this.repository.create({ id, ticketId: ticket.id, guildId: ticket.guildId, cycle: ticket.reopenCount || 0,
       authorName: 'CylBot', authorType: A.SYSTEM, origin: O.SYSTEM, visibility,
       content: content(text, WEB_CONTENT_LIMIT), deliveryStatus: D.PENDING });
     return this.deliver(ticket, result.message);
@@ -366,7 +366,7 @@ class TicketMessageService {
   }
 
   async recentForAI(ticket, limit = 12) { this.requireStorage(); return this.repository.listRecent(ticket.id, { limit, visibilities: [V.PUBLIC] }); }
-  async forTranscript(ticket, limit = 5000) { this.requireStorage(); return this.repository.listForTranscript(ticket.id, { limit }); }
+  async forTranscript(ticket, limit = 5000) { this.requireStorage(); return this.repository.listForTranscript(ticket.id, { limit, cycle: ticket.reopenCount || 0 }); }
   dto(message, viewerId, participants = []) { return { id: message.id, authorName: message.authorName, authorAvatarUrl: safeAvatarUrl(message.authorAvatarUrl), authorType: message.authorType, origin: message.origin,
     visibility: message.visibility, content: message.content, deliveryStatus: message.deliveryStatus, createdAt: message.createdAt, editedAt: message.editedAt,
     mentions: mentionIds(message.content).map(id => participants.find(person => person.id === id)).filter(Boolean),

@@ -122,9 +122,9 @@ class PostgresTicketMessageRepository {
     }));
   }
 
-  async hasLegacySyncBoundary(ticketId, db = this.db) {
+  async hasLegacySyncBoundary(ticketId, cycle = 0, db = this.db) {
     const [row] = await db.select({ id: ticketMessages.id }).from(ticketMessages)
-      .where(and(eq(ticketMessages.ticketId, ticketId), inArray(ticketMessages.origin, ['DISCORD', 'WEB']))).limit(1);
+      .where(and(eq(ticketMessages.ticketId, ticketId), eq(ticketMessages.cycle, cycle), inArray(ticketMessages.origin, ['DISCORD', 'WEB']))).limit(1);
     return Boolean(row);
   }
 
@@ -156,8 +156,8 @@ class PostgresTicketMessageRepository {
     return { messages: page, nextBefore: hasMore ? page[0]?.id || null : null };
   }
 
-  async listForTranscript(ticketId, { limit = 5000 } = {}, db = this.db) {
-    const rows = await db.select().from(ticketMessages).where(and(eq(ticketMessages.ticketId, ticketId), eq(ticketMessages.visibility, 'PUBLIC')))
+  async listForTranscript(ticketId, { limit = 5000, cycle = 0 } = {}, db = this.db) {
+    const rows = await db.select().from(ticketMessages).where(and(eq(ticketMessages.ticketId, ticketId), eq(ticketMessages.cycle, cycle), eq(ticketMessages.visibility, 'PUBLIC')))
       .orderBy(asc(ticketMessages.createdAt), asc(ticketMessages.id)).limit(limit + 1);
     return rows.map(map);
   }

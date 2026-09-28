@@ -23,10 +23,10 @@ async function handleAnnouncements(request, response, { client, services, sessio
   const owner = `web:${session.user.id}`;
   switch (request.url) {
     case '/api/announcements/categories':
-      return sendJson(response, 200, { categories: announcements.categories(guild.id), guildName: guild.name });
+      return sendJson(response, 200, { categories: await announcements.categories(guild.id), guildName: guild.name });
     case '/api/announcements/save':
-      announcements.save(guild.id, body.category || {}, authorization);
-      return sendJson(response, 200, { categories: announcements.categories(guild.id) });
+      await announcements.save(guild.id, body.category || {}, authorization);
+      return sendJson(response, 200, { categories: await announcements.categories(guild.id) });
     case '/api/announcements/generate': {
       const result = await announcements.generate({ guildId: guild.id, guildName: guild.name, owner,
         categoryId: body.categoryId, description: body.description, draftId: body.draftId, context: body.context });

@@ -1,5 +1,5 @@
 const { relations, sql } = require('drizzle-orm');
-const { check, pgEnum, pgTable, uuid, text, integer, boolean, timestamp, jsonb, index, uniqueIndex } = require('drizzle-orm/pg-core');
+const { check, pgEnum, pgTable, uuid, text, integer, boolean, timestamp, jsonb, index, uniqueIndex, primaryKey } = require('drizzle-orm/pg-core');
 
 const ticketStatus = pgEnum('ticket_status', ['OPEN', 'CLAIMED', 'CLOSED', 'REOPENED']);
 const ticketEventType = pgEnum('ticket_event_type', ['TICKET_CREATED', 'TICKET_CLAIMED', 'TICKET_CLOSED', 'TICKET_REOPENED']);
@@ -118,6 +118,7 @@ const ticketMessages = pgTable('ticket_messages', {
   clientMessageId: text('client_message_id'),
   discordMessageId: text('discord_message_id'),
   discordChannelId: text('discord_channel_id'),
+  cycle: integer('cycle').notNull().default(0),
   deliveryStatus: ticketMessageDeliveryStatus('delivery_status').notNull().default('PENDING'),
   deliveryAttempts: integer('delivery_attempts').notNull().default(0),
   deliveryErrorCode: text('delivery_error_code'),
@@ -125,7 +126,7 @@ const ticketMessages = pgTable('ticket_messages', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   editedAt: timestamp('edited_at', { withTimezone: true }),
 }, table => ({
-  ticketCreatedIndex: index('ticket_messages_ticket_created_idx').on(table.ticketId, table.createdAt, table.id),
+  ticketCreatedIndex: index('ticket_messages_ticket_created_idx').on(table.ticketId, table.cycle, table.createdAt, table.id),
   guildIndex: index('ticket_messages_guild_id_idx').on(table.guildId),
   deliveryIndex: index('ticket_messages_delivery_status_idx').on(table.deliveryStatus),
   clientUnique: uniqueIndex('ticket_messages_client_id_unique').on(table.ticketId, table.clientMessageId)
@@ -134,6 +135,7 @@ const ticketMessages = pgTable('ticket_messages', {
     .where(sql`${table.discordMessageId} is not null`),
   contentLength: check('ticket_messages_content_length_check', sql`char_length(${table.content}) between 1 and 2000`),
   attemptsPositive: check('ticket_messages_delivery_attempts_check', sql`${table.deliveryAttempts} >= 0`),
+  cyclePositive: check('ticket_messages_cycle_check', sql`${table.cycle} >= 0`),
 }));
 
 const ticketMessageRevisions = pgTable('ticket_message_revisions', {
@@ -170,6 +172,20 @@ const ticketSequences = pgTable('ticket_sequences', {
   guildId: text('guild_id').primaryKey(),
   nextNumber: integer('next_number').notNull().default(0),
 });
+
+const announcementCategories = pgTable('announcement_categories', {
+  guildId: text('guild_id').notNull(),
+  id: text('id').notNull(),
+  name: text('name').notNull(),
+  title: text('title').notNull(),
+  description: text('description').notNull().default(''),
+  image: text('image').notNull().default(''),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  primary: primaryKey({ columns: [table.guildId, table.id], name: 'announcement_categories_pk' }),
+  guildIndex: index('announcement_categories_guild_id_idx').on(table.guildId),
+}));
 
 const ticketRelations = relations(tickets, ({ many }) => ({ events: many(ticketEvents), messages: many(ticketMessages) }));
 const eventRelations = relations(ticketEvents, ({ one }) => ({ ticket: one(tickets, { fields: [ticketEvents.ticketId], references: [tickets.id] }) }));
@@ -228,7 +244,7 @@ const ticketAIRuns = pgTable('ticket_ai_runs', {
   guildIndex: index('ticket_ai_runs_guild_idx').on(table.guildId, table.createdAt) }));
 
 module.exports = {
-  users, ticketConfigs, ticketCategories, tickets, ticketEvents, ticketMessages, ticketMessageRevisions, ticketSequences,
+  users, ticketConfigs, ticketCategories, tickets, ticketEvents, ticketMessages, ticketMessageRevisions, ticketSequences, announcementCategories,
   ticketStatus, ticketEventType, ticketMessageOrigin, ticketMessageAuthorType, ticketMessageVisibility,
   ticketMessageDeliveryStatus, ticketRelations, eventRelations, messageRelations,
   ticketAIConfigs, ticketAITicketStates, ticketAIRuns

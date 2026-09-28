@@ -57,7 +57,7 @@ class OpenRouterService {
         }],
         max_tokens: this.maxTokens,
         response_format: this.getResponseFormat(outputType),
-      }));
+      }, { timeout: DEFAULT_TIMEOUT_MS, signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS), maxRetries: 0 }));
     } catch (error) {
       if (error.status === 402 || error.statusCode === 402) {
         throw new Error('O limite de tokens ou créditos do OpenRouter foi excedido.');
