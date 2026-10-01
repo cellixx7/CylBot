@@ -12,6 +12,11 @@ module.exports = {
       return;
     }
 
+    if (interaction.commandName === 'ticket') {
+      client.metrics ||= {};
+      client.metrics.ticketCommandsUsed = Number(client.metrics.ticketCommandsUsed || 0) + 1;
+    }
+
     await handleCommand(interaction, client.commands);
   },
 };

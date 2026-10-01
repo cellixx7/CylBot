@@ -8,21 +8,24 @@ const voiceStateUpdateEvent = require('./events/voiceStateUpdate');
 const messageCreateEvent = require('./events/messageCreate');
 const messageUpdateEvent = require('./events/messageUpdate');
 const channelDeleteEvent = require('./events/channelDelete');
+const messageDeleteEvent = require('./events/messageDelete');
+const messageDeleteBulkEvent = require('./events/messageDeleteBulk');
 const { createServices } = require('./app/createServices');
 const { createShutdown } = require('./app/shutdown');
 const { startApiServer, waitForServerListening } = require('./api/server');
 const { logger } = require('./lib/logger');
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates,
-    ...(config.tickets.messageContentEnabled ? [GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] : []),
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages,
+    ...(config.tickets.messageContentEnabled ? [GatewayIntentBits.MessageContent] : []),
   ],
-  partials: config.tickets.messageContentEnabled ? [Partials.Message] : [],
+  partials: [Partials.Message],
 });
 
 client.commands = new Collection(
   commands.map((command) => [command.data.name, command]),
 );
+client.metrics = { ticketCommandsUsed: 0 };
 let apiServer;
 const shutdown = createShutdown({
   getServer: () => apiServer,
@@ -52,6 +55,8 @@ async function start() {
   client.on(messageUpdateEvent.name, (oldMessage, newMessage) =>
     messageUpdateEvent.execute(oldMessage, newMessage, client));
   client.on(channelDeleteEvent.name, channel => channelDeleteEvent.execute(channel, client));
+  client.on(messageDeleteEvent.name, message => messageDeleteEvent.execute(message, client));
+  client.on(messageDeleteBulkEvent.name, messages => messageDeleteBulkEvent.execute(messages, client));
 
   await client.login(config.discord.token);
 }

@@ -14,13 +14,18 @@ const { TextaAIService } = require('../src/services/textaAIService');
 const { logger } = require('../src/lib/logger');
 const { AuthSessionManager } = require('../src/services/authSessionManager');
 const { DashboardService } = require('../src/services/dashboardService');
+const { messagePost, fetchAllPosts, invalidateCommunityChannel } = require('../src/api/routes/communityPreviewRoutes');
+const messageDeleteEvent = require('../src/events/messageDelete');
 
 // Exercita o mesmo callback usado por node:http, sem abrir portas nem acessar serviços externos.
 async function request(context, method, url, body, raw) {
   const incoming = Readable.from([raw ?? JSON.stringify(body ?? {})]);
   // Fixtures autenticadas preservam os testes de contrato; abuso anônimo fica em security.test.js.
   const auth = { config: loadEnv({}, { requireDiscord: false }).auth, sessions: new AuthSessionManager() };
-  const session = auth.sessions.create({ id: 'api-user' }, { access_token: 'fake', scope: 'identify guilds', expires_in: 3600 });
+  const session = auth.sessions.create({
+    id: 'api-user', username: 'api_user', displayName: 'Usuária API',
+    avatarUrl: 'https://cdn.discordapp.com/avatars/123/avatar.png',
+  }, { access_token: 'fake', scope: 'identify guilds', expires_in: 3600 });
   const client = { isReady: () => true, user: { id: 'bot' }, guilds: { cache: new Map([[guildId, { id: guildId, name: 'Servidor' }]]) }, ...context.client };
   const dashboard = new DashboardService({ client, provider: { getCurrentUserGuilds: async () => [{ id: guildId, name: 'Servidor', owner: true, icon: null }] } });
   context = { ...context, client, services: { auth, dashboard, ...context.services } };
@@ -73,6 +78,110 @@ test('readiness exige Discord pronto e não altera a liveness', async () => {
   const health = await request({ client: { isReady: () => false } }, 'GET', '/api/health');
   assert.equal(health.status, 200);
   assert.deepEqual(health.body, { ok: true });
+});
+
+test('preview público reflete presença, canais e métricas reais do client Discord', async () => {
+  const guild = '34567890123456789';
+  const avisos = '1555274685476896799';
+  const atualizacoes = '1555274714191106179';
+  const createdTimestamp = Date.UTC(2026, 9, 1, 15, 30, 0);
+  const announcement = {
+    id: '45678901234567890',
+    content: '',
+    createdTimestamp,
+    embeds: [{ title: 'Aviso real', description: 'Conteúdo vindo do Discord.', color: 0x7c5cff }],
+    author: { username: 'alice', globalName: 'Alice', displayAvatarURL: () => 'https://cdn.discordapp.com/avatars/456/alice.png' },
+    reactions: { cache: new Map([['fire', { emoji: { name: '🔥' }, count: 9 }]]) },
+  };
+  const response = await request({ client: {
+    isReady: () => false,
+    user: { id: 'bot' },
+    commands: { size: 8 },
+    metrics: { ticketCommandsUsed: 17 },
+    guilds: { cache: new Map([['one', {}], ['two', {}]]) },
+    channels: { cache: new Map([
+      [avisos, { guildId: guild, messages: { fetch: async options => {
+        assert.deepEqual(options, { limit: 100 });
+        return new Map([[announcement.id, announcement]]);
+      } } }],
+      [atualizacoes, { guildId: guild, messages: { fetch: async () => new Map() } }],
+    ]) },
+  } }, 'GET', '/api/community-preview');
+  assert.equal(response.status, 200);
+  assert.equal(response.headers['Cache-Control'], 'no-store');
+  assert.deepEqual(response.body, {
+    bot: { online: false },
+    communityUrl: `https://discord.com/channels/${guild}`,
+    channels: {
+      avisos: {
+        id: avisos,
+        url: `https://discord.com/channels/${guild}/${avisos}`,
+        guildId: guild,
+        posts: [{
+          id: announcement.id,
+          source: 'discord',
+          author: { name: 'Alice', avatarUrl: 'https://cdn.discordapp.com/avatars/456/alice.png' },
+          title: 'Aviso real',
+          content: 'Conteúdo vindo do Discord.',
+          publishedAt: new Date(createdTimestamp).toISOString(),
+          accent: '#7c5cff',
+          reactions: [{ emoji: '🔥', count: 9 }],
+          url: `https://discord.com/channels/${guild}/${avisos}/${announcement.id}`,
+        }],
+      },
+      atualizacoes: { id: atualizacoes, url: `https://discord.com/channels/${guild}/${atualizacoes}`, guildId: guild, posts: [] },
+    },
+    metrics: { commands: 8, servers: 2, ticketCommands: 17 },
+  });
+});
+
+test('preview identifica encaminhamento Web e preserva o responsável', () => {
+  const post = messagePost({
+    id: '56789012345678901',
+    createdTimestamp: Date.UTC(2026, 9, 1, 16),
+    author: { username: 'CylBot', displayAvatarURL: () => null },
+    embeds: [{
+      description: 'Mensagem encaminhada pelo painel.',
+      author: { name: 'Marina', iconURL: 'https://cdn.discordapp.com/avatars/789/marina.png' },
+      footer: { text: 'Enviado pelo painel CYL' },
+    }],
+    reactions: { cache: new Map() },
+  }, '34567890123456789', '1555274685476896799');
+
+  assert.equal(post.source, 'web');
+  assert.deepEqual(post.author, { name: 'Marina', avatarUrl: 'https://cdn.discordapp.com/avatars/789/marina.png' });
+  assert.equal(post.content, 'Mensagem encaminhada pelo painel.');
+});
+
+test('preview pagina todo o canal e relê o histórico após exclusão', async () => {
+  const communityChannelId = '1555274685476896799';
+  const guild = '34567890123456789';
+  const messages = Array.from({ length: 101 }, (_, index) => ({
+    id: String(900000000000000000n + BigInt(index)),
+    createdTimestamp: index + 1,
+    content: `Mensagem ${index + 1}`,
+    author: { username: 'Alice', displayAvatarURL: () => null },
+    embeds: [], reactions: { cache: new Map() },
+  })).reverse();
+  let deleted = false;
+  let fetches = 0;
+  const channel = { messages: { fetch: async options => {
+    fetches++;
+    if (deleted) return new Map();
+    const page = options.before ? messages.slice(100) : messages.slice(0, 100);
+    return new Map(page.map(message => [message.id, message]));
+  } } };
+
+  invalidateCommunityChannel(communityChannelId);
+  assert.equal((await fetchAllPosts(channel, guild, communityChannelId)).length, 101);
+  assert.equal(fetches, 2);
+  assert.equal((await fetchAllPosts(channel, guild, communityChannelId)).length, 101);
+  assert.equal(fetches, 2);
+
+  deleted = true;
+  messageDeleteEvent.execute({ channelId: communityChannelId });
+  assert.deepEqual(await fetchAllPosts(channel, guild, communityChannelId), []);
+  assert.equal(fetches, 3);
 });
 
 test('métodos incorretos não executam operações nem acessam dependências', async () => {
@@ -155,12 +264,18 @@ test('Discord mantém envios content/embed e allowedMentions', async () => {
     assert.deepEqual(response.body, { ok: true });
     assert.deepEqual(payloads.at(-1).allowedMentions, { parse: [] });
   }
-  assert.equal(payloads[0].content, 'Mensagem');
+  const contentEmbed = payloads[0].embeds[0].toJSON();
+  assert.equal(contentEmbed.description, 'Mensagem');
+  assert.equal(contentEmbed.author.name, 'Usuária API');
+  assert.equal(contentEmbed.author.icon_url, 'https://cdn.discordapp.com/avatars/123/avatar.png');
+  assert.equal(contentEmbed.footer.text, 'Enviado pelo painel CYL');
   const embed = payloads[1].embeds[0].toJSON();
   assert.equal(embed.title, 'Título');
   assert.equal(embed.description, 'Descrição');
   assert.equal(embed.color, 0x5865f2);
   assert.equal(embed.fields[0].value, 'Valor');
+  assert.equal(embed.author.name, 'Usuária API');
+  assert.equal(embed.footer.text, 'Enviado pelo painel CYL');
 });
 
 test('Discord rejeita ID, conteúdo e canal inválidos antes de publicar', async t => {
@@ -224,6 +339,9 @@ test('anúncios mantêm categorias, sessão autenticada, persistência, revisão
   assert.equal(delivered.status, 200);
   assert.deepEqual(delivered.body, { ok: true });
   assert.deepEqual(sent[0].allowedMentions, { parse: [] });
+  const deliveredEmbed = sent[0].embeds[0].toJSON();
+  assert.equal(deliveredEmbed.author.name, 'Usuária API');
+  assert.match(deliveredEmbed.footer.text, /Enviado pelo painel CYL$/);
   const duplicate = await call('send', { draftId: revised.body.draftId, channelId });
   assert.equal(duplicate.status, 400);
   assert.equal(sent.length, 1);

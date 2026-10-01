@@ -1,3 +1,5 @@
+const { invalidateCommunityChannel } = require('../api/routes/communityPreviewRoutes');
+
 module.exports = {
   name: 'messageUpdate',
   async execute(oldMessage, newMessage, client) {
@@ -9,6 +11,7 @@ module.exports = {
         return;
       }
     }
+    invalidateCommunityChannel(message.channelId);
     if (!message.guildId || message.author?.bot || message.webhookId || message.system ||
       !message.id || !message.channelId || !message.author?.id) return;
     return client.services.ticketMessageInbound.handleUpdate({

@@ -1,0 +1,33 @@
+@font-face {
+  font-family: 'Manrope';
+  src: url('../assets/fonts/Manrope-Variable.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('../assets/fonts/SpaceGrotesk-Variable.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+}
+
+:root {
+  --cyl-text: #f7f4fb;
+  --cyl-text-soft: #d8d2e8;
+  --cyl-muted: #aaa0b5;
+  --cyl-accent: #8d6bff;
+  --cyl-accent-strong: #4700ba;
+  --cyl-accent-hover: #a58aff;
+  --cyl-surface: #09060e;
+  --cyl-surface-mid: #1a0d2a;
+  --cyl-surface-top: #2f0b63;
+  --cyl-surface-raised: #251a35;
+  --cyl-border: #392d46;
+  --cyl-border-strong: rgba(255, 255, 255, 0.42);
+  --cyl-radius: 18px;
+  --cyl-font: 'Manrope', Inter, 'Segoe UI', Arial, sans-serif;
+  --cyl-display: 'Space Grotesk', var(--cyl-font);
+}

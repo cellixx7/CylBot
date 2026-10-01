@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const { EmbedBuilder } = require('discord.js');
 const { AnnouncementDraftManager } = require('./announcementDraftManager');
 const { assertCanManageAnnouncements } = require('./announcementPermissions');
+const { webForwardedEmbed } = require('../lib/webMessage');
 
 const fail = message => clientError(400, message);
 const isPromise = value => value && typeof value.then === 'function';
@@ -92,13 +93,14 @@ class AnnouncementService {
     return this.draftManager.get(id, owner, guildId);
   }
 
-  async send(id, owner, guildId, channel) {
+  async send(id, owner, guildId, channel, forwardedBy) {
     const draft = this.get(id, owner, guildId);
     this.draftManager.assertAvailable(draft);
     if (!channel || channel.guildId !== guildId || (draft.channelId && draft.channelId !== channel.id) || !channel.isTextBased?.() || typeof channel.send !== 'function') throw fail('Escolha um canal de texto do servidor original.');
     this.draftManager.markBusy(draft);
     try {
-      await channel.send({ embeds: [draft.embed], allowedMentions: { parse: [] } });
+      const embed = forwardedBy ? webForwardedEmbed(draft.embed, forwardedBy) : draft.embed;
+      await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
       this.draftManager.remove(id);
       logger.info('announcement.sent', { module: 'announcementService', operation: 'announcement.send', guildId, channelId: channel.id, userId: owner });
     } finally { this.draftManager.release(draft); }

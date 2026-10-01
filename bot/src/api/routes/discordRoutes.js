@@ -3,6 +3,7 @@ const { readJson, sendJson } = require('../http/json');
 const { clientError } = require('../http/errors');
 const { requireSendableChannel } = require('../http/channelPermissions');
 const { requireSession } = require('../http/auth');
+const { webForwardedEmbed } = require('../../lib/webMessage');
 
 async function handle(request, response, { client, services, session }) {
   if (request.method !== 'POST' || request.url !== '/api/discord/send') return false;
@@ -18,15 +19,13 @@ async function handle(request, response, { client, services, session }) {
   requireSession(request, services);
   requireSendableChannel(client, channel, channel.guildId);
 
-  const payload = input.outputType === 'embed'
-    ? {
-      embeds: [buildEmbed(input.generated)],
-      allowedMentions: { parse: [] },
-    }
-    : {
-      content: input.generated.content,
-      allowedMentions: { parse: [] },
-    };
+  const embed = input.outputType === 'embed'
+    ? buildEmbed(input.generated)
+    : new EmbedBuilder().setDescription(input.generated.content).setColor(0x5865f2);
+  const payload = {
+    embeds: [webForwardedEmbed(embed, session.user)],
+    allowedMentions: { parse: [] },
+  };
 
   await channel.send(payload);
   sendJson(response, 200, { ok: true });

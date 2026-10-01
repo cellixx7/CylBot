@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import Anuncios from './anuncios/anuncios.jsx';
 import TextaAI from './texta_ai/texta_ai.jsx';
 import AuthGate from './auth/AuthGate.jsx';
-import LoginPage from './auth/LoginPage.jsx';
 import { useAuth } from './auth/useAuth.js';
 import Footer from './components/Footer.jsx';
 import Header from './components/Header.jsx';
@@ -10,6 +9,7 @@ import Dashboard from './dashboard/Dashboard.jsx';
 import Home from './home/Home.jsx';
 import ProfilePage from './profile/ProfilePage.jsx';
 import TicketsPage from './tickets/TicketsPage.jsx';
+import './styles/cyl-theme.css';
 
 function useHashRoute() {
   const [hash, setHash] = useState(window.location.hash || '#/');
@@ -28,7 +28,6 @@ function useHashRoute() {
 
 const TITLES = {
   '/': 'CylBot | O app no seu controle',
-  '/login': 'Entrar | CylBot',
   '/profile': 'Meu perfil | CylBot',
   '/dashboard': 'Seus servidores | CylBot',
   '/anuncios': 'Anúncios | CylBot',
@@ -48,16 +47,14 @@ export default function App() {
   }, [baseRoute, route.query]);
 
   useEffect(() => {
-    if (route.path === '/login' && auth.status === 'authenticated') {
-      window.location.hash = '#/dashboard';
+    if (route.path === '/login') {
+      window.location.hash = '#/';
     }
-  }, [auth.status, route.path]);
+  }, [route.path]);
 
   let page;
   if (route.path === '/' || !TITLES[baseRoute]) {
     page = <Home auth={auth} section={route.query.get('section')} />;
-  } else if (route.path === '/login') {
-    page = <LoginPage authStatus={auth.status} reloginRequired={auth.reloginRequired} />;
   } else {
     page = (
       <AuthGate auth={auth}>
@@ -77,7 +74,7 @@ export default function App() {
       <Header auth={auth} currentPath={baseRoute} />
       {auth.error && <p className="global-alert" role="alert">{auth.error}</p>}
       {page}
-      <Footer />
+      <Footer landing={baseRoute === '/' || !TITLES[baseRoute]} />
     </div>
   );
 }

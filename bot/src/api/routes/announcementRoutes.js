@@ -38,7 +38,7 @@ async function handleAnnouncements(request, response, { client, services, sessio
       if (!channel) throw clientError(400, 'Canal não encontrado.');
       requireSession(request, services);
       requireSendableChannel(client, channel, guild.id);
-      await announcements.send(body.draftId, owner, guild.id, channel);
+      await announcements.send(body.draftId, owner, guild.id, channel, session.user);
       return sendJson(response, 200, { ok: true });
     }
     default: throw clientError(404, 'Rota não encontrada.');

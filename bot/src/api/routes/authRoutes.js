@@ -38,11 +38,11 @@ async function handle(request, response, { services, requestId }) {
         code: url.searchParams.get('code'), denied: url.searchParams.has('error'), previousSessionId: sessionId });
       response.setHeader('Set-Cookie', [...cleared, cookie(SESSION_COOKIE, session.id, sessionTtlSeconds, secure)]);
       logger.info('auth.session_created', { module: 'auth', requestId, userId: session.user.id });
-      response.writeHead(302, { Location: `${webOrigin}/#/dashboard` }).end();
+      response.writeHead(302, { Location: `${webOrigin}/#/` }).end();
     } catch (error) {
       // Somente classificação; mensagens externas e query OAuth nunca entram em logs.
       logger[error.statusCode >= 500 || !error.statusCode ? 'error' : 'warn']('auth.discord_callback_failed', { module: 'auth', requestId, statusCode: error.statusCode || 500 });
-      response.writeHead(302, { Location: `${webOrigin}/#/login?authError=login_failed` }).end();
+      response.writeHead(302, { Location: `${webOrigin}/#/?authError=login_failed` }).end();
     }
     return true;
   }

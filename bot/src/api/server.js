@@ -15,6 +15,7 @@ const routes = [
   require('../Ticket/api/ticketAIRoutes'),
   require('./routes/authRoutes'),
   require('./routes/dashboardRoutes'),
+  require('./routes/communityPreviewRoutes'),
   require('./routes/healthRoutes'),
   require('./routes/announcementRoutes'),
   require('./routes/aiRoutes'),

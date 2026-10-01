@@ -1,65 +1,45 @@
-import { useEffect } from 'react';
+import cylLogoUrl from '../assets/brand/cyl-logo-white.png';
+import { discordInstallUrl } from '../lib/discordLinks.js';
+import CommunityPreview from './CommunityPreview.jsx';
+import './home.css';
 
-const features = [
-  ['Inteligência Artificial', 'Disponível'],
-  ['Automação', 'Em desenvolvimento'],
-  ['Tickets', 'Em desenvolvimento'],
-  ['Moderação', 'Em breve'],
-  ['Dashboard', 'Disponível'],
-  ['Integrações', 'Em breve'],
-];
+function scrollToAbout(event) {
+  const aboutSection = document.getElementById('sobre');
+  event.preventDefault();
 
-export default function Home({ section }) {
-  useEffect(() => {
-    if (!section) return;
-    requestAnimationFrame(() => document.getElementById(section)?.scrollIntoView({ behavior: 'smooth' }));
-  }, [section]);
+  if (!aboutSection) return;
 
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  aboutSection.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth' });
+}
+
+export default function Home() {
   return (
     <main className="home-page">
-      <section className="hero" id="produto">
-        <div className="hero-content">
-          <p className="hero-kicker">AUTOMAÇÃO PARA DISCORD</p>
-          <h1>CylBot</h1>
-          <p>O app no seu controle.</p>
+      <section className="cyl-hero" aria-labelledby="cyl-hero-title">
+        <img
+          className="cyl-hero-watermark"
+          src={cylLogoUrl}
+          alt=""
+          aria-hidden="true"
+          draggable="false"
+        />
+
+        <div className="cyl-hero-content">
+          <h1 id="cyl-hero-title">CYL</h1>
+          <p>Controle total da sua comunidade de forma automatizada e organizada.</p>
+
+          <div className="cyl-hero-actions">
+            <a className="cyl-hero-button cyl-hero-button-primary" href="#sobre" onClick={scrollToAbout}>
+              Saiba mais
+            </a>
+            <a className="cyl-hero-button cyl-hero-button-secondary" href={discordInstallUrl}>
+              Adicione o Cyl
+            </a>
+          </div>
         </div>
-        <div className="hero-visual" aria-hidden="true" />
-      </section>
 
-      <section className="minimal-section about-section" id="sobre" aria-labelledby="about-title">
-        <span className="section-index">01 / SOBRE</span>
-        <h2 id="about-title">Controle para quem<br />constrói comunidades.</h2>
-        <p>O CylBot reúne automação e inteligência para simplificar a rotina de servidores no Discord.</p>
-      </section>
-
-      <section className="minimal-section features-section" id="recursos" aria-labelledby="features-title">
-        <div className="minimal-heading"><span className="section-index">02 / RECURSOS</span><h2 id="features-title">Ferramentas,<br />sem ruído.</h2></div>
-        <div className="feature-list">
-          {features.map(([title, status], index) => (
-            <article className="feature-item" key={title}>
-              <span>{String(index + 1).padStart(2, '0')}</span><h3>{title}</h3><small>{status}</small>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="minimal-section community-section" id="comunidade" aria-labelledby="community-title">
-        <span className="section-index">03 / COMUNIDADE</span>
-        <h2 id="community-title">Tecnologia nos bastidores.<br />Pessoas no controle.</h2>
-        <p>A área da comunidade será apresentada aqui em uma próxima etapa.</p>
-      </section>
-
-      <section className="minimal-section creator-section" id="criador" aria-labelledby="creator-title">
-        <span className="section-index">04 / CRIADOR</span>
-        <h2 id="creator-title">Marcelo Vaz Oliveira.</h2>
-        <p>Projeto independente criado entre engenharia, produto e comunidade.</p>
-        <a className="text-link" href="https://github.com/cellixx7/CylBot" target="_blank" rel="noreferrer">GitHub ↗</a>
-      </section>
-
-      <section className="minimal-section contact-section" id="contato" aria-labelledby="contact-title">
-        <span className="section-index">05 / CONTATO</span>
-        <h2 id="contact-title">Entre no CylBot.</h2>
-        <div className="contact-links"><a href="/api/auth/discord">Entrar com Discord <span>→</span></a><a href="https://github.com/cellixx7/CylBot" target="_blank" rel="noreferrer">GitHub <span>↗</span></a></div>
+        <CommunityPreview />
       </section>
     </main>
   );

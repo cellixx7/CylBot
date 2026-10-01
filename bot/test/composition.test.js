@@ -98,6 +98,16 @@ test('registry faz fallback para comandos e ignora interações sem handler', as
   assert.equal(executions, 1);
 });
 
+test('registry contabiliza uso do comando ticket na sessão atual', async () => {
+  const bot = { services: {}, metrics: { ticketCommandsUsed: 2 }, commands: [
+    { data: { name: 'ticket' }, execute: async () => {} },
+  ] };
+  const interaction = { isModalSubmit: () => false, isButton: () => false,
+    isChatInputCommand: () => true, commandName: 'ticket' };
+  await event.execute(interaction, bot);
+  assert.equal(bot.metrics.ticketCommandsUsed, 3);
+});
+
 test('registry oficial preserva todos os slash commands existentes', () => {
   assert.deepEqual(commands.map(command => command.data.toJSON().name).sort(),
     ['anuncios', 'callsense', 'embed', 'ping', 'presence', 'say', 'texta_ai', 'ticket']);

@@ -79,6 +79,7 @@ test('state ausente/incorreto e callback sem cookie do navegador não trocam cod
   ]) {
     const response = await request(auth, 'GET', `/api/auth/discord/callback?${query}`, cookies);
     assert.match(response.headers.Location, /authError=login_failed$/);
+    assert.match(response.headers.Location, /\/#\/\?authError=/);
     assert.equal(auth.sessions.sessions.size, 0);
   }
   assert.deepEqual(calls, []);
@@ -120,7 +121,7 @@ test('callback rejeita parâmetros OAuth de controle duplicados', async t => {
 test('callback válido cria sessão, cookie opaco e me retorna exclusivamente perfil público', async t => {
   const { auth, config, logs } = setup(t);
   const res = await login(auth);
-  assert.equal(res.headers.Location, `${config.webOrigin}/#/dashboard`);
+  assert.equal(res.headers.Location, `${config.webOrigin}/#/`);
   const cookie = sessionCookie(res);
   const id = cookie.split('=')[1];
   assert.match(id, /^[A-Za-z0-9_-]{43}$/);
