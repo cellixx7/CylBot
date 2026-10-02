@@ -72,7 +72,7 @@ function CylBotProfile() {
     <article className="community-bot-profile" aria-label="Perfil do aplicativo CylBot">
       <div className="community-bot-banner" />
       <ExternalLink href={discordInstallUrl} className="community-bot-avatar community-action-tooltip" label="Adicionar bot">
-        <img src={cylLogoUrl} alt="" />
+        <img src={cylLogoUrl} alt="" decoding="async" />
       </ExternalLink>
       <div className="community-bot-name">
         <ExternalLink href={discordInstallUrl} className="community-bot-handle community-action-tooltip" label="Adicionar bot">@Cylbot</ExternalLink>
@@ -130,7 +130,7 @@ export default function CommunityPreview({ channels = communityChannels, stats =
       <header className="community-preview-topbar">
         <h2 id="community-preview-title">
           <ExternalLink href={communityUrl} className="community-brand" label="Abrir servidor CYL Community no Discord">
-            <span className="community-brand-avatar" aria-hidden="true"><img src={cylLogoUrl} alt="" /></span>
+            <span className="community-brand-avatar" aria-hidden="true"><img src={cylLogoUrl} alt="" decoding="async" /></span>
             <span>CYL COMMUNITY</span>
           </ExternalLink>
         </h2>

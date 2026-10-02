@@ -7,6 +7,7 @@ import './header.css';
 
 const communityLink = { label: 'Comunidade', section: 'comunidade', tooltip: 'Conheça a comunidade Cyl' };
 const premiumLink = { label: 'Premium', section: 'premium', tooltip: 'Saiba mais sobre a nossa melhor versão' };
+const resourcesLink = { label: 'Recursos', section: 'recursos', tooltip: 'Veja os recursos do CYL' };
 const discordLink = { label: 'Discord', href: discordCommunityUrl || discordInstallUrl, tooltip: 'Adicione o Cyl' };
 
 function UserAvatar({ user }) {
@@ -62,7 +63,10 @@ function LandingHeader({ auth, currentPath }) {
   const mobileTriggerRef = useRef(null);
   const focusLast = useRef(false);
   const authenticated = auth.status === 'authenticated' && Boolean(auth.user);
-  const leftLinks = [...(authenticated ? [{ label: 'Dashboard', href: '#/dashboard', tooltip: 'Acessar painel de servidores' }] : []), communityLink];
+  const leftLinks = [
+    ...(authenticated ? [{ label: 'Dashboard', href: '#/dashboard', tooltip: 'Acessar painel de servidores' }] : [resourcesLink]),
+    communityLink,
+  ];
   const rightLinks = [premiumLink, discordLink];
   const mobileLinks = [...leftLinks, ...rightLinks];
 
@@ -87,7 +91,7 @@ function LandingHeader({ auth, currentPath }) {
     // Home is currently empty. Enable anchors when real sections are mounted.
     const home = document.querySelector('.home-page');
     const updateSections = () => setAvailableSections(Object.fromEntries(
-      [communityLink, premiumLink].map(link => [link.section, home ? Boolean(home.querySelector(`#${link.section}`)) : true]),
+      [communityLink, resourcesLink, premiumLink].map(link => [link.section, home ? Boolean(home.querySelector(`#${link.section}`)) : true]),
     ));
     updateSections();
     const observer = new MutationObserver(updateSections);

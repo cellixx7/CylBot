@@ -6,6 +6,20 @@
     <meta name="description" content="CylBot: automação, inteligência artificial e controle para comunidades no Discord." />
     <meta name="theme-color" content="#0d0f0f" />
     <title>CylBot | O app no seu controle</title>
+    <script>
+      (() => {
+        let theme = 'dark';
+        try {
+          const stored = window.localStorage.getItem('cyl-theme');
+          if (stored === 'light') theme = 'light';
+        } catch {
+          // Keep dark as the safe default when storage is unavailable.
+        }
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#f8f7fc' : '#0a0614');
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

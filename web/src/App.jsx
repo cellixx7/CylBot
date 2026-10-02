@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
-import Anuncios from './anuncios/anuncios.jsx';
-import TextaAI from './texta_ai/texta_ai.jsx';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import AuthGate from './auth/AuthGate.jsx';
 import { useAuth } from './auth/useAuth.js';
 import Footer from './components/Footer.jsx';
 import Header from './components/Header.jsx';
-import Dashboard from './dashboard/Dashboard.jsx';
+import ThemeToggle from './components/ThemeToggle.jsx';
 import Home from './home/Home.jsx';
-import ProfilePage from './profile/ProfilePage.jsx';
-import TicketsPage from './tickets/TicketsPage.jsx';
 import './styles/cyl-theme.css';
+
+const Anuncios = lazy(() => import('./anuncios/anuncios.jsx'));
+const Dashboard = lazy(() => import('./dashboard/Dashboard.jsx'));
+const ProfilePage = lazy(() => import('./profile/ProfilePage.jsx'));
+const TextaAI = lazy(() => import('./texta_ai/texta_ai.jsx'));
+const TicketsPage = lazy(() => import('./tickets/TicketsPage.jsx'));
 
 function useHashRoute() {
   const [hash, setHash] = useState(window.location.hash || '#/');
@@ -58,13 +60,15 @@ export default function App() {
   } else {
     page = (
       <AuthGate auth={auth}>
-        {route.path === '/profile' && <ProfilePage user={auth.user} />}
-        {ticketRoute ? <TicketsPage key={`${selectedGuildId}/${ticketRoute[2] || ''}`} guildId={selectedGuildId}
-          ticketId={ticketRoute[2]} requireRelogin={auth.requireRelogin} /> : (route.path === '/dashboard' || selectedGuildId) && (
-          <Dashboard user={auth.user} selectedGuildId={selectedGuildId} requireRelogin={auth.requireRelogin} />
-        )}
-        {route.path === '/anuncios' && <Anuncios />}
-        {route.path === '/texta_ai' && <TextaAI />}
+        <Suspense fallback={<div className="state-page" role="status">Carregando página…</div>}>
+          {route.path === '/profile' && <ProfilePage user={auth.user} />}
+          {ticketRoute ? <TicketsPage key={`${selectedGuildId}/${ticketRoute[2] || ''}`} guildId={selectedGuildId}
+            ticketId={ticketRoute[2]} requireRelogin={auth.requireRelogin} /> : (route.path === '/dashboard' || selectedGuildId) && (
+            <Dashboard user={auth.user} selectedGuildId={selectedGuildId} requireRelogin={auth.requireRelogin} />
+          )}
+          {route.path === '/anuncios' && <Anuncios />}
+          {route.path === '/texta_ai' && <TextaAI />}
+        </Suspense>
       </AuthGate>
     );
   }
@@ -72,6 +76,7 @@ export default function App() {
   return (
     <div className="site-shell">
       <Header auth={auth} currentPath={baseRoute} />
+      <ThemeToggle />
       {auth.error && <p className="global-alert" role="alert">{auth.error}</p>}
       {page}
       <Footer landing={baseRoute === '/' || !TITLES[baseRoute]} />

@@ -1,6 +1,8 @@
 import cylLogoUrl from '../assets/brand/cyl-logo-white.png';
 import { discordInstallUrl } from '../lib/discordLinks.js';
+import AboutSection from './AboutSection.jsx';
 import CommunityPreview from './CommunityPreview.jsx';
+import FeaturesSection from './FeaturesSection.jsx';
 import './home.css';
 
 function scrollToAbout(event) {
@@ -22,6 +24,7 @@ export default function Home() {
           src={cylLogoUrl}
           alt=""
           aria-hidden="true"
+          decoding="async"
           draggable="false"
         />
 
@@ -41,6 +44,9 @@ export default function Home() {
 
         <CommunityPreview />
       </section>
+
+      <AboutSection />
+      <FeaturesSection />
     </main>
   );
 }
