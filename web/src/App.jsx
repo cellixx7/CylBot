@@ -5,6 +5,8 @@ import Footer from './components/Footer.jsx';
 import Header from './components/Header.jsx';
 import ThemeToggle from './components/ThemeToggle.jsx';
 import Home from './home/Home.jsx';
+import ComingSoonPage from './pages/ComingSoonPage.jsx';
+import { getComingSoonFeature } from './lib/comingSoonFeatures.js';
 import './styles/cyl-theme.css';
 
 const Anuncios = lazy(() => import('./anuncios/anuncios.jsx'));
@@ -34,6 +36,7 @@ const TITLES = {
   '/dashboard': 'Seus servidores | CylBot',
   '/anuncios': 'Anúncios | CylBot',
   '/texta_ai': 'Texta_AI | CylBot',
+  '/em-breve': 'Em breve | CYL',
 };
 
 export default function App() {
@@ -42,10 +45,32 @@ export default function App() {
   const ticketRoute = route.path.match(/^\/dashboard\/(\d{17,20})\/tickets(?:\/([a-f0-9-]{36}))?$/);
   const selectedGuildId = ticketRoute?.[1] || route.path.match(/^\/dashboard\/(\d{17,20})$/)?.[1] || null;
   const baseRoute = selectedGuildId ? '/dashboard' : route.path;
+  const isComingSoonRoute = route.path === '/em-breve';
+  const comingSoonFeature = isComingSoonRoute ? getComingSoonFeature(route.query.get('feature')) : null;
 
   useEffect(() => {
-    document.title = TITLES[baseRoute] || TITLES['/'];
+    document.title = isComingSoonRoute
+      ? `${comingSoonFeature.isFallback ? 'Em breve' : comingSoonFeature.title} | CYL`
+      : TITLES[baseRoute] || TITLES['/'];
     if (!route.query.has('section')) window.scrollTo(0, 0);
+  }, [baseRoute, isComingSoonRoute, comingSoonFeature, route.query]);
+
+  useEffect(() => {
+    const section = route.query.get('section');
+    const availableSections = ['recursos', 'sobre', 'comunidade', 'premium'];
+    if (baseRoute !== '/' || !availableSections.includes(section)) return undefined;
+
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(section);
+      if (!target) return;
+
+      const headerHeight = document.querySelector('.cyl-header')?.getBoundingClientRect().height || 0;
+      const top = Math.max(0, window.scrollY + target.getBoundingClientRect().top - headerHeight - 24);
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      window.scrollTo({ top, behavior: reducedMotion ? 'auto' : 'smooth' });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
   }, [baseRoute, route.query]);
 
   useEffect(() => {
@@ -55,7 +80,9 @@ export default function App() {
   }, [route.path]);
 
   let page;
-  if (route.path === '/' || !TITLES[baseRoute]) {
+  if (isComingSoonRoute) {
+    page = <ComingSoonPage featureSlug={route.query.get('feature')} />;
+  } else if (route.path === '/' || !TITLES[baseRoute]) {
     page = <Home auth={auth} section={route.query.get('section')} />;
   } else {
     page = (
@@ -79,7 +106,7 @@ export default function App() {
       <ThemeToggle />
       {auth.error && <p className="global-alert" role="alert">{auth.error}</p>}
       {page}
-      <Footer landing={baseRoute === '/' || !TITLES[baseRoute]} />
+      <Footer landing={baseRoute === '/' || baseRoute === '/em-breve' || !TITLES[baseRoute]} />
     </div>
   );
 }

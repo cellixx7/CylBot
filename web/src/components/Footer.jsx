@@ -1,59 +1,16 @@
 import './footer.css';
-import { discordInstallUrl as installUrl, discordCommunityUrl as communityUrl } from '../lib/discordLinks.js';
+import { discordInstallUrl as installUrl } from '../lib/discordLinks.js';
+import { footerGroups, footerSocialLinks } from '../lib/footerLinks.js';
 
-const repositoryUrl = 'https://github.com/cellixx7/CylBot';
-const contactUrl = 'mailto:suporte@cylbot.app';
+function footerHref(link) {
+  if (link.type === 'section') return `#/?section=${encodeURIComponent(link.section)}`;
+  if (link.type === 'coming-soon') return `#/em-breve?feature=${encodeURIComponent(link.slug)}`;
+  return link.href;
+}
 
-const linkGroups = [
-  {
-    title: 'Produto',
-    links: [
-      ['Recursos'], ['Comunidade'], ['Tickets', '#/dashboard'], ['Automação'],
-      ['IA', '#/texta_ai'], ['Premium'], ['CYL Credits'], ['Docs', `${repositoryUrl}#readme`],
-    ],
-  },
-  {
-    title: 'Empresa',
-    links: [
-      ['Sobre o CYL', `${repositoryUrl}#readme`], ['Parceiros'],
-      ['Seja parceiro', `${contactUrl}?subject=Parceria%20CYL`],
-      ['Trabalhe conosco'], ['Status'], ['Roadmap'],
-    ],
-  },
-  {
-    title: 'Comunidade',
-    links: [
-      ['Servidor do Discord', communityUrl], ['GitHub', repositoryUrl],
-      ['Suporte', contactUrl], ['Contato', contactUrl],
-      ['Sugestões', `${repositoryUrl}/issues/new?title=Sugest%C3%A3o%3A%20`],
-      ['Reportar problema', `${repositoryUrl}/issues/new`],
-    ],
-  },
-  {
-    title: 'Legal',
-    links: [
-      ['Termos de Uso'], ['Política de Privacidade'], ['Política de Cookies'],
-      ['LGPD'], ['Termos Premium'], ['Uso aceitável'],
-    ],
-  },
-  {
-    title: 'Desenvolvedores',
-    links: [
-      ['Documentação', `${repositoryUrl}#readme`], ['API'], ['Changelog'],
-      ['Integrações'], ['Segurança', `${contactUrl}?subject=Seguran%C3%A7a%20CYL`],
-      ['Open source', repositoryUrl],
-    ],
-  },
-];
-
-const socialLinks = [['GitHub', repositoryUrl], ['Discord', communityUrl], ['Contato', contactUrl]];
-
-function FooterLink({ label, href, className }) {
-  if (!href) {
-    return <span className={className} role="link" aria-disabled="true" aria-label={`${label} — em breve`} title="Em breve">{label}</span>;
-  }
-
-  return <a className={className} href={href}>{label}</a>;
+function FooterLink({ link, className }) {
+  const newTabProps = link.type === 'docs' ? { target: '_blank', rel: 'noreferrer' } : {};
+  return <a className={className} href={footerHref(link)} {...newTabProps}>{link.label}</a>;
 }
 
 function LandingFooter() {
@@ -66,7 +23,7 @@ function LandingFooter() {
             <p>Conecte comunidade, suporte, automação e inteligência com o CYL.</p>
           </div>
           {installUrl ? (
-            <a className="cyl-footer-button" href={installUrl}>Adicionar o CYL ao Discord</a>
+            <a className="cyl-footer-button" href={installUrl} target="_blank" rel="noreferrer">Adicionar o CYL ao Discord</a>
           ) : (
             <button className="cyl-footer-button" type="button" aria-disabled="true" aria-describedby="footer-install-status">
               Adicionar o CYL ao Discord
@@ -76,11 +33,11 @@ function LandingFooter() {
         </section>
 
         <nav className="cyl-footer-links" aria-label="Links do rodapé">
-          {linkGroups.map(({ title, links }) => (
+          {footerGroups.map(({ title, links }) => (
             <div className="cyl-footer-column" key={title}>
               <h3>{title}</h3>
               <ul>
-                {links.map(([label, href]) => <li key={label}><FooterLink label={label} href={href} /></li>)}
+                {links.map(link => <li key={link.label}><FooterLink link={link} /></li>)}
               </ul>
             </div>
           ))}
@@ -92,7 +49,7 @@ function LandingFooter() {
             <small>© 2026 CYL. Construído para comunidades que querem mais.</small>
           </div>
           <nav className="cyl-footer-social" aria-label="Redes sociais e contato">
-            {socialLinks.map(([label, href]) => <FooterLink className="cyl-footer-pill" key={label} label={label} href={href} />)}
+            {footerSocialLinks.map(link => <FooterLink className="cyl-footer-pill" key={link.label} link={link} />)}
           </nav>
         </div>
       </div>
