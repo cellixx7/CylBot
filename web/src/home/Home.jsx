@@ -5,14 +5,16 @@ import CommunityPreview from './CommunityPreview.jsx';
 import FeaturesSection from './FeaturesSection.jsx';
 import './home.css';
 
-function scrollToAbout(event) {
-  const aboutSection = document.getElementById('sobre');
+function scrollToSection(event, sectionId) {
+  const section = document.getElementById(sectionId);
   event.preventDefault();
 
-  if (!aboutSection) return;
+  if (!section) return;
 
+  const headerBottom = document.querySelector('.cyl-header')?.getBoundingClientRect().bottom || 0;
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  aboutSection.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth' });
+  const top = Math.max(0, window.scrollY + section.getBoundingClientRect().top - headerBottom - 24);
+  window.scrollTo({ top, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
 }
 
 export default function Home() {
@@ -30,14 +32,14 @@ export default function Home() {
 
         <div className="cyl-hero-content">
           <h1 id="cyl-hero-title">CYL</h1>
-          <p>Controle total da sua comunidade de forma automatizada e organizada.</p>
+          <p>A plataforma que conecta Discord e web para administradores e equipes organizarem atendimento, automação e inteligência da comunidade.</p>
 
           <div className="cyl-hero-actions">
-            <a className="cyl-hero-button cyl-hero-button-primary" href="#sobre" onClick={scrollToAbout}>
-              Saiba mais
+            <a className="cyl-hero-button cyl-hero-button-primary" href="#recursos" onClick={event => scrollToSection(event, 'recursos')}>
+              Ver recursos
             </a>
             <a className="cyl-hero-button cyl-hero-button-secondary" href={discordInstallUrl}>
-              Adicione o Cyl
+              Adicionar o CYL
             </a>
           </div>
         </div>

@@ -6,6 +6,22 @@ class TicketRepository {
   constructor(file = path.join(__dirname, '../../data/tickets.json')) { this.store = new TicketJsonStore(file); }
   get(guildId, id) { return this.store.read()[guildId]?.tickets?.[id] || null; }
   list(guildId) { return Object.values(this.store.read()[guildId]?.tickets || {}); }
+  getStatsByGuildIds(guildIds) {
+    const wanted = new Set(guildIds);
+    const stats = new Map();
+    for (const guildId of wanted) stats.set(guildId, { total: 0, open: 0, closed: 0 });
+    const data = this.store.read();
+    for (const guildId of wanted) {
+      const current = data[guildId]?.tickets || {};
+      const value = stats.get(guildId);
+      for (const ticket of Object.values(current)) {
+        value.total += 1;
+        if (ticket.status === 'CLOSED') value.closed += 1;
+        else value.open += 1;
+      }
+    }
+    return stats;
+  }
   findByUser(guildId, userId) { return this.list(guildId).filter(ticket => ticket.creatorUserId === userId); }
   findPending(guildId, userId, categoryId) {
     return this.findByUser(guildId, userId).find(ticket => ticket.categoryId === categoryId && !ticket.initialized && ticket.status === 'OPEN') || null;

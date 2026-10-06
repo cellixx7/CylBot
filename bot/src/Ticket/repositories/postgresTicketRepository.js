@@ -90,6 +90,19 @@ function valuesFromTicket(ticket) {
 class PostgresTicketRepository {
   constructor(database) { this.database = database; this.db = database.db || database; }
 
+  async getStatsByGuildIds(guildIds) {
+    if (!guildIds.length) return new Map();
+    const rows = await this.db.select({
+      guildId: tickets.guildId,
+      total: sql`count(*)::int`,
+      open: sql`count(*) filter (where ${tickets.status} <> 'CLOSED')::int`,
+      closed: sql`count(*) filter (where ${tickets.status} = 'CLOSED')::int`,
+    }).from(tickets).where(inArray(tickets.guildId, guildIds)).groupBy(tickets.guildId);
+    return new Map(rows.map(row => [row.guildId, {
+      total: Number(row.total) || 0, open: Number(row.open) || 0, closed: Number(row.closed) || 0,
+    }]));
+  }
+
   async readEvents(ticketId, db = this.db) {
     return db.select().from(ticketEvents).where(eq(ticketEvents.ticketId, ticketId)).orderBy(ticketEvents.createdAt);
   }

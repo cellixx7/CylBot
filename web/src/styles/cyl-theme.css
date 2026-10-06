@@ -151,6 +151,11 @@
   color: var(--cyl-muted);
 }
 
+:root[data-theme='light'] .cyl-feature-demo-label,
+:root[data-theme='light'] .cyl-feature-status {
+  color: var(--cyl-accent-strong);
+}
+
 :root[data-theme='light'] .cyl-hero-button-secondary {
   color: var(--cyl-text-strong);
   border-color: var(--cyl-border);
@@ -179,8 +184,8 @@
 }
 
 :root[data-theme='light'] .community-preview-topbar h2,
-:root[data-theme='light'] .community-feed > h2,
-:root[data-theme='light'] .community-post h3,
+:root[data-theme='light'] .community-feed > h3,
+:root[data-theme='light'] .community-post h4,
 :root[data-theme='light'] .community-stat-list strong,
 :root[data-theme='light'] .community-message-author > a,
 :root[data-theme='light'] .community-message-author > strong,
@@ -233,7 +238,7 @@
 :root[data-theme='light'] .community-bot-handle:hover,
 :root[data-theme='light'] .community-preview-topbar h2 a:hover,
 :root[data-theme='light'] .community-message-author > a:hover,
-:root[data-theme='light'] .community-post h3 a:hover {
+:root[data-theme='light'] .community-post h4 a:hover {
   color: var(--cyl-accent-hover);
 }
 

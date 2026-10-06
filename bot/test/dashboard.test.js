@@ -56,6 +56,40 @@ test('canManageGuild aceita somente owner booleano, Administrator ou ManageGuild
   }
 });
 
+test('dashboard de producao calcula tickets, metricas e relevancia sem buscar membros em cada guild', async () => {
+  const member = { id: user.id, user: { bot: false }, permissions: { bitfield: { toString: () => '0' } }, roles: { cache: new Map([['support-role', {}]]) } };
+  const bot = { permissions: { bitfield: { toString: () => '8' } } };
+  const client = {
+    isReady: () => true,
+    user: { id: id(999) },
+    guilds: { cache: new Map([
+      [id(1), { memberCount: 321, members: { cache: new Map([[user.id, member]]), me: bot } }],
+      [id(2), { memberCount: 12, members: { cache: new Map(), me: bot } }],
+    ]) },
+  };
+  const provider = { getCurrentUserGuilds: async () => [
+    guild(1, { permissions: '0' }), guild(2, { permissions: '0' }),
+    guild(3, { permissions: '32' }), guild(4, { permissions: '0' }),
+  ] };
+  let configReads = 0; let statsReads = 0;
+  const dashboard = new DashboardService({ provider, client,
+    ticketConfigs: { getMany: async ids => { configReads += 1; assert.deepEqual(ids, [id(1), id(2)]); return [{ guildId: id(1), ready: true, supportRoleIds: ['support-role'] }]; } },
+    ticketRepository: { getStatsByGuildIds: async ids => { statsReads += 1; assert.deepEqual(ids, [id(1), id(2)]); return new Map([[id(1), { total: 7, open: 3, closed: 4 }]]); } },
+    ticketPermissions: { staff: (actor, config) => Boolean(config?.supportRoleIds.includes('support-role') && actor.roleIds.includes('support-role')) },
+    now: () => 1000,
+  });
+  const session = new AuthSessionManager({ now: () => 1000 }).create(user, token);
+  const result = await dashboard.guilds(session);
+  assert.deepEqual(result.map(item => item.id), [id(1), id(3)]);
+  assert.equal(result[0].canViewTickets, true);
+  assert.deepEqual(result[0].ticketing, { enabled: true, total: 7, open: 3, closed: 4 });
+  assert.equal(result[0].memberCount, 321);
+  assert.deepEqual(result[0].botPermissions, { state: 'ok' });
+  assert.equal(result[1].canAddBot, true);
+  assert.equal(configReads, 1);
+  assert.equal(statsReads, 1);
+});
+
 test('rota sem sessão, com sessão inventada ou expirada retorna 401 sem chamar Discord', async t => {
   const f = fixture(t);
   for (const sessionId of [undefined, 'x'.repeat(43)]) {

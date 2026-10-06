@@ -40,6 +40,7 @@
 }
 
 .cyl-hero-content h1 {
+  max-width: 100%;
   margin: 0;
   color: var(--cyl-text-strong);
   font-family: var(--cyl-display);
@@ -48,6 +49,7 @@
   line-height: 1.04;
   letter-spacing: 0;
   white-space: nowrap;
+  overflow-wrap: normal;
   animation: cyl-hero-enter 650ms 80ms ease-out both;
 }
 
@@ -91,7 +93,8 @@
   text-decoration: none;
   white-space: nowrap;
   box-shadow: 0 0.75rem 1.75rem var(--cyl-shadow);
-  transition: border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+  animation: none;
+  transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease, color 180ms ease;
 }
 
 .cyl-hero-button-primary {
@@ -104,8 +107,10 @@
 }
 
 .cyl-hero-button:hover {
+  animation: none;
+  transform: translateY(-2px);
   border-color: var(--cyl-button-hover-border);
-  box-shadow: 0 0.9rem 2rem var(--cyl-shadow-heavy);
+  box-shadow: 0 0.95rem 1.9rem var(--cyl-shadow);
 }
 
 .cyl-hero-button-primary:hover {
@@ -114,6 +119,11 @@
 
 .cyl-hero-button-secondary:hover {
   background: var(--cyl-button-secondary-hover);
+}
+
+.cyl-hero-button:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 0.55rem 1.2rem var(--cyl-shadow);
 }
 
 .cyl-hero-button:focus-visible {
@@ -194,6 +204,7 @@
 
   .cyl-hero-button {
     min-height: 4.5rem;
+    padding-inline: 0.875rem;
     font-size: clamp(1.0625rem, 2.25vw, 1.375rem);
   }
 }

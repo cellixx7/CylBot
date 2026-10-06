@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { cylDocsLinks } from '../lib/footerLinks.js';
 import './features-section.css';
 
 const features = [
@@ -9,16 +10,17 @@ const features = [
     description: 'Atendimento com histórico, IA, handoff humano e controle por equipe.',
     accent: '#7C5CFF',
     type: 'tickets',
-    href: '#/dashboard',
+    href: cylDocsLinks.tickets,
+    external: true,
   },
   {
     id: 'automation',
     category: 'AUTOMAÇÕES',
     title: 'Automação visual',
-    description: 'Crie fluxos que conectam eventos, condições e ações sem perder controle.',
+    description: 'O editor que conecta eventos, condições e ações está em preparação para a sua equipe.',
     accent: '#5865F2',
     type: 'automation',
-    href: '#recursos',
+    href: '#/em-breve?feature=automation-docs',
   },
   {
     id: 'community',
@@ -27,16 +29,17 @@ const features = [
     description: 'Leve anúncios, perfis e experiências importantes também para a web.',
     accent: '#A98BFF',
     type: 'community',
-    href: '#comunidade',
+    href: '#/?section=comunidade',
   },
   {
     id: 'assistants',
     category: 'INTELIGÊNCIA',
     title: 'Assistentes do CYL',
-    description: 'Personalidades, contexto e respostas com orçamento de IA sustentável.',
+    description: 'Uma demonstração de assistentes com contexto, personalidade e handoff para a equipe.',
     accent: '#59D8FF',
     type: 'ai',
-    href: '#/texta_ai',
+    href: cylDocsLinks.intelligence,
+    external: true,
   },
 ];
 
@@ -60,7 +63,7 @@ function useFeatureReveal() {
         setRevealed(true);
         observer.disconnect();
       },
-      { threshold: 0.15, rootMargin: '0px 0px -8% 0px' },
+      { threshold: 0, rootMargin: '0px 0px 8% 0px' },
     );
 
     if (sectionRef.current) observer.observe(sectionRef.current);
@@ -142,8 +145,8 @@ function AiPreview() {
   return (
     <div className="cyl-feature-preview cyl-feature-ai" aria-hidden="true">
       <div className="cyl-feature-chat-user">Meu cargo não foi aplicado.</div>
-      <div className="cyl-feature-chat-ai">Vou verificar a automação e explicar o que aconteceu antes de escalar.</div>
-      <span className="cyl-feature-chat-status">✓ handoff disponível</span>
+      <div className="cyl-feature-chat-ai">Posso ajudar a organizar este atendimento e, se necessário, encaminhar para a equipe.</div>
+      <span className="cyl-feature-chat-status">✓ handoff para a equipe</span>
     </div>
   );
 }
@@ -164,12 +167,16 @@ function FeatureCard({ feature, index }) {
       <header className="cyl-feature-card-header">
         <WindowDots />
         <span>{feature.category}</span>
+        <small className="cyl-feature-demo-label">Exemplo</small>
       </header>
       <div className="cyl-feature-card-body">
         <div className="cyl-feature-copy">
           <h3>{feature.title}</h3>
           <p>{feature.description}</p>
-          <a className="cyl-feature-cta" href={feature.href}>Explorar recurso</a>
+          {feature.id === 'automation' && <span className="cyl-feature-status">Em breve</span>}
+          <a className="cyl-feature-cta" href={feature.href} target={feature.external ? '_blank' : undefined} rel={feature.external ? 'noreferrer' : undefined}>
+            {feature.id === 'automation' ? 'Acompanhar recurso' : 'Explorar recurso'}
+          </a>
         </div>
         <FeaturePreview type={feature.type} />
       </div>
@@ -190,8 +197,8 @@ export default function FeaturesSection() {
       <div className="cyl-features-inner">
         <header className="cyl-features-heading">
           <p className="cyl-features-eyebrow">FUNÇÕES</p>
-          <h2 id="cyl-features-title">Veja o CYL funcionando antes de abrir a documentação.</h2>
-          <p>A landing apresenta cada recurso com uma mini experiência. Depois, cada bloco poderá apontar para um Docs completo com configuração, exemplos e limites.</p>
+          <h2 id="cyl-features-title">Explore como o CYL amplia sua comunidade.</h2>
+          <p>Conheça os recursos que conectam Discord, web e rotina da equipe. Para configurações e limites, consulte a documentação oficial.</p>
         </header>
 
         <div className="cyl-features-grid">
@@ -204,7 +211,7 @@ export default function FeaturesSection() {
             <h3 id="cyl-features-docs-title">Quando quiser ir fundo, o Docs assume.</h3>
             <p>Guias de configuração, referência de comandos, APIs, permissões, exemplos e troubleshooting.</p>
           </div>
-          <a className="cyl-features-docs-cta" href="#recursos">Explorar Docs do CYL <span aria-hidden="true">→</span></a>
+          <a className="cyl-features-docs-cta" href={cylDocsLinks.home} target="_blank" rel="noreferrer">Abrir Docs do CYL <span aria-hidden="true">→</span></a>
         </section>
       </div>
     </section>

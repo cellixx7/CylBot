@@ -71,7 +71,7 @@ function createServices(client, config) {
     announcements: new AnnouncementService(announcementRepository, openRouter, new AnnouncementDraftManager()),
     auth: new AuthService({ config: config.auth, provider: oauthProvider, users: userRepository,
       sessions: new AuthSessionManager({ ttlSeconds: config.auth.sessionTtlSeconds }) }),
-    dashboard: new DashboardService({ provider: oauthProvider, client }),
+    dashboard: new DashboardService({ provider: oauthProvider, client, ticketConfigs, ticketRepository, ticketPermissions }),
     presence: new PresenceManager(client),
     callSense: new CallSenseManager(client),
     ticketSetup: new TicketSetupService({ repository: ticketConfigs, permissions: ticketPermissions, adapter: ticketAdapter }),

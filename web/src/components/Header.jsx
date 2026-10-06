@@ -5,10 +5,10 @@ import onlineUrl from '../assets/brand/cyl-online.svg';
 import { discordCommunityUrl, discordInstallUrl } from '../lib/discordLinks.js';
 import './header.css';
 
-const communityLink = { label: 'Comunidade', section: 'comunidade', tooltip: 'Conheça a comunidade Cyl' };
-const premiumLink = { label: 'Premium', section: 'premium', tooltip: 'Saiba mais sobre a nossa melhor versão' };
+const communityLink = { label: 'Comunidade', section: 'comunidade', tooltip: 'Conheça a comunidade CYL' };
+const premiumLink = { label: 'Premium', href: '#/em-breve?feature=premium', tooltip: 'Conheça os planos Premium do CYL' };
 const resourcesLink = { label: 'Recursos', section: 'recursos', tooltip: 'Veja os recursos do CYL' };
-const discordLink = { label: 'Discord', href: discordCommunityUrl || discordInstallUrl, tooltip: 'Adicione o Cyl' };
+const discordLink = { label: 'Discord', href: discordCommunityUrl || discordInstallUrl, tooltip: 'Abrir o servidor Discord da comunidade' };
 
 function UserAvatar({ user }) {
   const [failedUrl, setFailedUrl] = useState(null);

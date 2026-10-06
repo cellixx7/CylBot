@@ -56,9 +56,15 @@ html.cyl-theme-transitioning .cyl-theme-icon {
   }
 }
 
+@media (min-width: 741px) and (max-width: 960px) {
+  .cyl-theme-toggle {
+    top: calc(8.5rem + env(safe-area-inset-top));
+  }
+}
+
 @media (max-width: 40rem) {
-  .cyl-theme-toggle { width: 40px; height: 40px; }
-  .cyl-theme-icon { width: 17px; height: 17px; }
+  .cyl-theme-toggle { width: 44px; height: 44px; }
+  .cyl-theme-icon { width: 18px; height: 18px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

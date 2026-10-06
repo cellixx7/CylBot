@@ -1,4 +1,4 @@
-const { and, eq } = require('drizzle-orm');
+const { and, eq, inArray } = require('drizzle-orm');
 const { ticketConfigs, ticketCategories } = require('../../database/schema');
 
 const dateValue = value => value instanceof Date ? value.getTime() : value;
@@ -25,6 +25,12 @@ function fromRows(config, categories) {
 
 class PostgresTicketConfigRepository {
   constructor(database) { this.db = database.db || database; }
+
+  async getMany(guildIds) {
+    if (!guildIds.length) return [];
+    const rows = await this.db.select().from(ticketConfigs).where(inArray(ticketConfigs.guildId, guildIds));
+    return rows.map(row => fromRows(row, []));
+  }
 
   async get(guildId) {
     const [config] = await this.db.select().from(ticketConfigs).where(eq(ticketConfigs.guildId, guildId)).limit(1);

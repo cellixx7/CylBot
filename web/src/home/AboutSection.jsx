@@ -153,7 +153,6 @@ function ConceptCard({ concept, index, motionReady, revealed, setCardRef }) {
       </div>
       <p>{concept.description}</p>
       <ConceptVisual type={concept.type} />
-      <div className="cyl-about-concept-track" aria-hidden="true"><span /></div>
     </article>
   );
 }
@@ -165,9 +164,9 @@ export default function AboutSection() {
     <section id="sobre" className="cyl-about" aria-labelledby="cyl-about-title">
       <div className="cyl-about-inner">
         <p className="cyl-about-eyebrow">SOBRE O CYL</p>
-        <h2 id="cyl-about-title">Cyl é a aplicação para o avanço da sua comunidade.</h2>
+        <h2 id="cyl-about-title">O CYL existe para dar contexto, autonomia e controle à rotina da sua comunidade.</h2>
         <p className="cyl-about-intro">
-          O CYL conecta Discord, web, automação, IA e identidade em uma experiência única, sem tirar da comunidade aquilo que ela já ama.
+          Uma base conectada para administrar atendimento, automação e identidade sem depender de ferramentas fragmentadas.
         </p>
 
         <div className="cyl-about-concept-grid" aria-label="Princípios do CYL">

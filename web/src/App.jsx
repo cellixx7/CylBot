@@ -64,8 +64,8 @@ export default function App() {
       const target = document.getElementById(section);
       if (!target) return;
 
-      const headerHeight = document.querySelector('.cyl-header')?.getBoundingClientRect().height || 0;
-      const top = Math.max(0, window.scrollY + target.getBoundingClientRect().top - headerHeight - 24);
+      const headerBottom = document.querySelector('.cyl-header')?.getBoundingClientRect().bottom || 0;
+      const top = Math.max(0, window.scrollY + target.getBoundingClientRect().top - headerBottom - 24);
       const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       window.scrollTo({ top, behavior: reducedMotion ? 'auto' : 'smooth' });
     });

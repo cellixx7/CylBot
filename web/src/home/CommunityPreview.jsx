@@ -100,7 +100,7 @@ function CommunityPost({ post, href }) {
           </div>
           <time dateTime={post.publishedAt}>{formatPostDate(post.publishedAt)}</time>
         </header>
-        {post.title && <h3><ExternalLink href={href} label={`Abrir ${post.title} no Discord`}>{post.title}</ExternalLink></h3>}
+        {post.title && <h4><ExternalLink href={href} label={`Abrir ${post.title} no Discord`}>{post.title}</ExternalLink></h4>}
         <p>{post.content}</p>
       </div>
       {post.reactions.length > 0 && (
@@ -158,9 +158,10 @@ export default function CommunityPreview({ channels = communityChannels, stats =
           <CylBotProfile />
         </aside>
 
-        <section id="community-channel-feed" className="community-feed" key={activeChannelId} aria-live="polite">
+        <section id="community-channel-feed" className="community-feed" key={activeChannelId}
+          aria-labelledby="community-channel-title" aria-live="polite" tabIndex="0">
           <span className="community-channel-label"># {activeChannel.label}</span>
-          <h2>{activeChannel.title}</h2>
+          <h3 id="community-channel-title">{activeChannel.title}</h3>
           <p className="community-channel-description">{activeChannel.description}</p>
           {Array.isArray(posts) && posts.length > 0 && (
             <button className="community-news-jump" type="button" onClick={revealCommunityPosts}>

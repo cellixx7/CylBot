@@ -326,6 +326,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--green); }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+
   body::before { animation: none; transform: none; }
   :is(
     .cyl-header,

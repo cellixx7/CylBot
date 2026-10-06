@@ -28,7 +28,9 @@ async function handle(request, response, { services, requestId }) {
     }
     logger.info('dashboard.guilds_loaded', { module: 'dashboard', requestId, userId: session.user.id,
       guildCount: guilds.length, installedCount: guilds.filter(guild => guild.botInstalled).length,
-      manageableCount: guilds.filter(guild => guild.canManage).length });
+      manageableCount: guilds.filter(guild => guild.canManage).length,
+      ticketAccessibleCount: guilds.filter(guild => guild.canViewTickets).length,
+      installableCount: guilds.filter(guild => guild.canAddBot).length });
     sendJson(response, 200, { guilds });
   } catch (error) {
     if (error.statusCode === 401) {
