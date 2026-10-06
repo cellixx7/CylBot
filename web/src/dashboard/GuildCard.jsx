@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, Check, ChevronDown, ExternalLink, ShieldCheck, Ticket, Users } from 'lucide-react';
+import { ArrowRight, Check, MoreHorizontal, ExternalLink, ShieldCheck, Ticket, Users } from 'lucide-react';
 import { discordInstallUrl } from '../lib/discordLinks.js';
 
 function GuildIcon({ guild, large = false }) {
@@ -27,10 +27,12 @@ function AccessBadges({ guild }) {
 }
 
 function GuildActions({ guild, stale = false }) {
-  if (!guild.botInstalled) return <div className="dashboard-actions"><a className="dashboard-button dashboard-button-primary" href={discordInstallUrl || '#/dashboard'} target={discordInstallUrl ? '_blank' : undefined} rel={discordInstallUrl ? 'noreferrer' : undefined} aria-label={`Adicionar CylBot a ${guild.name}`}>Adicionar CylBot <ExternalLink size={16} aria-hidden="true" /></a></div>;
+  if (!guild.botInstalled) return guild.canAddBot && discordInstallUrl
+    ? <div className="dashboard-actions"><a className="dashboard-button dashboard-button-primary" href={discordInstallUrl} target="_blank" rel="noreferrer" aria-label={`Adicionar CYL a ${guild.name}`}>Adicionar CYL <ExternalLink size={16} aria-hidden="true" /></a></div>
+    : <p className="dashboard-muted">A instalação não está disponível para esta conta.</p>;
   return <div className="dashboard-actions">
     {guild.canManage && <a className="dashboard-button dashboard-button-primary" href={`#/dashboard/${guild.id}`} aria-label={`Gerenciar ${guild.name}`}>Gerenciar servidor <ArrowRight size={16} aria-hidden="true" /></a>}
-    {guild.canViewTickets && <a className="dashboard-button dashboard-button-secondary" href={`#/dashboard/${guild.id}/tickets`} aria-label={`Ver tickets de ${guild.name}`}>Ver tickets <Ticket size={16} aria-hidden="true" /></a>}
+    {guild.canViewTickets && <a className={`dashboard-button dashboard-button-${guild.canManage ? 'secondary' : 'primary'}`} href={`#/dashboard/${guild.id}/tickets`} aria-label={`Acompanhar tickets de ${guild.name}`}>Acompanhar tickets <Ticket size={16} aria-hidden="true" /></a>}
     {stale && <small className="dashboard-stale-note">Ações usando a última leitura válida.</small>}
   </div>;
 }
@@ -39,13 +41,13 @@ function InstalledDetails({ guild, stale }) {
   const ticketing = guild.ticketing || { enabled: false, total: 0, open: 0, closed: 0 };
   return <div className="dashboard-expanded-content">
     <div className="dashboard-expanded-stats">
-      <div><Users size={17} aria-hidden="true" /><span>Membros</span><strong>{formatNumber(guild.memberCount)}</strong></div>
-      <div><Ticket size={17} aria-hidden="true" /><span>Tickets totais</span><strong>{ticketing.enabled ? formatNumber(ticketing.total) : '—'}</strong></div>
-      <div><span className="dashboard-stat-dot is-open" aria-hidden="true" /><span>Em aberto</span><strong>{ticketing.enabled ? formatNumber(ticketing.open) : '—'}</strong></div>
-      <div><span className="dashboard-stat-dot is-closed" aria-hidden="true" /><span>Encerrados</span><strong>{ticketing.enabled ? formatNumber(ticketing.closed) : '—'}</strong></div>
+      <div><Users size={15} aria-hidden="true" /><strong>{formatNumber(guild.memberCount)}</strong><span>Membros</span></div>
+      <div><Ticket size={15} aria-hidden="true" /><strong>{ticketing.enabled ? formatNumber(ticketing.total) : '—'}</strong><span>Tickets totais</span></div>
+      <div><span className="dashboard-stat-dot is-open" aria-hidden="true" /><strong>{ticketing.enabled ? formatNumber(ticketing.open) : '—'}</strong><span>Abertos</span></div>
+      <div><span className="dashboard-stat-dot is-closed" aria-hidden="true" /><strong>{ticketing.enabled ? formatNumber(ticketing.closed) : '—'}</strong><span>Fechados</span></div>
     </div>
     <div className="dashboard-expanded-columns">
-      <div><span className="dashboard-detail-label">Permissões do CylBot</span><PermissionLabel state={guild.botPermissions?.state} /></div>
+      <div><span className="dashboard-detail-label">Permissões do CYL</span><PermissionLabel state={guild.botPermissions?.state} /></div>
       <div><span className="dashboard-detail-label">Sistema de Tickets</span><strong className={ticketing.enabled ? 'dashboard-detail-success' : ''}>{ticketing.enabled ? 'Ativo' : 'Não configurado'}</strong></div>
       <div><span className="dashboard-detail-label">Seu acesso</span><AccessBadges guild={guild} /></div>
     </div>
@@ -55,8 +57,8 @@ function InstalledDetails({ guild, stale }) {
 
 function AvailableDetails({ guild }) {
   return <div className="dashboard-expanded-content dashboard-available-detail">
-    <p>Você pode adicionar o CylBot a este servidor usando sua conta do Discord.</p>
-    {guild.canAddBot && discordInstallUrl ? <a className="dashboard-button dashboard-button-primary" href={discordInstallUrl} target="_blank" rel="noreferrer" aria-label={`Adicionar CylBot a ${guild.name}`}>Adicionar CylBot <ExternalLink size={16} aria-hidden="true" /></a> : <p className="dashboard-muted">A instalação não está disponível para esta conta.</p>}
+    <div className="dashboard-install-message"><h4>Você pode adicionar o CYL</h4><p>Sua conta possui permissão suficiente neste servidor. A instalação abre o fluxo oficial do Discord.</p></div>
+    <GuildActions guild={guild} />
   </div>;
 }
 
@@ -64,18 +66,26 @@ export default function GuildCard({ guild, variant = 'card', expanded = false, o
   const isAvailable = !guild.botInstalled;
   const titleId = `guild-title-${guild.id}`;
   const detailsId = `guild-details-${guild.id}`;
-  return <article className={`dashboard-guild-card dashboard-guild-${variant}${expanded ? ' is-expanded' : ''}`} aria-labelledby={titleId}>
-    <div className="dashboard-guild-summary">
+  return <article className={`dashboard-guild-card dashboard-guild-${variant}${isAvailable ? ' is-available' : ''}${expanded ? ' is-expanded' : ''}`} aria-labelledby={titleId}>
+    <div className="dashboard-guild-summary" onClick={variant !== 'detail' ? event => {
+      if (event.target.closest('a, button, input, select, textarea, label')) return;
+      onToggle?.();
+    } : undefined}>
       <GuildIcon guild={guild} large={variant === 'detail'} />
       <div className="dashboard-guild-identity">
         <h3 id={titleId}>{guild.name}</h3>
-        <span className={`dashboard-guild-status${guild.botInstalled ? ' is-installed' : ' is-available'}`}><span aria-hidden="true" />{guild.botInstalled ? 'CylBot instalado' : 'Disponível para adicionar'}{stale && ' · leitura anterior'}</span>
-        <AccessBadges guild={guild} />
+        <span className={`dashboard-guild-status${guild.botInstalled ? ' is-installed' : ' is-available'}`}><span aria-hidden="true" />{guild.botInstalled ? 'CYL instalado' : 'CYL não instalado'}{stale && ' · leitura anterior'}</span>
       </div>
-      {variant !== 'detail' && <button type="button" className="dashboard-expand-button" aria-expanded={expanded} aria-controls={detailsId} onClick={onToggle} aria-label={`${expanded ? 'Recolher' : 'Expandir'} detalhes de ${guild.name}`}><ChevronDown size={18} aria-hidden="true" /></button>}
+      {(!isAvailable && (!expanded || variant === 'list')) && <AccessBadges guild={guild} />}
+      {isAvailable && variant === 'list' && guild.canAddBot && <div className="dashboard-badges"><span className="dashboard-badge dashboard-badge-manage">Pode adicionar</span></div>}
+      {isAvailable && variant === 'list' && !expanded && <GuildActions guild={guild} />}
+      {variant !== 'detail' && <button type="button" className="dashboard-expand-button" aria-expanded={expanded} aria-controls={detailsId} onClick={onToggle} aria-label={`Opções de ${guild.name}`}><MoreHorizontal size={20} aria-hidden="true" /></button>}
     </div>
-    {variant === 'card' && <div className="dashboard-compact-meta"><span><Users size={15} aria-hidden="true" />{formatNumber(guild.memberCount)} membros</span><span><Ticket size={15} aria-hidden="true" />{guild.ticketing?.enabled ? `${formatNumber(guild.ticketing.open)} abertos` : 'Tickets não configurados'}</span></div>}
-    {!expanded && <GuildActions guild={guild} stale={stale} />}
+    {variant === 'card' && !expanded && !isAvailable && (Number.isFinite(guild.memberCount) || (guild.ticketing?.enabled && Number.isFinite(guild.ticketing.open))) && <div className="dashboard-compact-meta">
+      {Number.isFinite(guild.memberCount) && <span><Users size={15} aria-hidden="true" />{formatNumber(guild.memberCount)} membros</span>}
+      {guild.ticketing?.enabled && Number.isFinite(guild.ticketing.open) && <span><Ticket size={15} aria-hidden="true" />{formatNumber(guild.ticketing.open)} tickets abertos</span>}
+    </div>}
+    {variant === 'card' && !expanded && isAvailable && <><p className="dashboard-install-hint">Você possui permissão para instalar o CYL neste servidor.</p><GuildActions guild={guild} /></>}
     {expanded && <div id={detailsId} className="dashboard-guild-details">{isAvailable ? <AvailableDetails guild={guild} /> : <InstalledDetails guild={guild} stale={stale} />}</div>}
   </article>;
 }
