@@ -1,5 +1,6 @@
 const { asc, eq } = require('drizzle-orm');
-const { announcementCategories } = require('../database/schema');
+const { announcementCategories, announcementPublications } = require('../database/schema');
+const { desc } = require('drizzle-orm');
 
 const mapCategory = row => ({
   id: row.id,
@@ -35,6 +36,22 @@ class PostgresAnnouncementRepository {
         updatedAt: new Date(now + index),
       })));
     });
+  }
+
+  async getRecent(guildId, limit = 12) {
+    const rows = await this.db.select().from(announcementPublications)
+      .where(eq(announcementPublications.guildId, guildId))
+      .orderBy(desc(announcementPublications.createdAt)).limit(limit);
+    return rows.map(row => ({ ...row, publishedAt: row.createdAt?.toISOString?.() || row.createdAt }));
+  }
+
+  async savePublication(publication) {
+    const [row] = await this.db.insert(announcementPublications).values({
+      guildId: publication.guildId, type: publication.type, title: publication.title, content: publication.content,
+      channelId: publication.channelId, channelName: publication.channelName || null,
+      communityVisible: Boolean(publication.communityVisible), publishedBy: publication.publishedBy,
+    }).returning();
+    return { ...row, publishedAt: row.createdAt?.toISOString?.() || row.createdAt };
   }
 }
 

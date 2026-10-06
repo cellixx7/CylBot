@@ -8,6 +8,7 @@ const { PostgresAnnouncementRepository } = require('../repositories/postgresAnno
 const { DiscordOAuthProvider } = require('../providers/discordOAuthProvider');
 const { AuthService } = require('../services/authService');
 const { AuthSessionManager } = require('../services/authSessionManager');
+const { PostgresAuthSessionRepository } = require('../repositories/postgresAuthSessionRepository');
 const { DashboardService } = require('../services/dashboardService');
 const PresenceManager = require('../services/presenceManager');
 const CallSenseManager = require('../services/callSenseManager');
@@ -34,6 +35,7 @@ const { PostgresTicketMessageRepository } = require('../Ticket/repositories/post
 const { TicketMessageService } = require('../Ticket/services/ticketMessageService');
 const { TicketMessageHandler } = require('../Ticket/handlers/ticketMessageHandler');
 const { TicketReadService } = require('../Ticket/services/ticketReadService');
+const { TicketToolsService } = require('../Ticket/services/ticketToolsService');
 
 function createServices(client, config) {
   const database = config.database?.url ? createDatabase(config.database.url) : null;
@@ -42,8 +44,10 @@ function createServices(client, config) {
   const ticketConfigs = database ? new PostgresTicketConfigRepository(database) : new TicketConfigRepository();
   const openRouter = new OpenRouterService(config.openRouter);
   const oauthProvider = new DiscordOAuthProvider(config.auth);
+  if (config.auth.enabled && !database) throw new Error('DATABASE_URL é obrigatória para sessões OAuth persistentes.');
+  const authSessionRepository = config.auth.enabled ? new PostgresAuthSessionRepository(database, config.auth.sessionEncryptionKey) : null;
   const announcementRepository = database ? new PostgresAnnouncementRepository(database) : new JsonAnnouncementRepository();
-  const ticketAdapter = new DiscordTicketAdapter(client, { ...config.tickets, webOrigin: config.auth.webOrigin });
+  const ticketAdapter = new DiscordTicketAdapter(client, { ...config.tickets, actorCacheMs: config.rateLimits.ticketActorCacheMs, webOrigin: config.auth.webOrigin });
   const ticketPermissions = new TicketPermissionService(ticketAdapter);
   const ticketTranscripts = new TicketTranscriptService({ adapter: ticketAdapter, repository: new TicketTranscriptRepository() });
   const ticketReconciliation = new TicketReconciliationService({ adapter: ticketAdapter, repository: ticketRepository });
@@ -52,6 +56,7 @@ function createServices(client, config) {
   const messageRepository = database ? new PostgresTicketMessageRepository(database) : null;
   const ticketMessages = new TicketMessageService({ repository: messageRepository, tickets, permissions: ticketPermissions, adapter: ticketAdapter });
   tickets.messages = ticketMessages;
+  const ticketTools = new TicketToolsService({ tickets, permissions: ticketPermissions, adapter: ticketAdapter });
   ticketTranscripts.messages = ticketMessages;
   const aiRepository = database ? new PostgresTicketAIRepository(database) : null;
   const aiSettings = config.ticketAI || { enabled: false, guildIds: [], model: config.openRouter.model, timeoutMs: 20000 };
@@ -70,14 +75,15 @@ function createServices(client, config) {
     textaAI: new TextaAIService({ ai: openRouter, sessions: new TextaAISessionManager() }),
     announcements: new AnnouncementService(announcementRepository, openRouter, new AnnouncementDraftManager()),
     auth: new AuthService({ config: config.auth, provider: oauthProvider, users: userRepository,
-      sessions: new AuthSessionManager({ ttlSeconds: config.auth.sessionTtlSeconds }) }),
-    dashboard: new DashboardService({ provider: oauthProvider, client, ticketConfigs, ticketRepository, ticketPermissions }),
+      sessions: new AuthSessionManager({ ttlSeconds: config.auth.sessionTtlSeconds, repository: authSessionRepository, provider: oauthProvider }) }),
+    dashboard: new DashboardService({ provider: oauthProvider, client, ticketConfigs, ticketRepository, ticketPermissions, guildCacheMs: config.rateLimits.dashboardGuildCacheMs }),
     presence: new PresenceManager(client),
     callSense: new CallSenseManager(client),
     ticketSetup: new TicketSetupService({ repository: ticketConfigs, permissions: ticketPermissions, adapter: ticketAdapter }),
     tickets,
     ticketMessages,
-    ticketRead: new TicketReadService({ tickets, permissions: ticketPermissions, messages: ticketMessages }),
+    ticketTools,
+    ticketRead: new TicketReadService({ tickets, permissions: ticketPermissions, messages: ticketMessages, tools: ticketTools }),
     ticketAI,
     ticketAIMessages,
     ticketMessageInbound: new TicketMessageHandler({ messages: ticketMessages, ai: ticketAIMessages }),

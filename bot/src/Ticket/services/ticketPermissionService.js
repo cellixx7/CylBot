@@ -1,18 +1,21 @@
 const { PermissionsBitField, PermissionFlagsBits: P } = require('discord.js');
-const { clientError } = require('../../api/http/errors');
+const { clientError, codedClientError } = require('../../api/http/errors');
 const { setTicketStage } = require('../lib/ticketDiagnostics');
 const TICKET_PERMISSION = Object.freeze({ CONFIGURE: 'CONFIGURE', VIEW: 'VIEW', RESPOND: 'RESPOND',
-  CLAIM: 'CLAIM', CLOSE: 'CLOSE', REOPEN: 'REOPEN', DELETE_CHANNEL: 'DELETE_CHANNEL' });
+  CLAIM: 'CLAIM', CLOSE: 'CLOSE', CONCLUDE: 'CONCLUDE', REOPEN: 'REOPEN', DELETE_CHANNEL: 'DELETE_CHANNEL' });
 class TicketPermissionService {
   constructor(adapter) { this.adapter = adapter; }
   async actor(guildId, userId) {
     setTicketStage('permission.actor');
     if (!/^\d{17,20}$/.test(guildId || '') || !/^\d{17,20}$/.test(userId || '')) throw clientError(400, 'Use esta ação em um servidor válido.');
     const actor = await this.adapter.getActor(guildId, userId);
-    if (!actor || actor.bot) throw clientError(403, 'Você não possui permissão para esta ação.');
+    if (!actor || actor.bot) throw codedClientError(403, 'TICKET_ACCESS_DENIED', 'Você não possui permissão para acessar estes tickets.');
     return actor;
   }
-  admin(actor) { return new PermissionsBitField(actor.permissions).has(P.ManageGuild); }
+  admin(actor) {
+    const permissions = new PermissionsBitField(actor.permissions);
+    return actor.owner === true || permissions.has(P.Administrator) || permissions.has(P.ManageGuild);
+  }
   staff(actor, config) { return this.admin(actor) || config.supportRoleIds.some(id => actor.roleIds.includes(id)); }
   async requireAdmin(guildId, userId) {
     const actor = await this.actor(guildId, userId);
@@ -33,7 +36,9 @@ class TicketPermissionService {
   }
   async requireView(guildId, userId, config, ticket) {
     const actor = await this.actor(guildId, userId);
-    if (actor.id !== ticket.creatorUserId && !this.staff(actor, config)) throw clientError(403, 'Você não possui acesso a este ticket.');
+    if (actor.id !== ticket.creatorUserId && !this.staff(actor, config)) {
+      throw codedClientError(403, 'TICKET_ACCESS_DENIED', 'Você não possui permissão para acessar estes tickets.');
+    }
     return actor;
   }
   async requireRespond(guildId, userId, config, ticket) {
@@ -51,7 +56,7 @@ class TicketPermissionService {
     if (action === TICKET_PERMISSION.VIEW) return this.requireView(guildId, userId, config, ticket);
     if (action === TICKET_PERMISSION.RESPOND) return this.requireRespond(guildId, userId, config, ticket);
     if (action === TICKET_PERMISSION.CLOSE) return this.requireClose(guildId, userId, config, ticket);
-    if ([TICKET_PERMISSION.CLAIM, TICKET_PERMISSION.REOPEN, TICKET_PERMISSION.DELETE_CHANNEL].includes(action)) {
+    if ([TICKET_PERMISSION.CLAIM, TICKET_PERMISSION.CONCLUDE, TICKET_PERMISSION.REOPEN, TICKET_PERMISSION.DELETE_CHANNEL].includes(action)) {
       return this.requireStaff(guildId, userId, config);
     }
     throw clientError(403, 'Ação de ticket não autorizada.');

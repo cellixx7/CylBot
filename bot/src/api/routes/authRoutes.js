@@ -47,11 +47,11 @@ async function handle(request, response, { services, requestId }) {
     return true;
   }
   if (url.pathname === '/api/auth/me' && request.method === 'GET') {
-    const session = auth.sessions.get(sessionId);
+    const session = request.authResolved ? request.authSession : auth.sessions.get(sessionId);
     logger[session ? 'info' : 'warn']('auth.session_check', { module: 'auth', requestId,
       statusCode: session ? 200 : 401, hasSessionCookie: Boolean(sessionId), origin: request.headers?.origin || 'missing' });
     if (!session) {
-      response.writeHead(204).end();
+      sendJson(response, 401, { error: 'AUTH_REQUIRED' });
       return true;
     }
     sendJson(response, 200, { user: session.user });
@@ -59,7 +59,7 @@ async function handle(request, response, { services, requestId }) {
   }
   if (url.pathname === '/api/auth/logout' && request.method === 'POST') {
     requireTrustedOrigin(request, auth.config.allowedOrigins);
-    auth.sessions.remove(sessionId);
+    await auth.sessions.remove(sessionId);
     logger.info('auth.logout', { module: 'auth', requestId });
     response.setHeader('Set-Cookie', cookie(SESSION_COOKIE, '', 0, secure));
     response.writeHead(204).end();

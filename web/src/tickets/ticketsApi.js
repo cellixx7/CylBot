@@ -1,4 +1,4 @@
-import { readJson } from '../lib/readApi.js';
+import { apiError, readJson } from '../lib/readApi.js';
 
 const ticketMessages = {
   400: 'A mensagem enviada é inválida.',
@@ -21,7 +21,10 @@ async function get(path, params, signal) {
     signal,
     messages: {
       401: 'Sua sessão expirou. Entre novamente com Discord.',
-      403: 'Você não tem acesso a estes tickets ou deixou de participar do servidor.',
+      TICKET_ACCESS_DENIED: 'Você não possui permissão para acessar os tickets deste servidor.',
+      GUILD_MEMBERSHIP_REQUIRED: 'Você não participa mais deste servidor.',
+      GUILD_NOT_FOUND: 'Este servidor não está disponível para o CylBot.',
+      403: 'Não foi possível validar o acesso à Central de Tickets.',
       404: 'Ticket não encontrado neste servidor.',
       429: 'Muitas consultas. A atualização será retomada em instantes.',
       502: 'O Discord está temporariamente indisponível. A conversa será atualizada novamente em instantes.',
@@ -31,8 +34,18 @@ async function get(path, params, signal) {
   });
 }
 
-export const getTickets = (guildId, before, signal) =>
-  get('', { guildId, before, limit: 25 }, signal);
+export const getTickets = (guildId, before, signal, filters = {}) =>
+  get('', { guildId, before, limit: 25, ...filters }, signal);
+
+export const getTicketTools = (guildId, ticketId, signal) => get(`/${ticketId}/tools`, { guildId }, signal);
+export async function runTicketTool(guildId, ticketId, action, values) {
+  const response = await fetch(`/api/tickets/${ticketId}/tools/${action}`, {
+    method: 'POST', credentials: 'include', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ guildId, ...values }),
+  });
+  if (!response.ok) throw await apiError(response, { 400: 'Confira os campos e confirme a ação.', 403: 'Ação negada pelas permissões ou hierarquia do Discord.', 409: 'O estado mudou. Atualize as ferramentas.', 429: 'Muitas solicitações. Aguarde alguns instantes antes de tentar novamente.', 502: 'O Discord não confirmou a ação. Atualize as ferramentas antes de tentar novamente.' }[response.status] || ticketMessages[response.status] || 'Não foi possível executar a ferramenta.');
+  return response.json();
+}
 
 export const getTicket = (guildId, ticketId, signal) =>
   get(`/${ticketId}`, { guildId }, signal);
@@ -54,10 +67,7 @@ async function ticketAIRequest(path, method, body) {
     method, credentials: 'include', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-  if (!response.ok) throw Object.assign(new Error(ticketMessages[response.status] || ticketMessages.default), {
-    status: response.status, reloginRequired: response.status === 401,
-    requestId: response.headers.get('X-Request-Id') || undefined,
-  });
+  if (!response.ok) throw await apiError(response, ticketMessages[response.status] || ticketMessages.default);
   return response.json();
 }
 
@@ -78,10 +88,8 @@ export async function ticketAction(guildId, ticketId, action, values = {}) {
     method: 'POST', credentials: 'include', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ guildId, ...values }),
   });
-  if (!response.ok) throw Object.assign(new Error(ticketMessages[response.status] || ticketMessages.default), {
-    status: response.status, reloginRequired: response.status === 401,
-    requestId: response.headers.get('X-Request-Id') || undefined,
-  });
+  const actionMessages = { 400: 'Confira os campos da ação.', 403: 'Você não tem permissão para esta ação no ticket.', 409: 'O estado do ticket mudou. Atualize o atendimento.', 503: 'A operação está temporariamente indisponível. Atualize o ticket para verificar o estado e retomar.' };
+  if (!response.ok) throw await apiError(response, actionMessages[response.status] || ticketMessages[response.status] || 'Não foi possível concluir a ação.');
   return response.json();
 }
 
@@ -106,16 +114,7 @@ export async function postTicketMessage(
     signal,
   });
 
-  if (!response.ok) {
-    throw Object.assign(
-      new Error(ticketMessages[response.status] || ticketMessages.default),
-      {
-        status: response.status,
-        reloginRequired: response.status === 401,
-        requestId: response.headers.get('X-Request-Id') || undefined,
-      },
-    );
-  }
+  if (!response.ok) throw await apiError(response, ticketMessages[response.status] || ticketMessages.default);
 
   return response.json();
 }
@@ -142,23 +141,7 @@ export async function retryTicketMessage(
     },
   );
 
-  if (!response.ok) {
-    throw Object.assign(
-      new Error(
-        ticketMessages[response.status] ||
-        ticketMessages.default,
-      ),
-      {
-        status: response.status,
-        reloginRequired:
-          response.status === 401,
-        requestId:
-          response.headers.get(
-            'X-Request-Id',
-          ) || undefined,
-      },
-    );
-  }
+  if (!response.ok) throw await apiError(response, ticketMessages[response.status] || ticketMessages.default);
 
   return response.json();
 }
@@ -187,23 +170,7 @@ export async function editTicketMessage(
     },
   );
 
-  if (!response.ok) {
-    throw Object.assign(
-      new Error(
-        ticketMessages[response.status] ||
-        ticketMessages.default,
-      ),
-      {
-        status: response.status,
-        reloginRequired:
-          response.status === 401,
-        requestId:
-          response.headers.get(
-            'X-Request-Id',
-          ) || undefined,
-      },
-    );
-  }
+  if (!response.ok) throw await apiError(response, ticketMessages[response.status] || ticketMessages.default);
 
   return response.json();
 }

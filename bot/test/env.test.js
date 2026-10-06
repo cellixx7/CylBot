@@ -204,7 +204,7 @@ test('OAuth é opcional, reutiliza Client ID e valida habilitação sem expor se
   assert.equal(config.auth.webOrigin, 'http://localhost:5173');
   assert.equal(config.auth.redirectUri, 'http://localhost:5173/api/auth/discord/callback');
   assert.equal(config.auth.secure, false);
-  assert.equal(config.auth.sessionTtlSeconds, 28800);
+  assert.equal(config.auth.sessionTtlSeconds, 2592000);
   const enabled = loadEnv({ ...discord, DISCORD_OAUTH_CLIENT_SECRET: ' fake-secret ' });
   assert.equal(enabled.auth.enabled, true);
   assert.equal(enabled.auth.clientId, enabled.discord.clientId);

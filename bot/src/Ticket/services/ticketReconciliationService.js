@@ -65,7 +65,7 @@ class TicketReconciliationService {
   async channelDeleted({ guildId, channelId }, closedAt = Date.now()) {
     const ticket = await this.repository.findByChannelId(guildId, channelId);
     if (!ticket || !ticket.initialized || ticket.reopening
-      || (!ticket.closing && ticket.status !== 'CLOSED' && !['OPEN', 'CLAIMED', 'REOPENED'].includes(ticket.status))) return null;
+      || (!ticket.closing && !['CLOSED', 'CONCLUDED', 'OPEN', 'CLAIMED', 'REOPENED'].includes(ticket.status))) return null;
     const closed = await (this.repository.recoverMissingChannel
       ? this.repository.recoverMissingChannel(ticket, closedAt)
       : this.repository.closeMissingChannel(ticket, closedAt));

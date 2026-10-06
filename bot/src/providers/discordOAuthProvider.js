@@ -111,6 +111,23 @@ class DiscordOAuthProvider {
     return token;
   }
 
+  async refreshToken(refreshToken) {
+    let response;
+    try {
+      response = await this.fetch('https://discord.com/api/oauth2/token', { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ client_id: this.config.clientId, client_secret: this.config.clientSecret, grant_type: 'refresh_token', refresh_token: refreshToken }) });
+    } catch { throw clientError(503, 'Autenticação Discord temporariamente indisponível.'); }
+    if (!response.ok) {
+      let body; try { body = await response.json(); } catch {}
+      if (body?.error === 'invalid_grant' || response.status === 401) throw clientError(401, 'AUTH_RELOGIN_REQUIRED');
+      throw clientError(503, 'Autenticação Discord temporariamente indisponível.');
+    }
+    let token; try { token = await response.json(); } catch {}
+    if (!token || typeof token.access_token !== 'string' || !token.access_token || !Number.isFinite(token.expires_in) || token.expires_in <= 0 || token.token_type?.toLowerCase() !== 'bearer') throw clientError(503, 'Resposta de renovação inválida do Discord.');
+    return token;
+  }
+
   async getUser(accessToken) {
     const user = await this.request('https://discord.com/api/v10/users/@me', {
       headers: { Authorization: `Bearer ${accessToken}` },

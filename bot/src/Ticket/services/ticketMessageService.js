@@ -2,6 +2,7 @@ const { randomUUID } = require('node:crypto');
 const { clientError } = require('../../api/http/errors');
 const { logger } = require('../../lib/logger');
 const { ACTIVE_STATUSES } = require('./ticketConstants');
+const { safeAttachments } = require('./ticketAttachments');
 const { TICKET_PERMISSION } = require('./ticketPermissionService');
 const { MESSAGE_ORIGIN: O, MESSAGE_AUTHOR_TYPE: A, MESSAGE_VISIBILITY: V, DELIVERY_STATUS: D,
   WEB_CONTENT_LIMIT, content, clientMessageId } = require('./ticketMessageContract');
@@ -58,12 +59,13 @@ class TicketMessageService {
     const imports = [];
     for (const item of history) {
       if (item.id === excludeDiscordMessageId) continue;
-      const text = String(item.content || item.embeds?.join('\n') || '').trim().slice(0, 2000);
+      const attachments = safeAttachments(item.attachments);
+      const text = String(item.content || item.embeds?.join('\n') || (attachments.length ? '[Anexo]' : '')).trim().slice(0, 2000);
       if (!text) continue;
       const authorType = item.authorId === ticket.creatorUserId ? A.USER : item.authorBot ? A.SYSTEM : A.STAFF;
       imports.push({ ticketId: ticket.id, guildId: ticket.guildId, cycle: ticket.reopenCount || 0,
         authorDiscordId: item.authorId, authorName: item.authorName || authorType, authorAvatarUrl: safeAvatarUrl(item.authorAvatarUrl), authorType,
-        origin: O.DISCORD, visibility: V.PUBLIC, content: text, discordMessageId: item.id,
+        origin: O.DISCORD, visibility: V.PUBLIC, content: text, attachments, discordMessageId: item.id,
         discordChannelId: ticket.channelId, deliveryStatus: D.SENT, deliveryAttempts: 0, createdAt: new Date(item.createdAt) });
     }
     const imported = imports.length ? await this.repository.importMany(imports) : 0;
@@ -78,12 +80,13 @@ class TicketMessageService {
     if (!ticket) return null;
     if (!ticket.initialized || ticket.reopening || !ACTIVE_STATUSES.has(ticket.status)) return null;
     const actor = await this.permissions.requireAction(TICKET_PERMISSION.RESPOND, input.guildId, input.userId, ticket, ticket);
-    const text = content(input.content);
+    const attachments = safeAttachments(input.attachments);
+    const text = content(input.content?.trim() || (attachments.length ? '[Anexo]' : ''));
     await this.syncDiscordHistory(ticket, { excludeDiscordMessageId: input.messageId });
     const authorType = this.authorType(actor, ticket);
     const result = await this.repository.create({ ticketId: ticket.id, guildId: ticket.guildId, cycle: ticket.reopenCount || 0,
       authorDiscordId: actor.id, authorName: actor.name, authorAvatarUrl: safeAvatarUrl(input.authorAvatarUrl) || safeAvatarUrl(actor.avatarUrl), authorType, origin: O.DISCORD, visibility: V.PUBLIC,
-      content: text, discordMessageId: input.messageId, discordChannelId: input.channelId,
+      content: text, attachments, discordMessageId: input.messageId, discordChannelId: input.channelId,
       deliveryStatus: D.SENT, deliveryAttempts: 0, createdAt: input.createdAt ? new Date(input.createdAt) : new Date() });
     logger.info(result.duplicate ? 'ticket.message.duplicate' : 'ticket.message.ingested', this.log(ticket, result.message));
     return { ticket, message: result.message, duplicate: result.duplicate };
@@ -219,13 +222,15 @@ class TicketMessageService {
     return updated;
   }
 
-  async updateDiscordMessage({ guildId, channelId, messageId, userId, content: text }) {
+  async updateDiscordMessage({ guildId, channelId, messageId, userId, content: text, attachments }) {
     this.requireStorage();
     if (!/^[0-9]{17,20}$/.test(messageId || '')) return null;
     const message = await this.repository.findByDiscordMessageId(guildId, messageId);
     if (!message || message.discordChannelId !== channelId) return null;
-    text = content(text, WEB_CONTENT_LIMIT);
-    if (message.content === text) return message;
+    const safe = attachments === undefined ? safeAttachments(message.attachments) : safeAttachments(attachments);
+    text = content(text?.trim() || (safe.length ? '[Anexo]' : ''), 2000);
+    if (this.repository.updateAttachments && attachments !== undefined) await this.repository.updateAttachments(guildId, message.id, safe);
+    if (message.content === text) return { ...message, attachments: safe };
     const updated = await this.repository.editContent({
       guildId,
       ticketId: message.ticketId,
@@ -368,7 +373,7 @@ class TicketMessageService {
   async recentForAI(ticket, limit = 12) { this.requireStorage(); return this.repository.listRecent(ticket.id, { limit, visibilities: [V.PUBLIC] }); }
   async forTranscript(ticket, limit = 5000) { this.requireStorage(); return this.repository.listForTranscript(ticket.id, { limit, cycle: ticket.reopenCount || 0 }); }
   dto(message, viewerId, participants = []) { return { id: message.id, authorName: message.authorName, authorAvatarUrl: safeAvatarUrl(message.authorAvatarUrl), authorType: message.authorType, origin: message.origin,
-    visibility: message.visibility, content: message.content, deliveryStatus: message.deliveryStatus, createdAt: message.createdAt, editedAt: message.editedAt,
+    visibility: message.visibility, content: message.content, attachments: safeAttachments(message.attachments), deliveryStatus: message.deliveryStatus, createdAt: message.createdAt, editedAt: message.editedAt,
     mentions: mentionIds(message.content).map(id => participants.find(person => person.id === id)).filter(Boolean),
     ...(viewerId ? { isOwn: message.authorDiscordId === viewerId } : {}) }; }
   log(ticket, message) { return { ticketId: ticket.id, guildId: ticket.guildId, messageId: message.id,

@@ -17,7 +17,8 @@ function scrollToSection(event, sectionId) {
   window.scrollTo({ top, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
 }
 
-export default function Home() {
+export default function Home({ auth }) {
+  const authenticated = auth?.status === 'authenticated';
   return (
     <main className="home-page">
       <section className="cyl-hero" aria-labelledby="cyl-hero-title">
@@ -35,8 +36,8 @@ export default function Home() {
           <p>A plataforma que conecta Discord e web para administradores e equipes organizarem atendimento, automação e inteligência da comunidade.</p>
 
           <div className="cyl-hero-actions">
-            <a className="cyl-hero-button cyl-hero-button-primary" href="#recursos" onClick={event => scrollToSection(event, 'recursos')}>
-              Ver recursos
+            <a className="cyl-hero-button cyl-hero-button-primary" href={authenticated ? '#/dashboard' : '#recursos'} onClick={authenticated ? undefined : event => scrollToSection(event, 'recursos')}>
+              {authenticated ? 'Acessar Dashboard' : 'Ver recursos'}
             </a>
             <a className="cyl-hero-button cyl-hero-button-secondary" href={discordInstallUrl}>
               Adicionar o CYL

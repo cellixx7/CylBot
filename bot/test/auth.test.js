@@ -125,7 +125,7 @@ test('callback válido cria sessão, cookie opaco e me retorna exclusivamente pe
   const cookie = sessionCookie(res);
   const id = cookie.split('=')[1];
   assert.match(id, /^[A-Za-z0-9_-]{43}$/);
-  assert.match(res.headers['Set-Cookie'][2], /HttpOnly; SameSite=Lax; Max-Age=28800$/);
+  assert.match(res.headers['Set-Cookie'][2], /HttpOnly; SameSite=Lax; Max-Age=2592000$/);
   const session = auth.sessions.get(id);
   assert.equal(session.discordAccessToken, token.access_token);
   assert.equal(session.discordRefreshToken, token.refresh_token);
@@ -157,7 +157,7 @@ test('novo login troca ID e invalida a sessão anterior', async t => {
   const old = sessionCookie(await login(auth));
   const fresh = sessionCookie(await login(auth, old));
   assert.notEqual(fresh, old);
-    assert.equal((await request(auth, 'GET', '/api/auth/me', old)).status, 204);
+    assert.equal((await request(auth, 'GET', '/api/auth/me', old)).status, 401);
   assert.equal((await request(auth, 'GET', '/api/auth/me', fresh)).status, 200);
 });
 
@@ -165,10 +165,10 @@ test('me rejeita ausência, cookie duplicado, sessão inventada e sessão expira
   const { auth, advance, config } = setup(t);
   const cookie = sessionCookie(await login(auth));
   for (const invalid of ['', `${cookie}; ${cookie}`, `cylbot_session=${'x'.repeat(43)}`, 'cylbot_session=%invalid']) {
-    assert.equal((await request(auth, 'GET', '/api/auth/me', invalid)).status, 204);
+    assert.equal((await request(auth, 'GET', '/api/auth/me', invalid)).status, 401);
   }
   advance(config.sessionTtlSeconds * 1000);
-  assert.equal((await request(auth, 'GET', '/api/auth/me', cookie)).status, 204);
+  assert.equal((await request(auth, 'GET', '/api/auth/me', cookie)).status, 401);
   assert.equal(auth.sessions.sessions.size, 0);
 });
 
@@ -183,7 +183,7 @@ test('logout exige POST e origem confiável, remove sessão e expira cookie', as
   const res = await request(auth, 'POST', '/api/auth/logout', cookie, config.webOrigin);
   assert.equal(res.status, 204);
   assert.match(res.headers['Set-Cookie'], /Max-Age=0/);
-  assert.equal((await request(auth, 'GET', '/api/auth/me', cookie)).status, 204);
+  assert.equal((await request(auth, 'GET', '/api/auth/me', cookie)).status, 401);
   assert.equal((await request(auth, 'POST', '/api/auth/logout', '', config.webOrigin)).status, 204);
 
   const codespacesCookie = sessionCookie(await login(auth));
@@ -219,7 +219,7 @@ test('OAuth não configurado não impede aplicação e recusa iniciar login', as
   const { auth } = setup(t);
   auth.config.enabled = false;
   assert.equal((await request(auth, 'GET', '/api/auth/discord')).status, 503);
-  assert.equal((await request(auth, 'GET', '/api/auth/me')).status, 204);
+  assert.equal((await request(auth, 'GET', '/api/auth/me')).status, 401);
 });
 
 test('provider usa POST form no token endpoint e Bearer somente na busca do perfil', async () => {

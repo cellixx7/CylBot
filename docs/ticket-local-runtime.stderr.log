@@ -1,0 +1,3 @@
+{"module":"dashboard","requestId":"2b164b2f-d026-492f-a59e-abbb079e933f","hasSessionCookie":"[REDACTED]","reason":"session_missing","origin":"missing","timestamp":"2026-10-06T18:58:34.937Z","level":"warn","event":"dashboard.relogin_required","service":"bot"}
+{"module":"dashboard","requestId":"32da8d6d-e696-4eb3-8a93-a7139c236be2","hasSessionCookie":"[REDACTED]","reason":"session_missing","origin":"missing","timestamp":"2026-10-06T18:58:41.436Z","level":"warn","event":"dashboard.relogin_required","service":"bot"}
+{"module":"dashboard","requestId":"dd0e13dd-fc16-403e-9aee-dc5cdaba5a38","hasSessionCookie":"[REDACTED]","reason":"session_missing","origin":"missing","timestamp":"2026-10-06T18:58:46.880Z","level":"warn","event":"dashboard.relogin_required","service":"bot"}

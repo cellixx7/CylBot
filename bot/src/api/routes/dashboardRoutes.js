@@ -3,41 +3,43 @@ const { cookie, readCookie } = require('../http/cookies');
 const { SESSION_COOKIE } = require('./authRoutes');
 const { logger } = require('../../lib/logger');
 const { requireSession } = require('../http/auth');
+const { logGuildRead } = require('../http/guildDiagnostics');
 
-async function handle(request, response, { services, requestId }) {
+async function handle(request, response, { services, client, requestId }) {
   const url = new URL(request.url, 'http://localhost');
   if (request.method !== 'GET' || url.pathname !== '/api/dashboard/guilds') return false;
   response.setHeader('Cache-Control', 'no-store');
   const { auth, dashboard } = services;
   const sessionId = readCookie(request, SESSION_COOKIE);
   let session;
-  function relogin(reason) {
-    auth.sessions.remove(sessionId);
+  async function relogin(reason) {
+    await auth.sessions.remove(sessionId);
     response.setHeader('Set-Cookie', cookie(SESSION_COOKIE, '', 0, auth.config.secure));
     logger.warn('dashboard.relogin_required', { module: 'dashboard', requestId, userId: session?.user.id,
       hasSessionCookie: Boolean(sessionId), reason, origin: request.headers?.origin || 'missing' });
     sendJson(response, 401, { error: 'AUTH_RELOGIN_REQUIRED' });
   }
   try { session = requireSession(request, services, 'AUTH_RELOGIN_REQUIRED'); }
-  catch { relogin('session_missing'); return true; }
+  catch { await relogin('session_missing'); return true; }
   try {
     // Query/body não fornecem identidade, token ou permissões ao service.
     const guilds = await dashboard.guilds(session);
-    if (auth.sessions.get(sessionId) !== session || session.discordTokenExpiresAt <= auth.sessions.now()) {
-      relogin(); return true;
+    if ((!auth.sessions.repository && auth.sessions.get(sessionId) !== session) || session.discordTokenExpiresAt <= auth.sessions.now()) {
+      await relogin(); return true;
     }
     logger.info('dashboard.guilds_loaded', { module: 'dashboard', requestId, userId: session.user.id,
       guildCount: guilds.length, installedCount: guilds.filter(guild => guild.botInstalled).length,
       manageableCount: guilds.filter(guild => guild.canManage).length,
       ticketAccessibleCount: guilds.filter(guild => guild.canViewTickets).length,
       installableCount: guilds.filter(guild => guild.canAddBot).length });
+    for (const guild of guilds) logGuildRead('dashboard.guild_state', { services, client, requestId, guildId: guild.id, guild, stage: 'dashboard.dto', result: 'returned' });
     sendJson(response, 200, { guilds });
   } catch (error) {
     if (error.statusCode === 401) {
       const reason = !Array.isArray(session.discordScopes) || !session.discordScopes.includes('guilds')
         ? 'scope_guilds_missing'
         : session.discordTokenExpiresAt <= auth.sessions.now() ? 'discord_token_expired' : 'discord_token_rejected';
-      relogin(reason);
+      await relogin(reason);
     }
     else {
       const statusCode = Number.isInteger(error.statusCode) && error.statusCode >= 400 && error.statusCode <= 599

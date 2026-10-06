@@ -99,7 +99,8 @@ function loadEnv(source, { requireDiscord = true, requireSpotifyAuth = false } =
       enabled: Boolean(oauthSecret), clientId: oauthClientId, clientSecret: oauthSecret,
       redirectUri: oauthRedirectUri, webOrigin, allowedOrigins,
       secure: webOrigin.startsWith('https:'), production: environment === 'production',
-      sessionTtlSeconds: integer(source, 'SESSION_TTL_SECONDS', 28800, 2592000),
+      sessionTtlSeconds: integer(source, 'SESSION_TTL_SECONDS', integer(source, 'AUTH_SESSION_TTL_DAYS', 30, 30) * 86400, 2592000),
+      sessionEncryptionKey: optional(source, 'AUTH_SESSION_ENCRYPTION_KEY'),
     },
     logging: { level: logLevel },
     discord: {
@@ -109,6 +110,14 @@ function loadEnv(source, { requireDiscord = true, requireSpotifyAuth = false } =
     api: {
       host: apiHost(source, environment),
       port: apiPort ?? integer(source, 'PORT', 3001, 65535),
+    },
+    rateLimits: {
+      ticketReads: integer(source, 'TICKETS_READ_RATE_LIMIT', environment === 'production' ? 60 : 90, 300),
+      ticketWrites: integer(source, 'TICKETS_WRITE_RATE_LIMIT', environment === 'production' ? 20 : 30, 120),
+      ticketModeration: integer(source, 'TICKETS_MODERATION_RATE_LIMIT', 5, 30),
+      ticketAI: integer(source, 'TICKETS_AI_RATE_LIMIT', 30, 60),
+      dashboardGuildCacheMs: integer(source, 'DASHBOARD_GUILDS_CACHE_MS', 15000, 60000),
+      ticketActorCacheMs: integer(source, 'TICKET_ACTOR_CACHE_MS', 10000, 30000),
     },
     database: { url: databaseUrl },
     tickets: { messageContentEnabled: optional(source, 'TICKETS_MESSAGE_CONTENT_ENABLED') === 'true' },

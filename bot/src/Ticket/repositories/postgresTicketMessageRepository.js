@@ -25,6 +25,10 @@ class PostgresTicketMessageRepository {
     const [row] = await db.select().from(ticketMessages).where(and(eq(ticketMessages.guildId, guildId), eq(ticketMessages.id, id))).limit(1);
     return map(row);
   }
+  async updateAttachments(guildId, id, attachments) {
+    await this.db.update(ticketMessages).set({ attachments, updatedAt: new Date() })
+      .where(and(eq(ticketMessages.guildId, guildId), eq(ticketMessages.id, id)));
+  }
 
   async findByIdForTicket(ticketId, id, db = this.db) {
     const [row] = await db.select().from(ticketMessages).where(and(eq(ticketMessages.ticketId, ticketId), eq(ticketMessages.id, id))).limit(1);

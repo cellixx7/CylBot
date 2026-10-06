@@ -43,7 +43,7 @@ function existingTicketView(tickets) {
     components: [row(button('existing:continue', 'Usar ticket aberto', ButtonStyle.Success), button('existing:new', 'É outro assunto', ButtonStyle.Primary))], allowedMentions: { parse: [] } };
 }
 function initialPayload(ticket) {
-  const status = { [TICKET_STATUS.OPEN]: 'Aberto', [TICKET_STATUS.CLAIMED]: 'Em atendimento', [TICKET_STATUS.CLOSED]: 'Encerrado', [TICKET_STATUS.REOPENED]: 'Reaberto' }[ticket.status];
+  const status = { [TICKET_STATUS.OPEN]: 'Aberto', [TICKET_STATUS.CLAIMED]: 'Em atendimento', [TICKET_STATUS.CLOSED]: 'Encerrado', [TICKET_STATUS.CONCLUDED]: 'Concluído', [TICKET_STATUS.REOPENED]: 'Reaberto' }[ticket.status];
   const embed = new EmbedBuilder().setTitle(`🎫 Ticket #${ticketNumber(ticket)}${ticket.reopenCount ? ' reaberto' : ''}`).setColor(0x176b57)
     .setDescription(ticket.description).addFields(
       { name: 'Categoria', value: ticket.categoryName }, { name: 'Criado por', value: `${ticket.creatorName} (${ticket.creatorUserId})` },
@@ -55,9 +55,10 @@ function initialPayload(ticket) {
   const actions = [
     ...(!ticket.assignedUserId ? [button(`claim:${ticket.id}`, 'Assumir', ButtonStyle.Primary)] : []),
     button(`close:${ticket.id}`, 'Fechar', ButtonStyle.Danger),
+    ...(ticket.assignedUserId ? [button(`conclude:${ticket.id}`, 'Concluir', ButtonStyle.Success)] : []),
     button(`ai:menu:${ticket.id}`, 'Assistente IA'),
   ];
-  return { embeds: [embed], components: ticket.status === TICKET_STATUS.CLOSED ? [] : [row(...actions)], allowedMentions: { parse: [] } };
+  return { embeds: [embed], components: ['CLOSED', 'CONCLUDED'].includes(ticket.status) ? [] : [row(...actions)], allowedMentions: { parse: [] } };
 }
 function openedPayload(ticket) {
   return { embeds: [new EmbedBuilder().setTitle(`Ticket #${ticketNumber(ticket)} aberto`).setColor(0x176b57)
@@ -65,12 +66,13 @@ function openedPayload(ticket) {
       { name: 'Assunto', value: ticket.subject }, { name: 'Criado em', value: new Date(ticket.createdAt).toISOString() }, { name: 'Canal', value: `<#${ticket.channelId}>` })], allowedMentions: { parse: [] } };
 }
 function closedPayload(ticket) {
-  return { embeds: [new EmbedBuilder().setTitle(`Ticket #${ticketNumber(ticket)} encerrado`).setColor(0x596275).addFields(
+  const concluded = ticket.closing.outcome === 'CONCLUDED' || ticket.status === 'CONCLUDED';
+  return { embeds: [new EmbedBuilder().setTitle(`Ticket #${ticketNumber(ticket)} ${concluded ? 'concluído' : 'encerrado'}`).setColor(concluded ? 0x176b57 : 0x596275).addFields(
     { name: 'Criado por', value: `${ticket.creatorName} (${ticket.creatorUserId})` }, { name: 'Atendido por', value: ticket.assignedUserId ? `${ticket.assignedName} (${ticket.assignedUserId})` : 'Não atribuído' },
     { name: 'Categoria', value: ticket.categoryName }, { name: 'Aberto', value: new Date(ticket.createdAt).toISOString() },
     { name: 'Assumido', value: ticket.claimedAt ? new Date(ticket.claimedAt).toISOString() : '—' },
     { name: 'Encerramento solicitado', value: new Date(ticket.closing.startedAt).toISOString() },
-    { name: 'Motivo', value: ticket.closing.reason }, { name: 'Resumo', value: ticket.closing.summary || 'Não informado' },
+    { name: 'Motivo', value: ticket.closing.reason }, { name: concluded ? 'Solução' : 'Resumo', value: ticket.closing.summary || 'Não informado' },
   )], components: [row(button(`reopen:${ticket.id}:${ticket.reopenCount}`, 'Reabrir', ButtonStyle.Success), button(`remove:${ticket.id}:${ticket.reopenCount}`, 'Remover canal', ButtonStyle.Danger))], allowedMentions: { parse: [] } };
 }
 module.exports = { setupView, panelPayload, categoryView, existingTicketView, initialPayload, openedPayload, closedPayload, modal, row, button };

@@ -9,7 +9,7 @@ class TicketRepository {
   getStatsByGuildIds(guildIds) {
     const wanted = new Set(guildIds);
     const stats = new Map();
-    for (const guildId of wanted) stats.set(guildId, { total: 0, open: 0, closed: 0 });
+    for (const guildId of wanted) stats.set(guildId, { total: 0, open: 0, closed: 0, concluded: 0 });
     const data = this.store.read();
     for (const guildId of wanted) {
       const current = data[guildId]?.tickets || {};
@@ -17,7 +17,8 @@ class TicketRepository {
       for (const ticket of Object.values(current)) {
         value.total += 1;
         if (ticket.status === 'CLOSED') value.closed += 1;
-        else value.open += 1;
+        else if (ticket.status === 'CONCLUDED') value.concluded += 1;
+        else if (['OPEN', 'CLAIMED', 'REOPENED'].includes(ticket.status)) value.open += 1;
       }
     }
     return stats;
@@ -58,7 +59,7 @@ class TicketRepository {
   recoverMissingChannel(ticket, closedAt) {
     const current = this.get(ticket.guildId, ticket.id);
     if (!current || current.channelId !== ticket.channelId || !current.initialized || current.reopening) return null;
-    if (current.status === 'CLOSED' && current.closing?.completed) {
+    if (['CLOSED', 'CONCLUDED'].includes(current.status) && current.closing?.completed) {
       current.channelId = null;
       current.initialMessageId = null;
       return this.save(current);
@@ -68,15 +69,15 @@ class TicketRepository {
     const reason = previous.reason || 'Canal removido externamente.';
     const closing = { ...previous, completed: true, channelMissing: true,
       transcriptUnavailable: !previous.transcript, channelLocked: false };
-    current.status = 'CLOSED';
+    current.status = previous.outcome === 'CONCLUDED' ? 'CONCLUDED' : 'CLOSED';
     current.channelId = null;
     current.initialMessageId = null;
     current.closedAt = closedAt;
     current.closing = closing;
-    current.archives = [...(current.archives || []), { cycle: current.reopenCount, channelId: ticket.channelId, closedAt,
+    current.archives = [...(current.archives || []), { cycle: current.reopenCount, channelId: ticket.channelId, closedAt, status: current.status,
       reason, summary: closing.summary || 'Encerrado automaticamente.', transcript: closing.transcript || null,
       transcriptSnapshot: closing.transcriptSnapshot || null, logMessageId: closing.logMessageId || null }];
-    current.events.push({ type: 'TICKET_CLOSED', ticketId: current.id, actorUserId: closing.actorUserId || null, createdAt: closedAt,
+    current.events.push({ type: current.status === 'CONCLUDED' ? 'TICKET_CONCLUDED' : 'TICKET_CLOSED', ticketId: current.id, actorUserId: closing.actorUserId || null, createdAt: closedAt,
       metadata: { reason, cycle: current.reopenCount, source: 'discord_channel_missing' } });
     return this.save(current);
   }

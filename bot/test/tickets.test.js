@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { ticketFixture, ids } = require('./helpers/ticketFixture');
 const { TICKET_STATUS: S, TICKET_EVENT: E } = require('../src/Ticket/services/ticketConstants');
+const { ticketActions, ticketDto } = require('../src/Ticket/services/ticketReadService');
 
 test('primeiro fechamento com beginClose assíncrono usa o checkpoint retornado sem exigir retry', async t => {
   const f = ticketFixture(t); const ticket = await f.create();
@@ -258,7 +259,7 @@ test('criador pode fechar; membro comum não proprietário ou staff revogado nã
 
 test('reabertura extrema mantém ID e sequência, recria canal e anexa transcript anterior após reinício', async t => {
   const f = ticketFixture(t); const ticket = await f.close(await f.create());
-  await assert.rejects(f.service.reopen(f.logAction(ticket)), /60 segundos/);
+  await assert.rejects(f.service.reopen(f.logAction(ticket)), error => error.statusCode === 409 && error.code === 'TICKET_REOPEN_COOLDOWN' && error.retryAfterSeconds === 60);
   await f.service.removeChannel(f.logAction(ticket));
   f.advance();
   await assert.rejects(f.service.reopen({ ...f.logAction(ticket), userId: ids.user }), { statusCode: 403 });
@@ -289,6 +290,16 @@ test('reabertura interrompida retoma o novo canal reservado e respeita limite do
   const reopened = await f.makeService().reopen(f.logAction(ticket));
   assert.equal(reopened.channelId, channelId);
   assert.equal(reopened.reopenCount, 1);
+});
+
+test('cooldown de reopen é exposto no DTO e libera a ação ao terminar', async t => {
+  const f = ticketFixture(t); const closed = await f.close(await f.create());
+  const actor = f.actors.get(ids.staff);
+  const blocked = ticketDto(closed, ticketActions(closed, actor, f.permissions, f.now()), f.now());
+  assert.equal(blocked.actions.canReopen, false);
+  assert.equal(blocked.reopenAvailableAt, new Date(f.now() + 60000).toISOString());
+  f.advance();
+  assert.equal(ticketActions(closed, actor, f.permissions, f.now()).canReopen, true);
 });
 
 test('ticket ativo com canal apagado e encerrado automaticamente e deixa de bloquear nova abertura', async t => {

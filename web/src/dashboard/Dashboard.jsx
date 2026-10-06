@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
-import { getGuilds } from './dashboardApi.js';
 import GuildCard from './GuildCard.jsx';
-import { useReadPolling } from '../lib/useReadPolling.js';
 import './dashboard.css';
 
 const VISIBILITY_FILTERS = [
@@ -114,13 +112,12 @@ function GuildGroup({ title, description, guilds, mode, expandedGuildId, onToggl
   );
 }
 
-export default function Dashboard({ user, selectedGuildId, requireRelogin }) {
-  const state = useReadPolling(getGuilds, requireRelogin, 60000);
+export default function Dashboard({ user, state }) {
   const guilds = state.data || [];
   const [query, setQuery] = useState('');
   const [visibility, setVisibility] = useState('all');
   const [access, setAccess] = useState('all');
-  const [expandedGuildId, setExpandedGuildId] = useState(selectedGuildId || null);
+  const [expandedGuildId, setExpandedGuildId] = useState(null);
   const stale = Boolean(state.error && state.data);
 
   useEffect(() => {
@@ -134,10 +131,6 @@ export default function Dashboard({ user, selectedGuildId, requireRelogin }) {
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, []);
 
-  useEffect(() => {
-    if (selectedGuildId) setExpandedGuildId(selectedGuildId);
-  }, [selectedGuildId]);
-
   const filtered = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase('pt-BR');
     return guilds.filter(guild => {
@@ -150,7 +143,6 @@ export default function Dashboard({ user, selectedGuildId, requireRelogin }) {
 
   const installed = filtered.filter(guild => guild.botInstalled);
   const available = filtered.filter(guild => !guild.botInstalled);
-  const selected = guilds.find(guild => guild.id === selectedGuildId);
 
   return (
     <main className="dashboard-page cyl-dashboard">
@@ -171,12 +163,7 @@ export default function Dashboard({ user, selectedGuildId, requireRelogin }) {
       {state.loading && <div className="dashboard-notice" role="status"><span className="loading-mark" />Carregando seus servidores...</div>}
       {state.error && <section className="dashboard-notice dashboard-error"><div role="alert"><p>{state.error}</p><button type="button" className="dashboard-text-button" onClick={state.retry} disabled={state.refreshing || Boolean(state.retryAt && Date.now() < state.retryAt)}>Tentar novamente</button></div></section>}
 
-      {state.data && selectedGuildId ? (
-        <section className="dashboard-selected" aria-label="Servidor selecionado">
-          <a className="dashboard-back-link" href="#/dashboard">← Todos os servidores</a>
-          {selected ? <GuildCard guild={selected} variant="detail" expanded onToggle={() => setExpandedGuildId(null)} stale={stale} /> : <EmptyState>Este servidor não está disponível para sua conta.</EmptyState>}
-        </section>
-      ) : state.data && guilds.length ? (
+      {state.data && guilds.length ? (
         <div className="dashboard-results">
           {filtered.length ? <>
             <GuildGroup title="Seus servidores com CYL" description="Servidores em que você possui acesso administrativo ou aos tickets." guilds={installed} mode="installed" expandedGuildId={expandedGuildId} onToggle={id => setExpandedGuildId(current => current === id ? null : id)} stale={stale} emptyMessage={`Nenhum servidor com CYL corresponde ${query.trim() ? 'à busca e aos filtros atuais' : 'aos filtros atuais'}.`} />

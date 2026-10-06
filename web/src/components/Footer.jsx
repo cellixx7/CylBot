@@ -13,7 +13,7 @@ function FooterLink({ link, className }) {
   return <a className={className} href={footerHref(link)} {...newTabProps}>{link.label}</a>;
 }
 
-function LandingFooter() {
+export default function Footer() {
   return (
     <footer className="cyl-footer">
       <div className="cyl-footer-container">
@@ -53,23 +53,6 @@ function LandingFooter() {
           </nav>
         </div>
       </div>
-    </footer>
-  );
-}
-
-export default function Footer({ landing = false }) {
-  if (landing) return <LandingFooter />;
-
-  return (
-    <footer className="site-footer">
-      <a className="footer-brand" href="#/">CylBot</a>
-      <p>Automação, inteligência e controle para comunidades no Discord.</p>
-      <nav aria-label="Links do rodapé">
-        <a href="#/?section=contato">Contato</a>
-        <a href="#/?section=criador">Criador</a>
-        <a href="/api/auth/discord">Entrar com Discord</a>
-      </nav>
-      <small>© {new Date().getFullYear()} CylBot. Construído por Marcelo Vaz Oliveira.</small>
     </footer>
   );
 }

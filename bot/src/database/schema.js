@@ -1,8 +1,8 @@
 const { relations, sql } = require('drizzle-orm');
 const { check, pgEnum, pgTable, uuid, text, integer, boolean, timestamp, jsonb, index, uniqueIndex, primaryKey } = require('drizzle-orm/pg-core');
 
-const ticketStatus = pgEnum('ticket_status', ['OPEN', 'CLAIMED', 'CLOSED', 'REOPENED']);
-const ticketEventType = pgEnum('ticket_event_type', ['TICKET_CREATED', 'TICKET_CLAIMED', 'TICKET_CLOSED', 'TICKET_REOPENED']);
+const ticketStatus = pgEnum('ticket_status', ['OPEN', 'CLAIMED', 'CLOSED', 'REOPENED', 'CONCLUDED']);
+const ticketEventType = pgEnum('ticket_event_type', ['TICKET_CREATED', 'TICKET_CLAIMED', 'TICKET_CLOSED', 'TICKET_REOPENED', 'TICKET_CONCLUDED', 'TICKET_TOOL']);
 const ticketMessageOrigin = pgEnum('ticket_message_origin', ['DISCORD', 'WEB', 'AI', 'SYSTEM']);
 const ticketMessageAuthorType = pgEnum('ticket_message_author_type', ['USER', 'STAFF', 'AI', 'SYSTEM']);
 const ticketMessageVisibility = pgEnum('ticket_message_visibility', ['PUBLIC', 'INTERNAL', 'SYSTEM']);
@@ -115,6 +115,7 @@ const ticketMessages = pgTable('ticket_messages', {
   origin: ticketMessageOrigin('origin').notNull(),
   visibility: ticketMessageVisibility('visibility').notNull().default('PUBLIC'),
   content: text('content').notNull(),
+  attachments: jsonb('attachments').notNull().default([]),
   clientMessageId: text('client_message_id'),
   discordMessageId: text('discord_message_id'),
   discordChannelId: text('discord_channel_id'),
@@ -187,6 +188,29 @@ const announcementCategories = pgTable('announcement_categories', {
   guildIndex: index('announcement_categories_guild_id_idx').on(table.guildId),
 }));
 
+const announcementPublications = pgTable('announcement_publications', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  guildId: text('guild_id').notNull(),
+  type: text('type').notNull(),
+  title: text('title').notNull(),
+  content: text('content').notNull(),
+  channelId: text('channel_id').notNull(),
+  channelName: text('channel_name'),
+  communityVisible: boolean('community_visible').notNull().default(false),
+  publishedBy: text('published_by').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, table => ({
+  guildCreatedIndex: index('announcement_publications_guild_created_idx').on(table.guildId, table.createdAt),
+}));
+
+const authSessions = pgTable('auth_sessions', {
+  sessionHash: text('session_hash').primaryKey(),
+  userId: text('user_id').notNull(),
+  credentials: text('credentials').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, table => ({ expiresIndex: index('auth_sessions_expires_idx').on(table.expiresAt), userIndex: index('auth_sessions_user_idx').on(table.userId) }));
+
 const ticketRelations = relations(tickets, ({ many }) => ({ events: many(ticketEvents), messages: many(ticketMessages) }));
 const eventRelations = relations(ticketEvents, ({ one }) => ({ ticket: one(tickets, { fields: [ticketEvents.ticketId], references: [tickets.id] }) }));
 const messageRelations = relations(ticketMessages, ({ one }) => ({ ticket: one(tickets, { fields: [ticketMessages.ticketId], references: [tickets.id] }) }));
@@ -244,7 +268,7 @@ const ticketAIRuns = pgTable('ticket_ai_runs', {
   guildIndex: index('ticket_ai_runs_guild_idx').on(table.guildId, table.createdAt) }));
 
 module.exports = {
-  users, ticketConfigs, ticketCategories, tickets, ticketEvents, ticketMessages, ticketMessageRevisions, ticketSequences, announcementCategories,
+  users, authSessions, ticketConfigs, ticketCategories, tickets, ticketEvents, ticketMessages, ticketMessageRevisions, ticketSequences, announcementCategories, announcementPublications,
   ticketStatus, ticketEventType, ticketMessageOrigin, ticketMessageAuthorType, ticketMessageVisibility,
   ticketMessageDeliveryStatus, ticketRelations, eventRelations, messageRelations,
   ticketAIConfigs, ticketAITicketStates, ticketAIRuns

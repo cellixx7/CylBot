@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ArrowRight, Check, MoreHorizontal, ExternalLink, ShieldCheck, Ticket, Users } from 'lucide-react';
 import { discordInstallUrl } from '../lib/discordLinks.js';
 
-function GuildIcon({ guild, large = false }) {
+export function GuildIcon({ guild, large = false }) {
   const [failed, setFailed] = useState(false);
   const initial = Array.from(guild.name || '?')[0]?.toLocaleUpperCase('pt-BR') || '?';
   return guild.iconUrl && !failed
@@ -10,11 +10,11 @@ function GuildIcon({ guild, large = false }) {
     : <span className={`dashboard-guild-icon dashboard-guild-fallback${large ? ' is-large' : ''}`} aria-hidden="true">{initial}</span>;
 }
 
-function formatNumber(value) {
+export function formatNumber(value) {
   return Number.isFinite(value) ? new Intl.NumberFormat('pt-BR').format(value) : '—';
 }
 
-function PermissionLabel({ state }) {
+export function PermissionLabel({ state }) {
   const labels = { ok: 'Ativas', limited: 'Limitadas', unknown: 'Indisponível', not_installed: 'Não instalado' };
   return <span className={`dashboard-permission dashboard-permission-${state || 'unknown'}`}><ShieldCheck size={15} aria-hidden="true" />{labels[state] || 'Indisponível'}</span>;
 }

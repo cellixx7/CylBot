@@ -93,23 +93,27 @@ async function executeTicketInteraction(interaction, services) {
         subject: interaction.fields.getTextInputValue('ticket:subject'), description: interaction.fields.getTextInputValue('ticket:description'), allowAdditional: Boolean(match[2]) });
       setTicketContext(ticket); setTicketStage('interaction.response');
       await interaction.editReply({ content: `Ticket #${ticketNumber(ticket)} aberto: <#${ticket.channelId}>.`, allowedMentions: { parse: [] } });
-    } else if ((match = customId.match(new RegExp(`^ticket:(claim|close|finish):(${UUID})$`)))) {
+    } else if ((match = customId.match(new RegExp(`^ticket:(claim|close|finish|conclude|resolve):(${UUID})$`)))) {
       const [, action, ticketId] = match;
       if (action === 'close' && interaction.isButton()) {
         await services.tickets.canClose({ ...input, ticketId });
         setTicketStage('interaction.modal');
-        await interaction.showModal(modal(`finish:${ticketId}`, 'Encerrar ticket', [['reason', 'Motivo do fechamento', 1000, true], ['summary', 'Resumo da solução (opcional)', 1000, true, false]]));
+        await interaction.showModal(modal(`finish:${ticketId}`, 'Encerrar sem solução', [['reason', 'Motivo do fechamento', 1000, true], ['summary', 'Resumo (opcional)', 1000, true, false]]));
+      } else if (action === 'conclude' && interaction.isButton()) {
+        await services.tickets.canConclude({ ...input, ticketId });
+        setTicketStage('interaction.modal');
+        await interaction.showModal(modal(`resolve:${ticketId}`, 'Concluir ticket', [['summary', 'Solução / resumo', 1000, true], ['reason', 'Motivo interno (opcional)', 1000, true, false]]));
       } else if (action === 'claim' && interaction.isButton()) {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const ticket = await services.tickets.claim({ ...input, ticketId });
         setTicketContext(ticket); setTicketStage('interaction.response');
         await interaction.editReply({ content: `Você assumiu o ticket #${ticketNumber(ticket)}.`, allowedMentions: { parse: [] } });
-      } else if (action === 'finish' && interaction.isModalSubmit()) {
+      } else if (['finish', 'resolve'].includes(action) && interaction.isModalSubmit()) {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-        const ticket = await services.tickets.close({ ...input, ticketId,
+        const ticket = await services.tickets[action === 'resolve' ? 'conclude' : 'close']({ ...input, ticketId,
           reason: interaction.fields.getTextInputValue('ticket:reason'), summary: interaction.fields.getTextInputValue('ticket:summary') });
         setTicketContext(ticket); setTicketStage('interaction.response');
-        await interaction.editReply({ content: `Ticket #${ticketNumber(ticket)} encerrado e transcrito. A equipe pode remover o canal ou reabrir pelo log privado.`, allowedMentions: { parse: [] } });
+        await interaction.editReply({ content: `Ticket #${ticketNumber(ticket)} ${action === 'resolve' ? 'concluído' : 'encerrado'} e transcrito. A equipe pode remover o canal ou reabrir pelo log privado.`, allowedMentions: { parse: [] } });
       } else throw clientError(400, 'Controle de ticket inválido.');
     } else if ((match = customId.match(new RegExp(`^ticket:(reopen|remove|delete):(${UUID}):(\\d{1,6})$`))) && interaction.isButton()) {
       const [, action, ticketId, cycle] = match;

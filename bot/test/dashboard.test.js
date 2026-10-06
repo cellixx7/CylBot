@@ -5,6 +5,7 @@ const { Readable } = require('node:stream');
 const { loadEnv } = require('../src/config/env');
 const { AuthSessionManager } = require('../src/services/authSessionManager');
 const { DashboardService, canManageGuild } = require('../src/services/dashboardService');
+const { TicketPermissionService } = require('../src/Ticket/services/ticketPermissionService');
 const { DiscordOAuthProvider } = require('../src/providers/discordOAuthProvider');
 const { createRequestHandler } = require('../src/api/server');
 const { clientError } = require('../src/api/http/errors');
@@ -82,12 +83,24 @@ test('dashboard de producao calcula tickets, metricas e relevancia sem buscar me
   const result = await dashboard.guilds(session);
   assert.deepEqual(result.map(item => item.id), [id(1), id(3)]);
   assert.equal(result[0].canViewTickets, true);
-  assert.deepEqual(result[0].ticketing, { enabled: true, total: 7, open: 3, closed: 4 });
+  assert.deepEqual(result[0].ticketing, { enabled: true, total: 7, open: 3, closed: 4, concluded: 0 });
   assert.equal(result[0].memberCount, 321);
   assert.deepEqual(result[0].botPermissions, { state: 'ok' });
   assert.equal(result[1].canAddBot, true);
   assert.equal(configReads, 1);
   assert.equal(statsReads, 1);
+});
+
+test('membership de Tickets diferencia guild ausente de bot não instalado', async t => {
+  const f = fixture(t, [guild(1, { botInstalled: true })]);
+  await assert.rejects(f.dashboard.requireGuildMembership(f.session, id(2)), error =>
+    error.statusCode === 403 && error.code === 'GUILD_MEMBERSHIP_REQUIRED');
+});
+
+test('cache de membro não apaga Administrator vindo da lista OAuth da guild', () => {
+  const dashboard = new DashboardService({ provider: {}, client: { guilds: { cache: new Map() } } });
+  const actor = dashboard.cachedActor({ id: id(1), permissions: '8', owner: false }, user.id);
+  assert.equal(new TicketPermissionService({}).admin(actor), true);
 });
 
 test('rota sem sessão, com sessão inventada ou expirada retorna 401 sem chamar Discord', async t => {
@@ -265,6 +278,34 @@ test('consultas simultâneas compartilham apenas a leitura pendente da mesma ses
   assert.equal(calls, 4, 'sessões distintas não compartilham autorização');
 });
 
+test('cache curto de guilds reutiliza autorizações por sessão até o TTL e revalida depois', async () => {
+  let now = 1000; let calls = 0;
+  const provider = { getCurrentUserGuilds: async () => { calls++; return [guild(1, { permissions: '32' })]; } };
+  const client = { isReady: () => true, guilds: { cache: new Map([[id(1), {}]]) } };
+  const dashboard = new DashboardService({ provider, client, now: () => now, guildCacheMs: 15000 });
+  const session = new AuthSessionManager({ now: () => now }).create(user, token);
+  await Promise.all([dashboard.guilds(session), dashboard.requireGuildMembership(session, id(1)), dashboard.requireManageableGuild(session, id(1))]);
+  await dashboard.guilds(session);
+  assert.equal(calls, 1);
+  now += 15001;
+  await dashboard.guilds(session);
+  assert.equal(calls, 2);
+});
+
+test('429 do Discord mantém cooldown compartilhado e não repete upstream antes do Retry-After', async () => {
+  let now = 1000; let calls = 0;
+  const provider = { getCurrentUserGuilds: async () => { calls++; throw Object.assign(clientError(429, 'Rate limited'), { retryAfter: 12 }); } };
+  const client = { isReady: () => true, guilds: { cache: new Map() } };
+  const dashboard = new DashboardService({ provider, client, now: () => now, guildCacheMs: 15000 });
+  const session = new AuthSessionManager({ now: () => now }).create(user, token);
+  await assert.rejects(dashboard.guilds(session), { statusCode: 429 });
+  await assert.rejects(dashboard.guilds(session), { statusCode: 429 });
+  assert.equal(calls, 1);
+  now += 12001;
+  await assert.rejects(dashboard.guilds(session), { statusCode: 429 });
+  assert.equal(calls, 2);
+});
+
 test('falha compartilhada é descartada; Retry-After chega ao dashboard e guild ausente não recebe acesso', async t => {
   const f = fixture(t); let calls = 0;
   f.provider.getCurrentUserGuilds = async () => { calls++; throw Object.assign(clientError(429, 'Rate limited'), { retryAfter: 42 }); };
@@ -272,6 +313,7 @@ test('falha compartilhada é descartada; Retry-After chega ao dashboard e guild 
   assert.equal(calls, 1);
   for (const response of responses) { assert.equal(response.status, 429); assert.equal(response.headers['Retry-After'], '42'); }
   f.provider.getCurrentUserGuilds = async () => [guild(4, { permissions: '32' })];
+  f.advance(42_001);
   assert.equal((await f.dashboard.guilds(f.session))[0].botInstalled, false);
   await assert.rejects(f.dashboard.requireManageableGuild(f.session, id(4)), error => error.statusCode === 403);
 });

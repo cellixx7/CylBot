@@ -1,4 +1,4 @@
-const { clientError } = require('../api/http/errors');
+const { clientError, codedClientError } = require('../api/http/errors');
 
 const ADMINISTRATOR = 1n << 3n;
 const MANAGE_GUILD = 1n << 5n;
@@ -23,9 +23,11 @@ function canManageGuild(guild) {
 }
 
 class DashboardService {
-  constructor({ provider, client, ticketConfigs = null, ticketRepository = null, ticketPermissions = null, now = Date.now }) {
-    Object.assign(this, { provider, client, ticketConfigs, ticketRepository, ticketPermissions, now });
+  constructor({ provider, client, ticketConfigs = null, ticketRepository = null, ticketPermissions = null, now = Date.now, guildCacheMs = 0 }) {
+    Object.assign(this, { provider, client, ticketConfigs, ticketRepository, ticketPermissions, now, guildCacheMs });
     this.pendingGuilds = new WeakMap();
+    this.guildCache = new WeakMap();
+    this.guildCooldown = new WeakMap();
   }
 
   cachedActor(guild, userId) {
@@ -34,10 +36,15 @@ class DashboardService {
       ? discordGuild.members.me
       : discordGuild?.members?.cache?.get(userId);
     const roleIds = member?.roles?.cache ? [...member.roles.cache.keys()] : [];
+    const memberPermissions = permissionBitfield(member?.permissions?.bitfield);
+    const guildPermissions = permissionBitfield(guild.permissions);
     return {
       id: userId,
       bot: Boolean(member?.user?.bot),
-      permissions: member?.permissions?.bitfield?.toString?.() || guild.permissions || '0',
+      owner: guild.owner === true,
+      // OAuth guild permissions are authoritative for guild-level admin access;
+      // merge them with the cached member to avoid a stale cache causing a false 403.
+      permissions: (memberPermissions | guildPermissions).toString(),
       roleIds,
     };
   }
@@ -69,7 +76,7 @@ class DashboardService {
       const current = stats instanceof Map ? stats.get(guild.id) : stats?.[guild.id];
       return [guild.id, {
         canViewTickets,
-        ticketing: { enabled, total: current?.total ?? 0, open: current?.open ?? 0, closed: current?.closed ?? 0 },
+        ticketing: { enabled, total: current?.total ?? 0, open: current?.open ?? 0, closed: current?.closed ?? 0, concluded: current?.concluded ?? 0 },
       }];
     }));
   }
@@ -80,15 +87,36 @@ class DashboardService {
       throw clientError(401, 'AUTH_RELOGIN_REQUIRED');
     }
     if (!this.client.isReady()) throw clientError(503, 'O CylBot está conectando. Tente novamente em instantes.');
+    const cached = this.guildCache.get(session);
+    if (this.guildCacheMs > 0 && cached && cached.accessToken === session.discordAccessToken && cached.expiresAt > this.now()) return this.guildDtos(session, cached.guilds);
+    const cooldown = this.guildCooldown.get(session);
+    if (cooldown && cooldown.accessToken === session.discordAccessToken && cooldown.expiresAt > this.now()) {
+      if (cached?.accessToken === session.discordAccessToken) return this.guildDtos(session, cached.guilds);
+      throw cooldown.error;
+    }
     // Share only an unfinished read for this exact session/token, never a stale grant.
     let pending = this.pendingGuilds.get(session);
     if (!pending || pending.accessToken !== session.discordAccessToken) {
       pending = { accessToken: session.discordAccessToken };
       pending.promise = Promise.resolve().then(() => this.provider.getCurrentUserGuilds(pending.accessToken))
+        .then(guilds => { if (this.guildCacheMs > 0) this.guildCache.set(session, { accessToken: pending.accessToken, guilds, expiresAt: this.now() + this.guildCacheMs }); return guilds; })
+        .catch(error => {
+          if (error?.statusCode === 429 && Number.isFinite(error.retryAfter) && error.retryAfter > 0) {
+            this.guildCooldown.set(session, { accessToken: pending.accessToken, error, expiresAt: this.now() + error.retryAfter * 1000 });
+          }
+          throw error;
+        })
         .finally(() => { if (this.pendingGuilds.get(session) === pending) this.pendingGuilds.delete(session); });
       this.pendingGuilds.set(session, pending);
     }
     const guilds = await pending.promise;
+    return this.guildDtos(session, guilds);
+  }
+
+  // The cache stores OAuth guilds, never Dashboard DTOs. Every read must derive
+  // botInstalled and capabilities from the current Discord client, including
+  // cache hits and the rate-limit fallback.
+  async guildDtos(session, guilds) {
     if (session.discordTokenExpiresAt <= this.now()) throw clientError(401, 'AUTH_RELOGIN_REQUIRED');
     if (!this.client.isReady()) throw clientError(503, 'O CylBot está conectando. Tente novamente em instantes.');
     const base = guilds.map(guild => ({
@@ -112,7 +140,7 @@ class DashboardService {
         memberCount: guild.botInstalled ? discordGuild?.memberCount ?? null : null,
         botPermissions: guild.botInstalled ? { state: this.botPermissionState(guild) } : { state: 'not_installed' },
         canViewTickets: ticket?.canViewTickets ?? false,
-        ticketing: ticket?.ticketing ?? { enabled: false, total: 0, open: 0, closed: 0 },
+        ticketing: ticket?.ticketing ?? { enabled: false, total: 0, open: 0, closed: 0, concluded: 0 },
       };
     }).filter(guild => !ticketData || (guild.botInstalled ? guild.canManage || guild.canViewTickets : guild.canAddBot));
     const group = guild => guild.botInstalled ? (guild.canManage ? 0 : 1) : 2;
@@ -128,7 +156,8 @@ class DashboardService {
 
   async requireGuildMembership(session, guildId) {
     const guild = (await this.guilds(session)).find(guild => guild.id === guildId);
-    if (!guild?.botInstalled) throw clientError(403, 'FORBIDDEN');
+    if (!guild) throw codedClientError(403, 'GUILD_MEMBERSHIP_REQUIRED', 'Você não participa mais deste servidor.');
+    if (!guild.botInstalled) throw codedClientError(403, 'GUILD_NOT_FOUND', 'O servidor não está disponível para o CylBot.');
     return guild;
   }
 }

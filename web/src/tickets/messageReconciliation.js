@@ -53,4 +53,4 @@ export function mergeTicketMessages(
 }
 
 export const ticketConversationMode = status =>
-  status === 'CLOSED' ? 'history' : 'chat';
+  ['CLOSED', 'CONCLUDED'].includes(status) ? 'history' : 'chat';

@@ -71,6 +71,27 @@
       "when": 1790621003236,
       "tag": "0009_superb_ares",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791307392072,
+      "tag": "0010_slim_sir_ram",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791314000000,
+      "tag": "0011_announcements_workspace",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791317000000,
+      "tag": "0012_auth_sessions",
+      "breakpoints": true
     }
   ]
 }

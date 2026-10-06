@@ -12,9 +12,9 @@ const appCodes = new Set(['TICKET_ACTIVE_LIMIT', 'TICKET_OPEN_COOLDOWN', 'TICKET
 
 function interactionDetails(customId) {
   let match;
-  if ((match = customId?.match(new RegExp(`^ticket:(claim|close|finish):(${UUID})$`)))
+  if ((match = customId?.match(new RegExp(`^ticket:(claim|close|finish|conclude|resolve):(${UUID})$`)))
     || (match = customId?.match(new RegExp(`^ticket:(remove|delete|reopen):(${UUID}):\\d{1,6}$`)))) {
-    return { action: match[1] === 'finish' ? 'close' : match[1], customIdAction: `ticket:${match[1]}`, ticketId: match[2] };
+    return { action: match[1] === 'finish' ? 'close' : match[1] === 'resolve' ? 'conclude' : match[1], customIdAction: `ticket:${match[1]}`, ticketId: match[2] };
   }
   if ((match = customId?.match(new RegExp(`^ticket:setup:(start|restart|continue|cancel|disable|deactivate|role|auto|existing|panel|log|category|defaults|custom|confirm):${UUID}$`)))) {
     return { action: `setup.${match[1]}`, customIdAction: `ticket:setup:${match[1]}` };

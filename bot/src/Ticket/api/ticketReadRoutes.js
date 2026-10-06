@@ -1,8 +1,10 @@
 const { requireSession } = require('../../api/http/auth');
 const { sendJson } = require('../../api/http/json');
 const { clientError } = require('../../api/http/errors');
+const { ticketFilters } = require('../services/ticketFilters');
+const { logGuildRead } = require('../../api/http/guildDiagnostics');
 
-async function handle(request, response, { services }) {
+async function handle(request, response, { services, client, requestId }) {
   const url = new URL(request.url, 'http://localhost');
   const detail = url.pathname.match(/^\/api\/tickets\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/);
   if (url.pathname !== '/api/tickets' && !detail) return false;
@@ -19,12 +21,26 @@ async function handle(request, response, { services }) {
     rawBefore !== null && (!/^\d+$/.test(rawBefore) || !Number.isInteger(before) || before < 1 || before > 2147483647))) {
     throw clientError(400, 'Paginação inválida.');
   }
-  await services.dashboard.requireGuildMembership(session, guildId);
+  let guild;
+  try {
+    guild = await services.dashboard.requireGuildMembership(session, guildId);
+    logGuildRead('tickets.guild_state', { services, client, requestId, guildId, guild, stage: 'membership', result: 'allowed' });
+  } catch (error) {
+    logGuildRead('tickets.guild_state', { services, client, requestId, guildId, stage: 'membership', result: 'denied', code: error.code });
+    throw error;
+  }
   requireSession(request, services);
   const input = { guildId, userId: session.user.id };
-  const result = detail
-    ? await services.ticketRead.detail({ ...input, ticketId: detail[1] })
-    : await services.ticketRead.list({ ...input, limit, before });
+  let result;
+  try {
+    result = detail
+      ? await services.ticketRead.detail({ ...input, ticketId: detail[1] })
+      : await services.ticketRead.list({ ...input, limit, before, filters: ticketFilters(Object.fromEntries(url.searchParams)) });
+    logGuildRead('tickets.guild_state', { services, client, requestId, guildId, guild, stage: 'ticketRead', result: 'allowed' });
+  } catch (error) {
+    logGuildRead('tickets.guild_state', { services, client, requestId, guildId, guild, stage: 'ticketRead', result: 'denied', code: error.code });
+    throw error;
+  }
   requireSession(request, services);
   sendJson(response, 200, result);
   return true;

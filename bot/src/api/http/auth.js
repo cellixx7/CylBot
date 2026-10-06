@@ -3,7 +3,7 @@ const { clientError } = require('./errors');
 
 function requireSession(request, services, message = 'AUTH_REQUIRED') {
   const id = readCookie(request, 'cylbot_session');
-  const session = services.auth.sessions.get(id);
+  const session = request.authResolved ? request.authSession : services.auth.sessions.get(id);
   if (!session) throw clientError(401, message);
   return session;
 }
@@ -15,8 +15,8 @@ function requireTrustedOrigin(request, allowedOrigins) {
   }
 }
 
-function clearSession(request, response, services) {
-  services.auth.sessions.remove(readCookie(request, 'cylbot_session'));
+async function clearSession(request, response, services) {
+  await services.auth.sessions.remove(readCookie(request, 'cylbot_session'));
   response.setHeader('Set-Cookie', cookie('cylbot_session', '', 0, services.auth.config.secure));
 }
 

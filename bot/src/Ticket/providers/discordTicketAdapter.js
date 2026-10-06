@@ -16,7 +16,7 @@ const BOT_CHANNEL_ALLOW = BOT_PERMISSIONS.filter(permission => permission !== P.
 const nonce = key => createHash('sha256').update(key).digest('hex').slice(0, 24);
 
 class DiscordTicketAdapter {
-  constructor(client, config) { this.client = client; this.config = config; this.pendingActors = new Map(); }
+  constructor(client, config) { this.client = client; this.config = config; this.pendingActors = new Map(); this.actorCache = new Map(); this.actorCacheMs = config.actorCacheMs ?? 0; this.now = config.now || Date.now; }
   async guild(guildId) {
     const guild = await this.client.guilds.fetch(guildId);
     if (!guild) throw clientError(404, 'Servidor indisponível.');
@@ -29,17 +29,22 @@ class DiscordTicketAdapter {
     };
     requireReady();
     const key = `${guildId}:${userId}`;
+    const cached = this.actorCache.get(key);
+    if (this.actorCacheMs > 0 && cached && cached.expiresAt > this.now()) return { ...cached.actor, roleIds: [...cached.actor.roleIds] };
     let pending = this.pendingActors.get(key);
     if (!pending) {
       pending = (async () => {
         try {
           const guild = await this.guild(guildId);
           const member = await guild.members.fetch({ user: userId, force: true });
-          return {
+          const actor = {
             id: member.id, name: member.displayName, bot: member.user.bot,
+            owner: member.id === guild.ownerId,
             permissions: member.permissions.bitfield.toString(), roleIds: [...member.roles.cache.keys()],
             avatarUrl: member.displayAvatarURL?.({ extension: 'png', size: 64 }) || member.user.displayAvatarURL?.({ extension: 'png', size: 64 }) || null
           };
+          if (this.actorCacheMs > 0) this.actorCache.set(key, { actor, expiresAt: this.now() + this.actorCacheMs });
+          return actor;
         } catch (error) { throw memberReadError(error); }
       })().finally(() => this.pendingActors.delete(key));
       this.pendingActors.set(key, pending);
@@ -62,6 +67,26 @@ class DiscordTicketAdapter {
       && channel.topic === `cylbot-ticket:${ticket.id}:${ticket.reopenCount}`);
   }
   async bot(guild) { return guild.members.fetchMe({ force: true }); }
+  async toolContext(ticket, userId) {
+    if (!/^\d{17,20}$/.test(ticket.creatorUserId || '')) throw clientError(400, 'O criador não possui identidade Discord válida.');
+    const guild = await this.guild(ticket.guildId);
+    const [actor, bot, target, roles] = await Promise.all([
+      guild.members.fetch({ user: userId, force: true }), this.bot(guild),
+      guild.members.fetch({ user: ticket.creatorUserId, force: true }).catch(error => {
+        if (error.code === 10007) return null;
+        throw error;
+      }), guild.roles.fetch(),
+    ]);
+    return { guild, actor, bot, target, roles };
+  }
+  async executeTool({ target }, { action, roleId, durationMs, reason }) {
+    if (action === 'add-role') return target.roles.add(roleId, reason);
+    if (action === 'remove-role') return target.roles.remove(roleId, reason);
+    if (action === 'timeout') return target.timeout(durationMs, reason);
+    if (action === 'remove-timeout') return target.timeout(null, reason);
+    if (action === 'ban') return target.ban({ reason, deleteMessageSeconds: 0 });
+    throw clientError(400, 'Ferramenta inválida.');
+  }
   checkPermissions(channel, bot, permissions = BOT_PERMISSIONS) {
     if (!channel.permissionsFor(bot)?.has(permissions)) throw clientError(403, 'Confira as permissões do bot: canais/cargos, leitura/histórico, envio/anexos/embeds, reações e criação/envio em threads.');
   }
@@ -311,7 +336,7 @@ class DiscordTicketAdapter {
       authorBot: message.author.bot === true,
       createdAt: message.createdAt.toISOString(), content: message.content,
       embeds: message.embeds.map(embed => [embed.title, embed.description, ...(embed.fields || []).map(field => `${field.name}: ${field.value}`)].filter(Boolean).join('\n')),
-      attachments: [...message.attachments.values()].map(attachment => ({ name: attachment.name, size: attachment.size, url: attachment.url })),
+      attachments: [...message.attachments.values()].map(attachment => ({ name: attachment.name, size: attachment.size, url: attachment.url, contentType: attachment.contentType })),
     }));
   }
 

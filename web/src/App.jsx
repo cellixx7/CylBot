@@ -8,12 +8,12 @@ import Home from './home/Home.jsx';
 import ComingSoonPage from './pages/ComingSoonPage.jsx';
 import { getComingSoonFeature } from './lib/comingSoonFeatures.js';
 import './styles/cyl-theme.css';
+import { parseServerRoute } from './dashboard/server/workspaceAccess.js';
 
 const Anuncios = lazy(() => import('./anuncios/anuncios.jsx'));
-const Dashboard = lazy(() => import('./dashboard/Dashboard.jsx'));
+const DashboardArea = lazy(() => import('./dashboard/DashboardArea.jsx'));
 const ProfilePage = lazy(() => import('./profile/ProfilePage.jsx'));
 const TextaAI = lazy(() => import('./texta_ai/texta_ai.jsx'));
-const TicketsPage = lazy(() => import('./tickets/TicketsPage.jsx'));
 
 function useHashRoute() {
   const [hash, setHash] = useState(window.location.hash || '#/');
@@ -42,9 +42,8 @@ const TITLES = {
 export default function App() {
   const auth = useAuth();
   const route = useHashRoute();
-  const ticketRoute = route.path.match(/^\/dashboard\/(\d{17,20})\/tickets(?:\/([a-f0-9-]{36}))?$/);
-  const selectedGuildId = ticketRoute?.[1] || route.path.match(/^\/dashboard\/(\d{17,20})$/)?.[1] || null;
-  const baseRoute = selectedGuildId ? '/dashboard' : route.path;
+  const serverRoute = parseServerRoute(route.path);
+  const baseRoute = serverRoute ? '/dashboard' : route.path;
   const isComingSoonRoute = route.path === '/em-breve';
   const comingSoonFeature = isComingSoonRoute ? getComingSoonFeature(route.query.get('feature')) : null;
 
@@ -89,9 +88,8 @@ export default function App() {
       <AuthGate auth={auth}>
         <Suspense fallback={<div className="state-page" role="status">Carregando página…</div>}>
           {route.path === '/profile' && <ProfilePage user={auth.user} />}
-          {ticketRoute ? <TicketsPage key={`${selectedGuildId}/${ticketRoute[2] || ''}`} guildId={selectedGuildId}
-            ticketId={ticketRoute[2]} requireRelogin={auth.requireRelogin} /> : (route.path === '/dashboard' || selectedGuildId) && (
-            <Dashboard user={auth.user} selectedGuildId={selectedGuildId} requireRelogin={auth.requireRelogin} />
+          {(route.path === '/dashboard' || serverRoute) && (
+            <DashboardArea user={auth.user} serverRoute={serverRoute} requireRelogin={auth.requireRelogin} />
           )}
           {route.path === '/anuncios' && <Anuncios />}
           {route.path === '/texta_ai' && <TextaAI />}
@@ -106,7 +104,7 @@ export default function App() {
       <ThemeToggle />
       {auth.error && <p className="global-alert" role="alert">{auth.error}</p>}
       {page}
-      <Footer landing={baseRoute === '/' || baseRoute === '/em-breve' || !TITLES[baseRoute]} />
+      <Footer />
     </div>
   );
 }

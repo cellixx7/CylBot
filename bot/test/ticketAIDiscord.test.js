@@ -20,7 +20,7 @@ test('messageUpdate encaminha somente campos seguros e resolve partial', async (
   const message = { guildId: ids.guild, channelId: ids.panel, id: '100000000000000001', author: { id: ids.user, bot: false },
     content: 'Atualizada', editedTimestamp: 10, system: false };
   await messageUpdateEvent.execute({}, message, client);
-  assert.deepEqual(seen, [{ guildId: ids.guild, channelId: ids.panel, messageId: message.id, userId: ids.user, content: 'Atualizada', editedAt: 10 }]);
+  assert.deepEqual(seen, [{ guildId: ids.guild, channelId: ids.panel, messageId: message.id, userId: ids.user, content: 'Atualizada', attachments: [], editedAt: 10 }]);
   await messageUpdateEvent.execute({}, { partial: true, async fetch() { return { ...message, guildId: null }; } }, client);
   assert.equal(seen.length, 1);
 });

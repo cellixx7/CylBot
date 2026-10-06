@@ -659,7 +659,7 @@ test('conversation groups only adjacent messages from the same author within fiv
 });
 
 test('ticket interface source keeps Portuguese accents in important labels', () => {
-  const source = readFileSync(new URL('../src/tickets/TicketsPage.jsx', import.meta.url), 'utf8');
+  const source = ['TicketConversation.jsx', 'TicketShared.jsx', 'TicketQueue.jsx'].map(file => readFileSync(new URL(`../src/tickets/${file}`, import.meta.url), 'utf8')).join('\n');
   for (const text of ['Você', 'Usuário', 'Página']) assert.equal(source.includes(text), true);
   assert.equal(source.includes(String.fromCodePoint(86, 111, 99, 195, 170)), false);
 });
@@ -714,6 +714,18 @@ test('API distingue autorização, indisponibilidade e limite sem refletir erro 
     );
 
     mock.mock.restore();
+  }
+});
+
+test('API traduz códigos de acesso da Central sem depender do texto do backend', async t => {
+  for (const [code, expected] of [
+    ['TICKET_ACCESS_DENIED', 'Você não possui permissão para acessar os tickets deste servidor.'],
+    ['GUILD_MEMBERSHIP_REQUIRED', 'Você não participa mais deste servidor.'],
+    ['GUILD_NOT_FOUND', 'Este servidor não está disponível para o CylBot.'],
+  ]) {
+    t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ error: code, message: 'mensagem interna' }), { status: 403 }));
+    await assert.rejects(getTickets('guild'), error => error.status === 403 && error.code === code && error.message === expected);
+    t.mock.restoreAll();
   }
 });
 

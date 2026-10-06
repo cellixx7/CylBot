@@ -5,14 +5,7 @@ const { createHash } = require('node:crypto');
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 
-function safeAttachmentUrl(value) {
-  if (typeof value !== 'string' || /[\u0000-\u0020\u007f\\]/.test(value)) return null;
-  try {
-    const url = new URL(value);
-    if (url.protocol === 'https:' && !url.username && !url.password && !url.port && ['cdn.discordapp.com', 'media.discordapp.net'].includes(url.hostname)) return url.href;
-  } catch {}
-  return null;
-}
+const { safeAttachmentUrl, safeAttachments } = require('./ticketAttachments');
 
 const iso = value => new Date(value).toISOString();
 const mapStoredMessage = message => ({
@@ -23,7 +16,7 @@ const mapStoredMessage = message => ({
   createdAt: iso(message.createdAt),
   content: message.content,
   embeds: [],
-  attachments: [],
+  attachments: safeAttachments(message.attachments),
 });
 
 class TicketTranscriptService {
@@ -74,7 +67,7 @@ class TicketTranscriptService {
       `Criador: ${ticket.creatorName} (${ticket.creatorUserId})`, `Atendente: ${ticket.assignedName || 'Nenhum'} (${ticket.assignedUserId || '—'})`,
       `Criado: ${iso(ticket.createdAt)}`, `Assumido: ${ticket.claimedAt ? iso(ticket.claimedAt) : '—'}`,
       `Encerramento solicitado: ${iso(closure.startedAt)}`, `Ciclo: ${ticket.reopenCount}`,
-      `Assunto: ${ticket.subject}`, `Descrição: ${ticket.description}`, `Motivo: ${closure.reason}`, `Resumo: ${closure.summary || '—'}`,
+      ...(closure.outcome ? [`Resultado: ${closure.outcome === 'CONCLUDED' ? 'Concluído (solucionado)' : 'Encerrado (sem solução)'}`] : []), `Assunto: ${ticket.subject}`, `Descrição: ${ticket.description}`, `Motivo: ${closure.reason}`, `Resumo: ${closure.summary || '—'}`,
     ].join('\n'))}</pre>${rows}<footer>${canonical ? 'Conversa canônica persistida pelo CylBot.' : 'Fallback legado: captura das mensagens disponíveis neste canal.'} Mensagens apagadas antes da persistência não são recuperáveis. Links de anexos podem expirar.</footer></html>`;
     if (Buffer.byteLength(html) > this.maxBytes) throw clientError(400, 'Transcrição excede o limite de arquivo; o canal foi preservado.');
     return html;

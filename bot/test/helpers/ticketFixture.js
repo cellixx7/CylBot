@@ -23,7 +23,7 @@ function ticketFixture(t, { configured = true } = {}) {
   const actors = new Map([
     [ids.user, { id: ids.user, name: 'Criador', bot: false, roleIds: [], permissions: '0' }],
     [ids.staff, { id: ids.staff, name: 'Equipe', bot: false, roleIds: [ids.role], permissions: '0' }],
-    [ids.admin, { id: ids.admin, name: 'Admin', bot: false, roleIds: [], permissions: P.ManageGuild.toString() }],
+    [ids.admin, { id: ids.admin, name: 'Admin', bot: false, owner: false, roleIds: [], permissions: P.ManageGuild.toString() }],
   ]);
   const repository = new TicketRepository(path.join(dir, 'tickets.json'));
   const configs = new TicketConfigRepository(path.join(dir, 'config.json'));

@@ -1,6 +1,6 @@
-const { clientError } = require('../../api/http/errors');
+const { clientError, codedClientError } = require('../../api/http/errors');
 const { logger } = require('../../lib/logger');
-const { TICKET_STATUS: S, TICKET_EVENT: E, ACTIVE_STATUSES } = require('./ticketConstants');
+const { TICKET_STATUS: S, TICKET_EVENT: E, ACTIVE_STATUSES, FINAL_STATUSES } = require('./ticketConstants');
 const { TicketAlreadyClaimedError, TicketNotFoundError, assertActiveState, transition } = require('./ticketDomain');
 const { TICKET_PERMISSION } = require('./ticketPermissionService');
 const { setTicketContext, setTicketStage, ticketLogContext, errorDetails } = require('../lib/ticketDiagnostics');
@@ -179,24 +179,39 @@ class TicketService {
     return ticket;
   }
   async close(input) {
+    return this.finalize(input, S.CLOSED);
+  }
+  async conclude(input) {
+    return this.finalize(input, S.CONCLUDED);
+  }
+  async canConclude(input) {
+    const ticket = await this.canClose(input);
+    await this.permissions.requireAction(TICKET_PERMISSION.CONCLUDE, input.guildId, input.userId, ticket, ticket);
+    return ticket;
+  }
+  async finalize(input, outcome) {
     const { guildId, userId, ticketId, channelId } = input;
     return this.exclusive(guildId, async () => {
       let ticket = await this.canClose(input);
+      if (outcome === S.CONCLUDED) await this.permissions.requireAction(TICKET_PERMISSION.CONCLUDE, guildId, userId, ticket, ticket);
+      if (ticket.closing && (ticket.closing.outcome || S.CLOSED) !== outcome) throw clientError(409, 'Retome a finalização já iniciada antes de escolher outro resultado.');
       if (!ticket.closing) {
-        const closing = { actorUserId: userId, reason: requiredText(input.reason, 1000),
-          summary: requiredText(input.summary || '', 1000, false), startedAt: this.now(),
+        const closing = { actorUserId: userId, outcome,
+          reason: requiredText(input.reason || (outcome === S.CONCLUDED ? 'Problema solucionado.' : ''), 1000),
+          summary: requiredText(input.summary || '', 1000, outcome === S.CONCLUDED), startedAt: this.now(),
           transcript: null, transcriptGenerated: false, transcriptPersisted: false,
           logMessageId: null, logPublished: false, locked: false, channelLocked: false, completed: false };
         if (this.repository.beginClose) {
           setTicketStage('repository.beginClose');
           ticket = await this.repository.beginClose(ticket, closing) || await this.ticket(guildId, ticketId);
-          if (ticket.status === S.CLOSED && ticket.closing?.completed) return ticket;
+          if (ticket.status === outcome && ticket.closing?.completed) return ticket;
         } else {
           ticket.closing = closing;
           await this.save(ticket);
         }
       }
-      logger.info('ticket.close.started', { guildId, ticketId, userId, channelId });
+      logger.info('ticket.close.started', { guildId, ticketId, userId, channelId, outcome });
+      if ((ticket.closing?.outcome || S.CLOSED) !== outcome) throw clientError(409, 'Retome a finalização já iniciada.');
       try {
         const closing = ticket.closing;
         if (!closing.transcript && this.messages?.repository && this.messages.syncDiscordHistory) {
@@ -240,11 +255,11 @@ class TicketService {
         closing.logPublished = true;
         await this.save(ticket);
         setTicketStage('state.close');
-        transition(ticket, S.CLOSED); ticket.closedAt = this.now(); closing.completed = true;
+        transition(ticket, outcome); ticket.closedAt = this.now(); closing.completed = true;
         ticket.archives.push({ cycle: ticket.reopenCount, channelId: ticket.channelId, closedAt: ticket.closedAt,
-          reason: closing.reason, summary: closing.summary, transcript: closing.transcript,
+          status: outcome, reason: closing.reason, summary: closing.summary, transcript: closing.transcript,
           transcriptSnapshot: closing.transcriptSnapshot, logMessageId: closing.logMessageId });
-        this.event(ticket, E.CLOSED, closing.actorUserId, { reason: closing.reason, cycle: ticket.reopenCount });
+        this.event(ticket, outcome === S.CONCLUDED ? E.CONCLUDED : E.CLOSED, closing.actorUserId, { outcome, reason: closing.reason, cycle: ticket.reopenCount });
         await this.save(ticket);
         try { await this.adapter.updateInitial(ticket); } catch { logger.warn('ticket.message_update_failed', { guildId, ticketId, channelId }); }
         try {
@@ -253,11 +268,11 @@ class TicketService {
             if (current.channelId === channelId) { current.channelId = null; await this.save(current); }
           });
         } catch { logger.warn('ticket.auto_delete_schedule_failed', { guildId, ticketId, channelId }); }
-        logger.info('ticket.closed', { guildId, ticketId, userId, channelId });
+        logger.info(outcome === S.CONCLUDED ? 'ticket.concluded' : 'ticket.closed', { guildId, ticketId, userId, channelId, outcome });
         return ticket;
       } catch (error) {
-        logger.error('ticket.close.failed', { ...ticketLogContext(), guildId, ticketId, userId, channelId, ...errorDetails(error) });
-        throw Object.assign(clientError(503, 'Não foi possível concluir a transcrição ou o encerramento; o canal foi preservado. Use Fechar novamente para retomar.'), { cause: error });
+        logger.error('ticket.close.failed', { ...ticketLogContext(), guildId, ticketId, userId, channelId, outcome, ...errorDetails(error) });
+        throw Object.assign(clientError(503, `Não foi possível concluir a transcrição ou ${outcome === S.CONCLUDED ? 'a conclusão' : 'o encerramento'}; o canal foi preservado. Use ${outcome === S.CONCLUDED ? 'Concluir' : 'Fechar'} novamente para retomar.`), { cause: error });
       }
     });
   }
@@ -267,7 +282,7 @@ class TicketService {
       this.channel(ticket, channelId, true);
       await this.permissions.requireAction(TICKET_PERMISSION.DELETE_CHANNEL, guildId, userId, ticket, ticket);
       setTicketStage('state.delete');
-      if (Number(cycle) !== ticket.reopenCount || ticket.status !== S.CLOSED || !ticket.closing?.completed || !ticket.closing.locked || ticket.reopening) throw clientError(409, 'A remoção exige um encerramento concluído deste ciclo.');
+      if (Number(cycle) !== ticket.reopenCount || !FINAL_STATUSES.has(ticket.status) || !ticket.closing?.completed || !ticket.closing.locked || ticket.reopening) throw clientError(409, 'A remoção exige um encerramento concluído deste ciclo.');
       if (!ticket.channelId) return ticket;
       const archived = ticket.archives.at(-1);
       if (!archived || archived.channelId !== ticket.channelId || archived.cycle !== ticket.reopenCount || ticket.channelId === ticket.logChannelId) {
@@ -295,15 +310,16 @@ class TicketService {
       this.channel(ticket, channelId, true);
       const actor = await this.permissions.requireAction(TICKET_PERMISSION.REOPEN, guildId, userId, ticket, ticket);
       setTicketStage('state.reopen');
-      if (Number(cycle) !== ticket.reopenCount || ticket.status !== S.CLOSED || !ticket.closing?.completed || !ticket.closing?.transcript) throw clientError(409, 'Somente o último encerramento com transcrição pode ser reaberto.');
+      if (Number(cycle) !== ticket.reopenCount || !FINAL_STATUSES.has(ticket.status) || !ticket.closing?.completed || !ticket.closing?.transcript) throw clientError(409, 'Somente o último encerramento com transcrição pode ser reaberto.');
       const config = await this.config(guildId);
       await this.permissions.actor(guildId, ticket.creatorUserId);
       const previous = ticket.archives.at(-1);
       setTicketStage('transcript.read');
       const attachment = await this.transcripts.read(previous.transcript, previous.transcriptSnapshot);
       if (!ticket.reopening) {
+        const retryAfterSeconds = Math.ceil((ticket.closedAt + 60_000 - this.now()) / 1000);
+        if (retryAfterSeconds > 0) throw codedClientError(409, 'TICKET_REOPEN_COOLDOWN', 'Aguarde 60 segundos após o encerramento para reabrir.', { retryAfterSeconds });
         await this.limits(guildId, ticket.creatorUserId, ticket.categoryId, ticket.id);
-        if (this.now() - ticket.closedAt < 60_000) throw rateLimit('TICKET_REOPEN_COOLDOWN', 'Aguarde 60 segundos após o encerramento para reabrir.');
         setTicketStage('discord.validateStructure');
         await this.adapter.validateStructure(config);
         ticket.reopening = { cycle: ticket.reopenCount + 1, actorUserId: userId, actorName: actor.name,

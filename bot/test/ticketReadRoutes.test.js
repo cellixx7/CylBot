@@ -32,11 +32,12 @@ async function setup(t, userId = ids.user) {
   const services = {
     auth: new AuthService({ config, sessions, provider }), dashboard: new DashboardService({ provider, client }),
     ticketRead: new TicketReadService({ tickets: f.core.service, permissions: f.core.permissions, messages: f.messageService }),
+    tickets: f.core.service,
     ticketMessages: f.messageService,
   };
   const handler = createRequestHandler({ services, client });
-  const request = async (path, { authenticated = true, method = 'GET' } = {}) => {
-    const req = Object.assign(Readable.from([]), { method, url: path,
+  const request = async (path, { authenticated = true, method = 'GET', body } = {}) => {
+    const req = Object.assign(Readable.from(body === undefined ? [] : [JSON.stringify(body)]), { method, url: path,
       headers: { ...(authenticated ? { cookie: `cylbot_session=${session.id}` } : {}), origin: config.webOrigin }, socket: {} });
     const res = { headers: {}, setHeader(k, v) { this.headers[k] = v; }, writeHead(status, headers) { this.status = status; Object.assign(this.headers, headers); return this; },
       end(value) { this.body = value ? JSON.parse(value) : null; } };
@@ -58,8 +59,8 @@ test('criador lista apenas seus tickets; detalhe usa allowlist sem dados de life
   assert.equal(detail.body.ticket.subject, f.ticket.subject);
   assert.equal(detail.body.ticket.publicNumber, 1);
   assert.deepEqual(Object.keys(detail.body.ticket).sort(), ['id', 'guildId', 'guildName', 'publicNumber', 'subject', 'description',
-    'status', 'categoryName', 'creatorName', 'assignedName', 'createdAt', 'claimedAt', 'closedAt', 'reopenedAt', 'actions'].sort());
-  assert.deepEqual(detail.body.ticket.actions, { canClaim: false, canRespond: true, canClose: true, canReopen: false });
+    'status', 'categoryId', 'categoryName', 'creatorUserId', 'creatorName', 'assignedUserId', 'assignedName', 'createdAt', 'claimedAt', 'closedAt', 'reopenedAt', 'finalizing', 'actions'].sort());
+  assert.deepEqual(detail.body.ticket.actions, { canClaim: false, canRespond: true, canClose: true, canConclude: false, canReopen: false });
   assert.equal(f.core.calls.includes('messages'), false, 'leitura não importa histórico Discord');
 });
 
@@ -101,8 +102,12 @@ test('sessão, membership, isolamento de guild e validações são obrigatórios
   assert.equal((await f.request(f.detail.replace(ids.guild, ids.otherGuild))).status, 404);
   assert.equal((await f.request(`/api/tickets/${randomUUID()}?guildId=${ids.guild}`)).status, 404);
   f.memberships.length = 0;
-  assert.equal((await f.request(f.list)).status, 403);
-  assert.equal((await f.request(f.detail)).status, 403);
+  const missingMembership = await f.request(f.list);
+  assert.equal(missingMembership.status, 403);
+  assert.equal(missingMembership.body.error, 'GUILD_MEMBERSHIP_REQUIRED');
+  const missingMembershipDetail = await f.request(f.detail);
+  assert.equal(missingMembershipDetail.status, 403);
+  assert.equal(missingMembershipDetail.body.error, 'GUILD_MEMBERSHIP_REQUIRED');
 });
 
 test('histórico canônico filtra mensagens internas, reflete novas mensagens e lê ticket fechado sem canal', async t => {
@@ -141,7 +146,25 @@ test('sessão expirada durante membership é rejeitada e lista participa do rate
   f.services.dashboard.requireGuildMembership = async () => { f.session.expiresAt = 0; };
   assert.equal((await f.request(f.list)).status, 401);
   const g = await setup(t);
-  for (let i = 0; i < 30; i++) assert.equal((await g.request(g.list)).status, 200);
+  for (let i = 0; i < 90; i++) assert.equal((await g.request(g.list)).status, 200);
   const limited = await g.request(g.list);
   assert.equal(limited.status, 429); assert(limited.headers['Retry-After']);
+});
+
+test('esgotar leituras não bloqueia mutation de ticket no bucket separado', async t => {
+  const f = await setup(t, ids.staff);
+  for (let i = 0; i < 90; i++) assert.equal((await f.request(f.list)).status, 200);
+  const action = await f.request(`/api/tickets/${f.ticket.id}/actions/claim`, {
+    method: 'POST', body: { guildId: ids.guild },
+  });
+  assert.equal(action.status, 200);
+});
+
+test('writes esgotados não bloqueiam leituras legítimas', async t => {
+  const f = await setup(t, ids.staff);
+  const path = `/api/tickets/${f.ticket.id}/actions/claim`;
+  for (let i = 0; i < 30; i++) await f.request(path, { method: 'POST', body: { guildId: ids.guild } });
+  const limited = await f.request(path, { method: 'POST', body: { guildId: ids.guild } });
+  assert.equal(limited.status, 429);
+  assert.equal((await f.request(f.list)).status, 200);
 });

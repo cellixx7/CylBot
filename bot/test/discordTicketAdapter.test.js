@@ -103,6 +103,19 @@ test('log com allow explícito a terceiro é rejeitado mesmo com deny de @everyo
   await assert.rejects(f.adapter.validatePrivateLog(ids.guild, ids.log, [ids.role]), /somente/);
 });
 
+test('cache curto do ator evita force fetch repetido e expira', async () => {
+  const f = setup(); let now = 1000; let calls = 0;
+  const adapter = new DiscordTicketAdapter(f.client, { messageContentEnabled: true, actorCacheMs: 10000, now: () => now });
+  const original = f.guild.members.fetch;
+  f.guild.members.fetch = async options => { calls++; return original(options); };
+  await adapter.getActor(ids.guild, ids.user);
+  await adapter.getActor(ids.guild, ids.user);
+  assert.equal(calls, 1);
+  now += 10001;
+  await adapter.getActor(ids.guild, ids.user);
+  assert.equal(calls, 2);
+});
+
 test('encaminhamento da IA registra motivo seguro no log privado sem conteúdo do usuário', async () => {
   const f = setup();
   const ticket = { id: 'ticket-sintetico', sequence: 7, guildId: ids.guild, channelId: ids.panel,

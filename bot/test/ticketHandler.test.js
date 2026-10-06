@@ -28,6 +28,17 @@ function interaction(customId, { userId = ids.user, channelId = ids.panel, kind 
 }
 const services = f => ({ tickets: f.service, ticketSetup: f.setup });
 
+test('Discord permite concluir com solução e bloqueia criador sem staff', async t => {
+  const f = ticketFixture(t); const ticket = await f.create(); await f.service.claim(f.action(ticket));
+  const denied = interaction(`ticket:conclude:${ticket.id}`, { userId: ids.user, channelId: ticket.channelId });
+  await handleTicketInteraction(denied, services(f)); assert.equal(denied.result.modal, undefined);
+  const allowed = interaction(`ticket:conclude:${ticket.id}`, { userId: ids.staff, channelId: ticket.channelId });
+  await handleTicketInteraction(allowed, services(f)); assert.equal(allowed.result.modal.custom_id, `ticket:resolve:${ticket.id}`);
+  const submit = interaction(`ticket:resolve:${ticket.id}`, { userId: ids.staff, channelId: ticket.channelId, kind: 'modal', fields: { 'ticket:summary': 'Solução registrada' } });
+  await handleTicketInteraction(submit, services(f)); assert.match(submit.result.edit.content, /concluído/);
+  assert.equal(f.repository.get(ids.guild, ticket.id).status, 'CONCLUDED');
+});
+
 test('claim duplicado mantém 409, mensagem clara e log warn com contexto do ticket', async t => {
   const f = ticketFixture(t); const ticket = await f.create();
   await f.service.claim(f.action(ticket));
@@ -69,7 +80,7 @@ test('erro 500 registra classe/código/cause seguros sem conteúdo, SQL, segredo
   assert.equal(log.stack, undefined);
 });
 
-test('429 de reabertura identifica cooldown app; HTTP 429 do Discord tem origem e mensagem distintas', async t => {
+test('cooldown de reabertura é conflito de domínio; HTTP 429 do Discord mantém origem distinta', async t => {
   const f = ticketFixture(t); const ticket = await f.close(await f.create());
   // Faz o cooldown de fechamento ser o limitador, sem cooldown de abertura.
   f.advance();
@@ -82,8 +93,8 @@ test('429 de reabertura identifica cooldown app; HTTP 429 do Discord tem origem 
   assert.match(i.result.error.content, /60 segundos após/);
   const app = logs.at(-1).data;
   assert.equal(app.action, 'reopen');
-  assert.equal(app.statusCode, 429);
-  assert.equal(app.rateLimitSource, 'app');
+  assert.equal(app.statusCode, 409);
+  assert.equal(app.rateLimitSource, undefined);
   assert.equal(app.errorCode, 'TICKET_REOPEN_COOLDOWN');
   assert.equal(app.channelId, ticket.channelId);
   assert.equal(app.interactionChannelId, ids.log);

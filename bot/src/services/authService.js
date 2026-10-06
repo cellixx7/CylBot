@@ -36,8 +36,8 @@ class AuthService {
     const token = await this.provider.exchangeCode(code);
     const user = await this.provider.getUser(token.access_token);
     if (this.users) await this.users.upsertDiscordUser(user);
-    const session = this.sessions.create(user, token);
-    this.sessions.remove(previousSessionId);
+    const session = await this.sessions.create(user, token);
+    await this.sessions.remove(previousSessionId);
     return session;
   }
 }

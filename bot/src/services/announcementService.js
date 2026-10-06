@@ -93,6 +93,55 @@ class AnnouncementService {
     return this.draftManager.get(id, owner, guildId);
   }
 
+  async recent(guildId) {
+    return this.repository.getRecent ? await this.repository.getRecent(guildId, 12) : [];
+  }
+
+  async suggestWorkspace({ guildName, type, intent, context }) {
+    if (!['NOTICE', 'UPDATE'].includes(type)) throw fail('Escolha Aviso ou Atualização.');
+    const idea = text(intent, 2000, true);
+    const output = await this.ai.generate({ outputType: 'embed', idea,
+      originalContext: `${type === 'NOTICE' ? 'Aviso oficial' : 'Atualização oficial'} do CYL para ${guildName}. Preserve somente os fatos fornecidos. Não invente datas, disponibilidade ou funcionalidades. Não use menções.`,
+      additionalContext: text(context || '', 1000), currentText: '', targetCharacters: 1500 });
+    return { title: text(output.title || '', 256, true), content: text(output.description, 4000, true), type };
+  }
+
+  async generateWorkspace({ guildId, guildName, owner, type, title, content, channelId, context, useAI }) {
+    if (!['NOTICE', 'UPDATE'].includes(type)) throw fail('Escolha Aviso ou Atualização.');
+    const cleanTitle = text(title, 256, true);
+    const idea = text(content, 4000, true);
+    const cleanChannelId = text(channelId, 20, true);
+    let description = idea;
+    if (useAI) {
+      const output = await this.ai.generate({ outputType: 'content', idea,
+        originalContext: `${type === 'NOTICE' ? 'Aviso oficial' : 'Atualização oficial'} da comunidade ${guildName}. Título: ${cleanTitle}. Preserve fatos, escreva em português claro e use Markdown Discord quando fizer sentido.`,
+        currentText: '', additionalContext: text(context || '', 2000), targetCharacters: 1500 });
+      description = output.content;
+    }
+    const color = type === 'NOTICE' ? 0x7c5cff : 0x19a974;
+    const embed = new EmbedBuilder().setTitle(cleanTitle).setDescription(description).setColor(color)
+      .setFooter({ text: `${type === 'NOTICE' ? 'Aviso' : 'Atualização'} • ${guildName}` }).toJSON();
+    const draftId = this.draftManager.create({ owner, guildId, channelId: cleanChannelId, type, title: cleanTitle, content: description, embed });
+    return { draftId, embed, type, title: cleanTitle, content: description };
+  }
+
+  async publishWorkspace({ draftId, owner, guildId, channel, forwardedBy, communityVisible }) {
+    const draft = this.get(draftId, owner, guildId);
+    this.draftManager.assertAvailable(draft);
+    if (!channel || channel.guildId !== guildId || draft.channelId !== channel.id || !channel.isTextBased?.() || typeof channel.send !== 'function') throw fail('Escolha um canal de texto do servidor original.');
+    this.draftManager.markBusy(draft);
+    try {
+      await channel.send({ embeds: [webForwardedEmbed(draft.embed, forwardedBy)], allowedMentions: { parse: [] } });
+      const publication = await (this.repository.savePublication ? this.repository.savePublication({
+        guildId, type: draft.type, title: draft.title, content: draft.content, channelId: channel.id,
+        channelName: channel.name || null, communityVisible, publishedBy: owner,
+      }) : null);
+      this.draftManager.remove(draftId);
+      logger.info('announcement.workspace_published', { module: 'announcementService', operation: 'announcement.workspace.publish', guildId, channelId: channel.id, userId: owner, type: draft.type });
+      return publication;
+    } finally { this.draftManager.release(draft); }
+  }
+
   async send(id, owner, guildId, channel, forwardedBy) {
     const draft = this.get(id, owner, guildId);
     this.draftManager.assertAvailable(draft);

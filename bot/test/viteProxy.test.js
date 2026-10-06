@@ -18,8 +18,13 @@ test('proxy real do Vite preserva Origin local/Codespaces e backend rejeita outr
   t.after(() => new Promise(resolve => { backend.close(resolve); backend.closeAllConnections(); }));
   backend.listen(0, '127.0.0.1');
   await once(backend, 'listening');
+  // Vite interpreta port=0 como seu default 5173; reserve uma porta dinâmica
+  // explícita para o teste não competir com o frontend de desenvolvimento.
+  const reservation = http.createServer(); reservation.listen(0, '127.0.0.1');
+  await once(reservation, 'listening'); const testPort = reservation.address().port;
+  await new Promise(resolve => reservation.close(resolve));
   const vite = await createServer({ root: webRoot, configFile: path.join(webRoot, 'vite.config.js'),
-    server: { host: '127.0.0.1', port: 0, watch: null,
+    server: { host: '127.0.0.1', port: testPort, watch: null,
       proxy: { '/api': { target: `http://127.0.0.1:${backend.address().port}` } } },
     optimizeDeps: { noDiscovery: true, include: [] },
   });

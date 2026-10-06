@@ -24,7 +24,7 @@ function setup(t) {
   let time = 1000;
   const now = () => time;
   const config = { ...loadEnv({}, { requireDiscord: false }).auth, enabled: true };
-  const sessions = new AuthSessionManager({ now });
+  const sessions = new AuthSessionManager({ now, ttlSeconds: 28800 });
   const makeSession = (id = 'user') => sessions.create({ id }, { access_token: secret, expires_in: 3600, scope: 'identify guilds' });
   const session = makeSession();
   const counts = { ai: 0, fetch: 0, guilds: 0, saved: 0 };

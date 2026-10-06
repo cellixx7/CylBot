@@ -20,6 +20,7 @@ module.exports = {
       messageId: message.id,
       userId: message.author.id,
       content: message.content,
+      attachments: [...(message.attachments?.values() || [])].map(({ name, size, url, contentType }) => ({ name, size, url, contentType })),
       editedAt: message.editedTimestamp,
     });
   },

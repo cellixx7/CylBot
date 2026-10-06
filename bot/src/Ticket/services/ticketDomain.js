@@ -3,10 +3,11 @@ const errors = require('../domain/ticketErrors');
 const { TicketInvalidStateError } = errors;
 
 const TRANSITIONS = Object.freeze({
-  [S.OPEN]: new Set([S.CLAIMED, S.CLOSED]),
-  [S.CLAIMED]: new Set([S.CLOSED]),
+  [S.OPEN]: new Set([S.CLAIMED, S.CLOSED, S.CONCLUDED]),
+  [S.CLAIMED]: new Set([S.CLOSED, S.CONCLUDED]),
   [S.CLOSED]: new Set([S.REOPENED]),
-  [S.REOPENED]: new Set([S.CLAIMED, S.CLOSED]),
+  [S.CONCLUDED]: new Set([S.REOPENED]),
+  [S.REOPENED]: new Set([S.CLAIMED, S.CLOSED, S.CONCLUDED]),
 });
 
 function canTransition(from, to) {
