@@ -99,6 +99,13 @@
       "when": 1791401553488,
       "tag": "0013_skinny_inhumans",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791402326074,
+      "tag": "0014_soft_mantis",
+      "breakpoints": true
     }
   ]
 }

@@ -43,7 +43,8 @@ export default function App() {
   const auth = useAuth();
   const route = useHashRoute();
   const serverRoute = parseServerRoute(route.path);
-  const baseRoute = serverRoute ? '/dashboard' : route.path;
+  const profileMatch = route.path.match(/^\/profile\/(\d{17,20})$/);
+  const baseRoute = serverRoute ? '/dashboard' : profileMatch ? '/profile' : route.path;
   const isComingSoonRoute = route.path === '/em-breve';
   const comingSoonFeature = isComingSoonRoute ? getComingSoonFeature(route.query.get('feature')) : null;
 
@@ -87,7 +88,7 @@ export default function App() {
     page = (
       <AuthGate auth={auth}>
         <Suspense fallback={<div className="state-page" role="status">Carregando página…</div>}>
-          {route.path === '/profile' && <ProfilePage user={auth.user} />}
+          {baseRoute === '/profile' && <ProfilePage key={route.path} user={auth.user} profileUserId={profileMatch?.[1] || 'me'} initialGuildId={route.query.get('guildId') || ''} requireRelogin={auth.requireRelogin} />}
           {(route.path === '/dashboard' || serverRoute) && (
             <DashboardArea user={auth.user} serverRoute={serverRoute} requireRelogin={auth.requireRelogin} />
           )}

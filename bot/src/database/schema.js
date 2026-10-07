@@ -287,7 +287,23 @@ const planGuilds = pgTable('plan_guilds', {
 }, table => ({ subscriptionIndex: index('plan_guilds_subscription_idx').on(table.subscriptionId) }));
 
 
+const userProfiles = pgTable('user_profiles', {
+  userId: text('user_id').primaryKey(), bio: text('bio').notNull().default(''),
+  accent: text('accent').notNull().default('#7c5cff'), theme: text('theme').notNull().default('CLASSIC'),
+  visibility: text('visibility').notNull().default('COMMUNITY'), links: jsonb('links').notNull().default([]),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, table => ({ themeCheck: check('user_profiles_theme_check', sql`${table.theme} in ('CLASSIC','AURORA','COSMIC')`),
+  visibilityCheck: check('user_profiles_visibility_check', sql`${table.visibility} in ('PUBLIC','COMMUNITY','PRIVATE')`),
+  bioCheck: check('user_profiles_bio_check', sql`char_length(${table.bio}) <= 500`),
+  accentCheck: check('user_profiles_accent_check', sql`${table.accent} ~ '^#[0-9a-fA-F]{6}$'`) }));
+const profileBadges = pgTable('profile_badges', {
+  userId: text('user_id').notNull(), badge: text('badge').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, table => ({ primary: primaryKey({ columns: [table.userId, table.badge] }),
+  badgeCheck: check('profile_badges_badge_check', sql`${table.badge} in ('PARTNER','CREATOR','STAFF')`) }));
+
 module.exports = {
+  userProfiles, profileBadges,
   planSubscriptions, planGuilds,
   users, authSessions, ticketConfigs, ticketCategories, tickets, ticketEvents, ticketMessages, ticketMessageRevisions, ticketSequences, announcementCategories, announcementPublications,
   ticketStatus, ticketEventType, ticketMessageOrigin, ticketMessageAuthorType, ticketMessageVisibility,

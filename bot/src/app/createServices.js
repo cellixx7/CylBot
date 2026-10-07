@@ -22,6 +22,8 @@ const { TicketSetupService } = require('../Ticket/services/ticketSetupService');
 const { TicketService } = require('../Ticket/services/ticketService');
 const { createDatabase } = require('../database/client');
 const { PlanService } = require('../services/planService');
+const { ProfileService } = require('../services/profileService');
+const { PostgresProfileRepository } = require('../repositories/postgresProfileRepository');
 const { PostgresPlanRepository } = require('../repositories/postgresPlanRepository');
 const { PostgresUserRepository } = require('../repositories/postgresUserRepository');
 const { PostgresTicketRepository } = require('../Ticket/repositories/postgresTicketRepository');
@@ -74,6 +76,7 @@ function createServices(client, config) {
     openRouter,
     database,
     plans,
+    profiles: new ProfileService({ repository: database ? new PostgresProfileRepository(database) : null, users: userRepository, plans, client }),
     users: userRepository,
     // Somente o adapter Discord usa sessões; a Web chama generate com dados do formulário.
     textaAI: new TextaAIService({ ai: openRouter, sessions: new TextaAISessionManager() }),

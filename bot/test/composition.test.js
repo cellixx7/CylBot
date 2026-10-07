@@ -111,5 +111,5 @@ test('registry contabiliza uso do comando ticket na sessão atual', async () => 
 
 test('registry oficial preserva todos os slash commands existentes', () => {
   assert.deepEqual(commands.map(command => command.data.toJSON().name).sort(),
-    ['anuncios', 'callsense', 'embed', 'ping', 'presence', 'say', 'texta_ai', 'ticket']);
+    ['anuncios', 'callsense', 'embed', 'perfil', 'ping', 'presence', 'say', 'texta_ai', 'ticket']);
 });

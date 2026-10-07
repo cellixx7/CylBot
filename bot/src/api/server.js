@@ -20,6 +20,7 @@ const routes = [
   require('./routes/healthRoutes'),
   require('./routes/announcementRoutes'),
   require('./routes/planRoutes'),
+  require('./routes/profileRoutes'),
   require('./routes/aiRoutes'),
   require('./routes/discordRoutes'),
 ];
@@ -58,6 +59,10 @@ function createRequestHandler(context) {
         else if (request.method === 'POST' && path.includes('/tools/')) limiter.consume(`tickets-moderation:${userId}`, rateLimits.ticketModeration, 'tickets-moderation');
         else if (path.includes('/ai/')) limiter.consume(`tickets-ai:${userId}`, rateLimits.ticketAI, 'tickets-ai');
         else if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) limiter.consume(`tickets-write:${userId}`, rateLimits.ticketWrites, 'tickets-write');
+      }
+      if (path.startsWith('/api/profile/') && request.method === 'PATCH') {
+        const session = requireSession(request, context.services);
+        limiter.consume(`profile-write:${session.user.id}`, 20);
       }
       const sensitivePost = request.method === 'POST' &&
         (path === '/api/ai/generate' || path === '/api/discord/send' || path.startsWith('/api/announcements/'));
