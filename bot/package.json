@@ -13,7 +13,8 @@
     "db:status": "drizzle-kit check",
     "commands:register": "node scripts/deploy-commands.js",
     "deploy": "node scripts/deploy-commands.js",
-    "spotify:auth": "node scripts/spotify-auth.js"
+    "spotify:auth": "node scripts/spotify-auth.js",
+    "plans": "node scripts/plans.js"
   },
   "engines": {
     "node": ">=18.0.0"

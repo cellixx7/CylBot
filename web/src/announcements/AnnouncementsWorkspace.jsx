@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bot, Eye, LoaderCircle, Plus, Send, Sparkles } from 'lucide-react';
+import { Bot, Eye, LoaderCircle, RotateCcw, Send, Sparkles } from 'lucide-react';
 import { generateAnnouncement, getAnnouncementWorkspace, publishAnnouncement, suggestAnnouncement } from './announcementsApi.js';
 import './announcements.css';
 
@@ -15,18 +15,19 @@ export default function AnnouncementsWorkspace({ guild, requireRelogin }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [accessDenied, setAccessDenied] = useState(false);
   const selectedChannel = useMemo(() => data?.channels?.find(channel => channel.id === form.channelId), [data, form.channelId]);
 
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setAccessDenied(false);
     getAnnouncementWorkspace(guild.id, controller.signal).then(result => {
       if (controller.signal.aborted) return;
       setData(result);
       setForm(previous => ({ ...previous, channelId: previous.channelId || result.channels?.find(channel => channel.type === previous.type)?.id || '' }));
     }).catch(reason => {
       if (controller.signal.aborted) return;
-      setError(reason.message);
+      setError(reason.message); setAccessDenied(reason.status === 403);
       if (reason.status === 401) requireRelogin();
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
@@ -34,9 +35,9 @@ export default function AnnouncementsWorkspace({ guild, requireRelogin }) {
 
   const change = (key, value) => { setForm(previous => ({ ...previous, [key]: value })); if (key !== 'communityVisible') setDraft(null); };
   const dirty = Boolean(form.title || form.content || form.context || draft || suggestion);
-  function reset(type = form.type) {
-    if (dirty && !window.confirm('Descartar a publicação que ainda não foi enviada?')) return;
-    setForm(previous => ({ ...initialForm, type, channelId: data?.channels?.find(channel => channel.type === type)?.id || '' })); setDraft(null); setSuggestion(null); setError('');
+  function reset() {
+    if (dirty && !window.confirm('Limpar o título, o conteúdo e o contexto desta publicação?')) return;
+    setForm(previous => ({ ...previous, title: '', content: '', context: '', useAI: initialForm.useAI })); setDraft(null); setSuggestion(null); setError('');
   }
   function switchType(type) {
     if (type === form.type) return;
@@ -66,16 +67,17 @@ export default function AnnouncementsWorkspace({ guild, requireRelogin }) {
     finally { setBusy(false); }
   }
 
+  if (accessDenied) return <section className="announcements-workspace"><h1>Avisos e atualizações</h1><p className="dashboard-notice" role="alert">{error}</p></section>;
+
   return <section className="announcements-workspace" aria-labelledby="announcements-title">
-    <header className="announcements-heading"><div><p className="dashboard-kicker">COMUNICAÇÃO OFICIAL</p><h1 id="announcements-title">Avisos e atualizações</h1><p>Crie, revise e publique comunicados oficiais para a comunidade do {guild.name}.</p></div><button className="dashboard-button dashboard-button-primary" type="button" onClick={() => reset()}><Plus size={16} aria-hidden="true" />Nova publicação</button></header>
+    <header className="announcements-heading"><div><p className="dashboard-kicker">COMUNICAÇÃO OFICIAL</p><h1 id="announcements-title">Avisos e atualizações</h1><p>Crie, revise e publique comunicados oficiais para a comunidade do {guild.name}.</p></div></header>
     <div className="announcement-tabs" role="tablist" aria-label="Tipo de publicação"><button type="button" role="tab" aria-selected={form.type === 'NOTICE'} onClick={() => switchType('NOTICE')}>Avisos</button><button type="button" role="tab" aria-selected={form.type === 'UPDATE'} onClick={() => switchType('UPDATE')}>Atualizações</button></div>
     {loading ? <div className="dashboard-notice" role="status">Carregando configurações de publicação...</div> : <>
       {error && <p className="dashboard-notice dashboard-error" role="alert">{error}</p>}
       {!data?.channels?.length && <p className="dashboard-notice" role="alert">O CYL não possui um canal de texto disponível para publicar neste servidor.</p>}
       <div className="announcement-studio">
         <form className="announcement-editor" onSubmit={createPreview}>
-          <div className="announcement-panel-heading"><div><span>Editor</span><strong>{typeLabel(form.type)}</strong></div><Sparkles size={18} aria-hidden="true" /></div>
-          <label>Tipo<select value={form.type} onChange={event => change('type', event.target.value)} disabled={busy}><option value="NOTICE">Aviso</option><option value="UPDATE">Atualização</option></select></label>
+          <div className="announcement-panel-heading"><div><span>Editor</span><strong>{typeLabel(form.type)}</strong></div><button className="dashboard-button dashboard-button-secondary" type="button" onClick={reset} disabled={busy || !dirty}><RotateCcw size={16} aria-hidden="true" />Limpar texto</button></div>
           <label>Título<input value={form.title} maxLength={256} onChange={event => change('title', event.target.value)} placeholder={form.type === 'NOTICE' ? 'Ex.: Manutenção programada' : 'Ex.: Nova central de Tickets'} required disabled={busy} /></label>
           <label>Conteúdo<textarea value={form.content} maxLength={4000} onChange={event => change('content', event.target.value)} placeholder="Escreva os fatos, contexto e orientações que a comunidade precisa receber." required disabled={busy} /></label>
           <div className="announcement-ai"><div><Bot size={17} aria-hidden="true" /><strong>Assistência CYL</strong></div><button className="dashboard-button" type="button" disabled={busy || !form.context.trim()} onClick={createSuggestion}><Sparkles size={16} />Criar com IA</button></div>

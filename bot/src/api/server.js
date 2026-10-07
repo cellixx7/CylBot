@@ -19,6 +19,7 @@ const routes = [
   require('./routes/communityPreviewRoutes'),
   require('./routes/healthRoutes'),
   require('./routes/announcementRoutes'),
+  require('./routes/planRoutes'),
   require('./routes/aiRoutes'),
   require('./routes/discordRoutes'),
 ];

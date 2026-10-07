@@ -9,6 +9,7 @@
 .announcement-editor, .announcement-preview-panel { display: grid; align-content: start; gap: 15px; min-width: 0; padding: 22px; }
 .announcement-editor { border-right: 1px solid var(--dashboard-border); }
 .announcement-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--dashboard-border); color: var(--dashboard-accent); }
+.announcement-editor > .announcement-panel-heading { flex-wrap: wrap; }
 .announcement-panel-heading > div { display: grid; gap: 3px; }
 .announcement-panel-heading span { color: var(--dashboard-muted); font-size: .6875rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
 .announcement-panel-heading strong { color: var(--cyl-text-strong); font-family: var(--cyl-display); font-size: 1.05rem; }

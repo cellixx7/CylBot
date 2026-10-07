@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const { tempDirectory } = require('./helpers/tempDirectory');
 const path = require('node:path');
 const { PermissionFlagsBits, PermissionsBitField } = require('discord.js');
+const { announcementClient } = require('./helpers/announcementClient');
 const admin = { permissions: new PermissionsBitField(PermissionFlagsBits.ManageGuild) };
 const { AnnouncementService } = require('../src/services/announcementService');
 const { JsonAnnouncementRepository } = require('../src/repositories/jsonAnnouncementRepository');
@@ -64,7 +65,7 @@ test('comando anuncia opções e custom IDs esperados', t => {
 test('seleção abre ações e os modais usam IDs próprios de anúncios', async t => {
   const service = new AnnouncementService({ getCategories: () => undefined });
   const { handleAnnouncementInteraction: handle } = require('../src/handlers/announcementHandler');
-  const handleAnnouncementInteraction = interaction => handle(interaction, service);
+  const handleAnnouncementInteraction = interaction => handle({ client: announcementClient(interaction.guildId), user: { id: 'user' }, ...interaction }, service);
   let message;
   await handleAnnouncementInteraction({ customId: 'ann:choose', guildId: 'test', values: ['default-0'], update: async p => { message = p; } });
   assert.equal(message.components[0].toJSON().components[0].custom_id, 'ann:write:default-0');
@@ -107,13 +108,13 @@ test('custom IDs administrativos não permitem abrir nem salvar sem ManageGuild'
   for (const customId of ['ann:add', 'ann:edit:default-0', 'ann:save:new', 'ann:save:default-0']) {
     let reply;
     await handleAnnouncementInteraction({
-      customId, guildId: 'test', memberPermissions: new PermissionsBitField(0n),
+      customId, guildId: 'test', user: { id: 'user' }, client: announcementClient('test', 'user', 0n), memberPermissions: new PermissionsBitField(0n),
       showModal: async () => assert.fail('Não deve abrir modal'),
       fields: { getTextInputValue: () => assert.fail('Não deve ler campos nem salvar') },
       reply: async payload => { reply = payload; },
     });
     assert.equal(reply.ephemeral, true);
-    assert.match(reply.content, /Gerenciar Servidor/);
+    assert.match(reply.content, /administrador/);
   }
 });
 
@@ -121,7 +122,7 @@ test('handler permite administrador adicionar categoria e editar padrão', async
   const { handleAnnouncementInteraction: handle } = require('../src/handlers/announcementHandler');
   const dir = tempDirectory(t, 'announcements-');
   const service = new AnnouncementService(new JsonAnnouncementRepository(path.join(dir, 'data.json')));
-  const handleAnnouncementInteraction = interaction => handle(interaction, service);
+  const handleAnnouncementInteraction = interaction => handle({ client: announcementClient(interaction.guildId), user: { id: 'user' }, ...interaction }, service);
   const fields = { name: 'Nova', title: 'Título', description: '', image: '' };
   const interaction = {
     guildId: 'test', memberPermissions: admin.permissions,
@@ -136,12 +137,12 @@ test('handler permite administrador adicionar categoria e editar padrão', async
   assert.equal(service.categories('test').at(-1).title, 'Editado');
 });
 
-test('usuário comum gera e revisa; envio valida permissões efetivas do canal', async t => {
+test('administrador com Comunidade gera e revisa; envio valida permissões efetivas do canal', async t => {
   const { handleAnnouncementInteraction: handle } = require('../src/handlers/announcementHandler');
   const dir = tempDirectory(t, 'announcements-');
   const calls = [];
   const service = new AnnouncementService(new JsonAnnouncementRepository(path.join(dir, 'data.json')), { generate: async input => { calls.push(input); return { content: 'Texto' }; } });
-  const handleAnnouncementInteraction = interaction => handle(interaction, service);
+  const handleAnnouncementInteraction = interaction => handle({ client: announcementClient(interaction.guildId), user: { id: 'user' }, ...interaction }, service);
   let preview;
   const base = {
     guildId: 'a', guild: { name: 'Servidor' }, user: { id: 'user' }, member: { id: 'user' },
@@ -190,7 +191,7 @@ test('threads exigem SendMessagesInThreads e ausência de permissões bloqueia e
   const { handleAnnouncementInteraction: handle } = require('../src/handlers/announcementHandler');
   let sends = 0;
   const service = { send: async () => { sends++; } };
-  const handleAnnouncementInteraction = interaction => handle(interaction, service);
+  const handleAnnouncementInteraction = interaction => handle({ client: announcementClient(interaction.guildId), user: { id: 'user' }, ...interaction }, service);
   const base = {
     customId: 'ann:send:draft', guildId: 'a', user: { id: 'user' }, member: { id: 'user' },
     deferUpdate: async () => {}, editReply: async () => {},

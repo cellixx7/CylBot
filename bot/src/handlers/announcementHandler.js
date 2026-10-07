@@ -1,5 +1,6 @@
 const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits } = require('discord.js');
 const { assertCanManageAnnouncements } = require('../services/announcementPermissions');
+const { requireAnnouncementAccess } = require('../services/announcementAccessService');
 const row = (...components) => new ActionRowBuilder().addComponents(...components);
 const button = (id, label, primary = false) => new ButtonBuilder().setCustomId(`ann:${id}`).setLabel(label).setStyle(primary ? ButtonStyle.Success : ButtonStyle.Secondary);
 const categoryPickerFromCategories = categories => ({ content: 'Escolha uma categoria ou use Adicionar para criar uma categoria do servidor.', embeds: [], components: [
@@ -25,8 +26,9 @@ async function handleAnnouncementInteraction(i, announcements = i.client?.servic
   if (!i.customId?.startsWith('ann:')) return false;
   try {
     if (!i.guildId) throw new Error('Use este comando em um servidor.');
+    await requireAnnouncementAccess({ client: i.client, services: i.client?.services }, i.guildId, i.user?.id);
     const [, action, id] = i.customId.split(':');
-    const authorization = { member: i.member, permissions: i.memberPermissions };
+    const authorization = { permissions: PermissionFlagsBits.Administrator };
     if (['add', 'edit', 'save'].includes(action)) assertCanManageAnnouncements(authorization);
     const category = async () => {
       const categories = await announcements.categories(i.guildId);

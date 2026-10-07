@@ -4,6 +4,7 @@ const { PermissionFlagsBits } = require('discord.js');
 const { requireSession } = require('../http/auth');
 const { requireSendableChannel } = require('../http/channelPermissions');
 const { COMMUNITY_CHANNELS } = require('./communityPreviewRoutes');
+const { requireAnnouncementAccess } = require('../../services/announcementAccessService');
 
 async function handle(request, response, context) {
   if (!request.url.startsWith('/api/announcements/')) return false;
@@ -32,9 +33,8 @@ async function getWorkspace(request, response, { client, services }) {
   const session = requireSession(request, services);
   const guildId = new URL(request.url, 'http://localhost').searchParams.get('guildId');
   if (!/^\d{17,20}$/.test(guildId || '')) throw clientError(400, 'Informe um ID de servidor válido.');
-  await services.dashboard.requireManageableGuild(session, guildId);
-  const guild = client.guilds.cache.get(guildId);
-  if (!guild) throw clientError(403, 'FORBIDDEN');
+  response.setHeader('Cache-Control', 'no-store');
+  const guild = await requireAnnouncementAccess({ client, services }, guildId, session.user.id);
   sendJson(response, 200, { guildName: guild.name, channels: sendableChannels(client, guild), recent: await services.announcements.recent(guildId) });
 }
 
@@ -42,12 +42,9 @@ async function handleAnnouncements(request, response, { client, services, sessio
   const { announcements } = services;
   const body = await readJson(request);
   if (!/^\d{17,20}$/.test(body.guildId || '')) throw clientError(400, 'Informe um ID de servidor válido.');
-  await services.dashboard.requireManageableGuild(session, body.guildId);
-  requireSession(request, services);
-  const guild = client.guilds.cache.get(body.guildId);
-  if (!guild) throw clientError(403, 'FORBIDDEN');
+  const guild = await requireAnnouncementAccess({ client, services }, body.guildId, session.user.id);
   // Concede a capacidade interna somente após autorização real via OAuth/cache.
-  const authorization = { source: 'web', permissions: PermissionFlagsBits.ManageGuild };
+  const authorization = { source: 'web', permissions: PermissionFlagsBits.Administrator };
   const owner = `web:${session.user.id}`;
   switch (request.url) {
     case '/api/announcements/categories':

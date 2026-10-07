@@ -16,6 +16,7 @@ const { AuthSessionManager } = require('../src/services/authSessionManager');
 const { DashboardService } = require('../src/services/dashboardService');
 const { messagePost, fetchAllPosts, invalidateCommunityChannel } = require('../src/api/routes/communityPreviewRoutes');
 const messageDeleteEvent = require('../src/events/messageDelete');
+const { announcementClient } = require('./helpers/announcementClient');
 
 // Exercita o mesmo callback usado por node:http, sem abrir portas nem acessar serviços externos.
 async function request(context, method, url, body, raw) {
@@ -27,8 +28,10 @@ async function request(context, method, url, body, raw) {
     avatarUrl: 'https://cdn.discordapp.com/avatars/123/avatar.png',
   }, { access_token: 'fake', scope: 'identify guilds', expires_in: 3600 });
   const client = { isReady: () => true, user: { id: 'bot' }, guilds: { cache: new Map([[guildId, { id: guildId, name: 'Servidor' }]]) }, ...context.client };
+  const fixtureGuild = client.guilds.cache.get(guildId);
+  if (fixtureGuild && !fixtureGuild.members) fixtureGuild.members = announcementClient(guildId, 'api-user').guilds.cache.get(guildId).members;
   const dashboard = new DashboardService({ client, provider: { getCurrentUserGuilds: async () => [{ id: guildId, name: 'Servidor', owner: true, icon: null }] } });
-  context = { ...context, client, services: { auth, dashboard, ...context.services } };
+  context = { ...context, client, services: { auth, dashboard, plans: { requireCommunityGuild: async () => {} }, ...context.services } };
   Object.assign(incoming, { method, url, headers: { origin: auth.config.webOrigin, cookie: `cylbot_session=${session.id}` } });
   const response = {
     headers: {}, ended: false,
@@ -353,7 +356,7 @@ test('anúncios mantêm validação de guild, canal e subrota desconhecida', asy
   const context = { client: { guilds: { cache: new Map([[guildId, guild]]) }, channels: { fetch: async () => null } }, services: {} };
   for (const [action, body, status, message] of [
     ['categories', { guildId: 'inválido' }, 400, 'Informe um ID de servidor válido.'],
-    ['categories', { guildId: '99999999999999999' }, 403, 'FORBIDDEN'],
+    ['categories', { guildId: '99999999999999999' }, 403, 'ADMINISTRATOR_REQUIRED'],
     ['send', { guildId, channelId: 'inválido' }, 400, 'Informe um ID de canal válido.'],
     ['send', { guildId, channelId }, 400, 'Canal não encontrado.'],
     ['unknown', { guildId }, 404, 'Rota não encontrada.'],
@@ -362,7 +365,7 @@ test('anúncios mantêm validação de guild, canal e subrota desconhecida', asy
   ]) {
     const response = await request(context, 'POST', `/api/announcements/${action}`, body);
     assert.equal(response.status, status);
-    assert.deepEqual(response.body, { error: message });
+    assert.deepEqual(response.body, { error: message, ...(message === 'ADMINISTRATOR_REQUIRED' ? { message: 'Você precisa ser administrador deste servidor.' } : {}) });
   }
 });
 

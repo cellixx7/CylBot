@@ -7,6 +7,7 @@ const { createServices } = require('../src/app/createServices');
 const { startApiServer } = require('../src/api/server');
 const event = require('../src/events/interactionCreate');
 const commands = require('../src/commands/index');
+const { announcementClient } = require('./helpers/announcementClient');
 
 const config = () => loadEnv({}, { requireDiscord: false });
 const client = () => ({ isReady: () => true, guilds: { cache: new Map() } });
@@ -61,10 +62,10 @@ test('startApiServer entrega services injetados às rotas sem recriar dependênc
 
 test('registry entrega os services do client aos handlers Discord e ao comando anúncios', async () => {
   const services = createServices(client(), config());
-  const bot = { services, commands };
+  const bot = { ...announcementClient('guild'), services: { ...services, plans: { requireCommunityGuild: async () => {} } }, commands };
   services.announcements.repository = { getCategories: () => [{ id: 'injected', name: 'Injetada', title: 'Título' }] };
   let payload;
-  await event.execute({ client: bot, customId: 'ann:back', guildId: 'guild', update: async value => { payload = value; } }, bot);
+  await event.execute({ client: bot, customId: 'ann:back', guildId: 'guild', user: { id: 'user' }, update: async value => { payload = value; } }, bot);
   assert.equal(payload.components[0].toJSON().components[0].options[0].value, 'injected');
   const expected = services.textaAI.create({ userId: 'user', channelId: 'channel', outputType: 'content', idea: 'Ideia', targetCharacters: 100 });
   // Uma sessão do root precisa ser encontrada pelo handler; um singleton diferente retornaria "expirada".
@@ -72,7 +73,7 @@ test('registry entrega os services do client aos handlers Discord e ao comando a
     message: { components: [], edit: async () => {} },
     isModalSubmit: () => false, isButton: () => true, showModal: async value => { payload = value.toJSON(); } }, bot);
   assert.equal(payload.custom_id, `texta_ai:correction:${expected}`);
-  await commands.find(command => command.data.name === 'anuncios').execute({ client: bot, guildId: 'guild', reply: async value => { payload = value; } });
+  await commands.find(command => command.data.name === 'anuncios').execute({ client: bot, guildId: 'guild', user: { id: 'user' }, deferReply: async () => {}, editReply: async value => { payload = value; } });
   assert.equal(payload.components[0].toJSON().components[0].options[0].value, 'injected');
 });
 

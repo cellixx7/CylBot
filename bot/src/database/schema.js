@@ -267,7 +267,28 @@ const ticketAIRuns = pgTable('ticket_ai_runs', {
 }, table => ({ ticketIndex: index('ticket_ai_runs_ticket_idx').on(table.ticketId, table.createdAt),
   guildIndex: index('ticket_ai_runs_guild_idx').on(table.guildId, table.createdAt) }));
 
+
+const planSubscriptions = pgTable('plan_subscriptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull(),
+  plan: text('plan').notNull(),
+  status: text('status').notNull().default('ACTIVE'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  serverLimit: integer('server_limit').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, table => ({ userPlan: uniqueIndex('plan_subscriptions_user_plan_idx').on(table.userId, table.plan),
+  planCheck: check('plan_subscriptions_plan_check', sql`${table.plan} in ('PLUS', 'COMMUNITY')`),
+  statusCheck: check('plan_subscriptions_status_check', sql`${table.status} in ('ACTIVE', 'REVOKED')`),
+  scopeCheck: check('plan_subscriptions_scope_check', sql`(${table.plan} = 'PLUS' and ${table.serverLimit} = 0) or (${table.plan} = 'COMMUNITY' and ${table.serverLimit} between 1 and 10000)`) }));
+const planGuilds = pgTable('plan_guilds', {
+  guildId: text('guild_id').primaryKey(),
+  subscriptionId: uuid('subscription_id').notNull().references(() => planSubscriptions.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, table => ({ subscriptionIndex: index('plan_guilds_subscription_idx').on(table.subscriptionId) }));
+
+
 module.exports = {
+  planSubscriptions, planGuilds,
   users, authSessions, ticketConfigs, ticketCategories, tickets, ticketEvents, ticketMessages, ticketMessageRevisions, ticketSequences, announcementCategories, announcementPublications,
   ticketStatus, ticketEventType, ticketMessageOrigin, ticketMessageAuthorType, ticketMessageVisibility,
   ticketMessageDeliveryStatus, ticketRelations, eventRelations, messageRelations,

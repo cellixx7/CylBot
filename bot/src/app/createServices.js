@@ -21,6 +21,8 @@ const { TicketTranscriptService } = require('../Ticket/services/ticketTranscript
 const { TicketSetupService } = require('../Ticket/services/ticketSetupService');
 const { TicketService } = require('../Ticket/services/ticketService');
 const { createDatabase } = require('../database/client');
+const { PlanService } = require('../services/planService');
+const { PostgresPlanRepository } = require('../repositories/postgresPlanRepository');
 const { PostgresUserRepository } = require('../repositories/postgresUserRepository');
 const { PostgresTicketRepository } = require('../Ticket/repositories/postgresTicketRepository');
 const { PostgresTicketConfigRepository } = require('../Ticket/repositories/postgresTicketConfigRepository');
@@ -40,6 +42,7 @@ const { TicketToolsService } = require('../Ticket/services/ticketToolsService');
 function createServices(client, config) {
   const database = config.database?.url ? createDatabase(config.database.url) : null;
   const userRepository = database ? new PostgresUserRepository(database) : null;
+  const plans = new PlanService(database ? new PostgresPlanRepository(database) : null);
   const ticketRepository = database ? new PostgresTicketRepository(database) : new TicketRepository();
   const ticketConfigs = database ? new PostgresTicketConfigRepository(database) : new TicketConfigRepository();
   const openRouter = new OpenRouterService(config.openRouter);
@@ -70,6 +73,7 @@ function createServices(client, config) {
   return {
     openRouter,
     database,
+    plans,
     users: userRepository,
     // Somente o adapter Discord usa sessões; a Web chama generate com dados do formulário.
     textaAI: new TextaAIService({ ai: openRouter, sessions: new TextaAISessionManager() }),

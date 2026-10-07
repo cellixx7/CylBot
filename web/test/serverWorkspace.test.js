@@ -82,7 +82,7 @@ test('workspace renderiza visão operacional real, navegação autorizada e esta
     assert.doesNotMatch(nav, /Visão geral|Automação|Administração|Configurações/);
     const announcements = render(AnnouncementsWorkspace, { guild: admin, requireRelogin() {} });
     assert.match(announcements, /Avisos e atualizações/);
-    assert.match(announcements, /Nova publicação/);
+    assert.match(announcements, /Carregando configurações de publicação/);
     const unknown = render(ServerOverview, { guild: { ...admin, memberCount: null, ticketing: undefined, botPermissions: undefined, canViewTickets: false } });
     assert.doesNotMatch(unknown, /Métricas do servidor|Tickets abertos|Ações rápidas|[0-9]+ abertos/);
     assert.match(unknown, /Indisponível/);

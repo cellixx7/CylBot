@@ -32,17 +32,23 @@ function setup(t) {
   let permissions = new PermissionsBitField([P.ViewChannel, P.SendMessages, P.SendMessagesInThreads]);
   const channel = { id: channelId, guildId, isTextBased: () => true, isThread: () => false,
     permissionsFor: () => permissions, send: async payload => { sent.push(payload); } };
-  const memberships = [{ id: guildId, name: 'Guild', permissions: '32', owner: false, icon: null }];
+  const memberships = [{ id: guildId, name: 'Guild', permissions: '8', owner: false, icon: null }];
   const provider = { authorizationUrl: state => `https://discord.com/oauth2/authorize?state=${state}`,
     getCurrentUserGuilds: async token => { assert.equal(token, secret); counts.guilds++; return memberships; } };
   const client = { user: { id: 'bot' }, isReady: () => true,
     guilds: { cache: new Map([[guildId, { id: guildId, name: 'Guild' }]]) },
     channels: { fetch: async () => { counts.fetch++; return channel; } } };
+  client.guilds.cache.get(guildId).members = { fetch: async ({ user }) => {
+    const membership = memberships.find(g => g.id === guildId);
+    if (!membership) { const error = new Error('Missing member'); error.code = 10007; throw error; }
+    return { id: user, user: { bot: false }, permissions: new PermissionsBitField(BigInt(membership.permissions || '0')) };
+  } };
+  Object.defineProperty(client.guilds.cache.get(guildId), 'ownerId', { get: () => memberships[0]?.owner ? 'user' : 'guild-owner' });
   const store = new Map();
   const announcements = new AnnouncementService({ getCategories: id => store.get(id), saveCategories: (id, categories) => { counts.saved++; store.set(id, categories); } },
     { generate: async () => { counts.ai++; return { content: 'Anúncio' }; } });
   const auth = new AuthService({ config, sessions, provider, now });
-  const services = { auth, announcements, dashboard: new DashboardService({ provider, client, now }),
+  const services = { auth, announcements, plans: { requireCommunityGuild: async () => {} }, dashboard: new DashboardService({ provider, client, now }),
     openRouter: new OpenRouterService(loadEnv({}, { requireDiscord: false }).openRouter),
     textaAI: { generate: async () => { counts.ai++; return { content: 'Texto' }; } } };
   const logs = [];
@@ -92,16 +98,18 @@ test('membro comum, não membro e guild sem bot são proibidos mesmo com sessão
   assert.equal(f.sent.length, 0); assert.equal(f.counts.ai, 0); assert.equal(f.counts.saved, 0);
 });
 
-test('owner, Administrator e ManageGuild autorizam save e publicação com menções desabilitadas', async t => {
+test('owner e Administrator autorizam anúncios; ManageGuild sozinho não autoriza', async t => {
   const f = setup(t);
-  for (const access of [{ owner: true, permissions: '0' }, { owner: false, permissions: '8' }, { owner: false, permissions: '32' }]) {
+  for (const access of [{ owner: true, permissions: '0' }, { owner: false, permissions: '8' }]) {
     Object.assign(f.memberships[0], access);
     const res = await f.request('/api/announcements/save', { body: { guildId, category: { name: `Categoria ${f.counts.saved}`, title: 'Título' } } });
     assert.equal(res.status, 200);
     assert.equal((await f.request('/api/discord/send', { body: sendInput })).status, 200);
     assert.deepEqual(f.sent.at(-1).allowedMentions, { parse: [] });
   }
-  assert.equal(f.counts.saved, 3);
+  Object.assign(f.memberships[0], { owner: false, permissions: '32' });
+  assert.equal((await f.request('/api/announcements/save', { body: { guildId, category: { name: 'Proibida' } } })).status, 403);
+  assert.equal(f.counts.saved, 2);
 });
 
 test('canal de outra guild não pode ser vinculado pelo body e DM é proibida', async t => {
@@ -252,4 +260,29 @@ test('body JSON rejeita Content-Type incompatível e aceita parâmetros JSON', a
   const accepted = await f.request('/api/ai/generate', { headers: { 'content-type': 'application/json; charset=utf-8' } });
   assert.equal(accepted.status, 200);
   assert.equal(f.counts.ai, 1);
+});
+
+
+test('anúncios exigem Comunidade em todas as rotas; Plus e flags do browser não concedem acesso', async t => {
+  const { PlanService } = require('../src/services/planService');
+  const f = setup(t);
+  let subscription = null;
+  f.services.plans = new PlanService({ forGuild: async () => subscription });
+  const paths = ['categories', 'save', 'generate', 'send', 'workspace/generate', 'workspace/suggest', 'workspace/publish'];
+  for (const state of [null, { plan: 'PLUS', status: 'ACTIVE', expiresAt: new Date(Date.now() + 60000).toISOString() },
+    { plan: 'COMMUNITY', status: 'REVOKED', expiresAt: new Date(Date.now() + 60000).toISOString() },
+    { plan: 'COMMUNITY', status: 'ACTIVE', expiresAt: new Date(0).toISOString() }]) {
+    subscription = state;
+    for (const path of paths) {
+      const result = await f.request(`/api/announcements/${path}`, { body: { guildId, channelId, premium: true, plan: 'COMMUNITY', canManage: true } });
+      assert.equal(result.status, 403, path); assert.equal(result.body.error, 'COMMUNITY_PLAN_REQUIRED');
+    }
+    const workspace = await f.request(`/api/announcements/workspace?guildId=${guildId}`, { method: 'GET' });
+    assert.equal(workspace.status, 403); assert.equal(workspace.body.error, 'COMMUNITY_PLAN_REQUIRED');
+  }
+  assert.equal(f.counts.ai, 0); assert.equal(f.counts.fetch, 0); assert.equal(f.counts.saved, 0); assert.equal(f.sent.length, 0);
+  subscription = { plan: 'COMMUNITY', status: 'ACTIVE', expiresAt: new Date(Date.now() + 60000).toISOString() };
+  assert.equal((await f.request('/api/announcements/categories', { body: { guildId } })).status, 200);
+  f.memberships[0].permissions = '0';
+  assert.equal((await f.request('/api/announcements/categories', { body: { guildId } })).body.error, 'ADMINISTRATOR_REQUIRED');
 });

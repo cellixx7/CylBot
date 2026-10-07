@@ -1,6 +1,9 @@
 import { apiError, readJson } from '../lib/readApi.js';
 
 const messages = {
+  ADMINISTRATOR_REQUIRED: 'Você precisa ser administrador deste servidor.',
+  COMMUNITY_PLAN_REQUIRED: 'Ative o CYL Comunidade para este servidor para usar avisos e atualizações.',
+  ADMINISTRATOR_CHECK_UNAVAILABLE: 'Não foi possível verificar suas permissões no Discord. Tente novamente.',
   400: 'Revise os dados da publicação e tente novamente.',
   401: 'Sua sessão expirou. Entre novamente com Discord.',
   403: 'Você não possui permissão para publicar neste servidor.',
