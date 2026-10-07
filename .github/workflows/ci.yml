@@ -22,11 +22,18 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: bot/package-lock.json
+          cache-dependency-path: |
+            bot/package-lock.json
+            web/package-lock.json
 
       - name: Install bot dependencies
         run: npm ci
         working-directory: bot
+
+      # The bot proxy integration test loads Vite from the frontend package.
+      - name: Install frontend dependencies for proxy tests
+        run: npm ci
+        working-directory: web
 
       - name: Run bot tests
         run: npm test
